@@ -1,0 +1,198 @@
+name: Custom package release
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Branch or commit to package
+        required: true
+        default: custom-stable
+      upstream_version:
+        description: Upstream version, for example v1.3.0
+        required: true
+        default: v1.3.0
+      custom_version:
+        description: Custom version, for example 0.8.18
+        required: true
+        default: 0.8.18
+      prerelease:
+        description: Publish as a prerelease
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ inputs.upstream_version }}-custom.${{ inputs.custom_version }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    outputs:
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+          submodules: recursive
+      - id: version
+        name: Validate release version
+        shell: bash
+        run: |
+          [[ "${{ inputs.upstream_version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "${{ inputs.custom_version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-custom\.[A-Za-z0-9.-]+$ ]]
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+      - id: source
+        name: Resolve source commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Ensure release does not already exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists: $RELEASE_TAG" >&2
+            exit 1
+          fi
+      - name: Source checks
+        run: |
+          scripts/scan-secrets.sh
+          git diff --check
+
+  build-linux:
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.source_sha }}
+          fetch-depth: 0
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: |
+            backend/go.sum
+            sav-cli/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build Linux and source packages
+        env:
+          PALPANEL_NUGET_AUDIT: "true"
+        run: scripts/package.sh --version "$RELEASE_TAG" --targets linux-amd64 --clean
+      - name: Verify Linux packages
+        run: |
+          scripts/verify-release-contents.sh \
+            "dist/packages/palpanel_${RELEASE_TAG}_linux_amd64.tar.gz" \
+            "dist/packages/palpanel-sav-cli_${RELEASE_TAG}_source.tar.gz" \
+            "dist/packages/palpanel_${RELEASE_TAG}_source.tar.gz"
+          scripts/smoke-linux.sh "dist/packages/palpanel_${RELEASE_TAG}_linux_amd64.tar.gz"
+          bash scripts/smoke-palcalc-no-icu.sh "dist/packages/palpanel_${RELEASE_TAG}_linux_amd64.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: custom-release-linux
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            dist/packages/palpanel_${{ env.RELEASE_TAG }}_linux_amd64.tar.gz
+            dist/packages/palpanel-sav-cli_${{ env.RELEASE_TAG }}_source.tar.gz
+            dist/packages/palpanel_${{ env.RELEASE_TAG }}_source.tar.gz
+            dist/packages/THIRD_PARTY_LICENSES.txt
+
+  build-windows:
+    needs: validate
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.source_sha }}
+          fetch-depth: 0
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: |
+            backend/go.sum
+            sav-cli/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc
+      - name: Build Windows package
+        shell: pwsh
+        run: |
+          $gcc = Join-Path $env:RUNNER_TEMP "msys64\mingw64\bin\gcc.exe"
+          if (-not (Test-Path $gcc)) { throw "MinGW gcc not found: $gcc" }
+          ./scripts/package.ps1 -Version $env:RELEASE_TAG -Clean -MingwGcc $gcc
+      - name: Verify Windows package
+        shell: pwsh
+        run: |
+          $archive = "dist\packages\palpanel_$($env:RELEASE_TAG)_windows_amd64.zip"
+          $package = "dist\packages\palpanel_$($env:RELEASE_TAG)_windows_amd64"
+          $objdump = Join-Path $env:RUNNER_TEMP "msys64\mingw64\bin\objdump.exe"
+          ./scripts/verify-windows-package.ps1 -Archive $archive -ObjdumpPath $objdump
+          ./scripts/smoke-windows.ps1 -PackageDir $package -Version $env:RELEASE_TAG
+      - uses: actions/upload-artifact@v4
+        with:
+          name: custom-release-windows
+          if-no-files-found: error
+          retention-days: 1
+          path: dist/packages/palpanel_${{ env.RELEASE_TAG }}_windows_amd64.zip
+
+  publish:
+    needs: [validate, build-linux, build-windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: custom-release-linux
+          path: dist/release
+      - uses: actions/download-artifact@v4
+        with:
+          name: custom-release-windows
+          path: dist/release
+      - name: Create checksums
+        run: |
+          cd dist/release
+          sha256sum \
+            "palpanel_${RELEASE_TAG}_linux_amd64.tar.gz" \
+            "palpanel_${RELEASE_TAG}_windows_amd64.zip" \
+            "palpanel_${RELEASE_TAG}_source.tar.gz" \
+            "palpanel-sav-cli_${RELEASE_TAG}_source.tar.gz" \
+            THIRD_PARTY_LICENSES.txt > SHA256SUMS
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate.outputs.release_tag }}
+          target_commitish: ${{ needs.validate.outputs.source_sha }}
+          name: PalPanel ${{ needs.validate.outputs.release_tag }}
+          generate_release_notes: true
+          prerelease: ${{ inputs.prerelease }}
+          fail_on_unmatched_files: true
+          files: |
+            dist/release/palpanel_${{ env.RELEASE_TAG }}_linux_amd64.tar.gz
+            dist/release/palpanel_${{ env.RELEASE_TAG }}_windows_amd64.zip
+            dist/release/palpanel_${{ env.RELEASE_TAG }}_source.tar.gz
+            dist/release/palpanel-sav-cli_${{ env.RELEASE_TAG }}_source.tar.gz
+            dist/release/THIRD_PARTY_LICENSES.txt
+            dist/release/SHA256SUMS
