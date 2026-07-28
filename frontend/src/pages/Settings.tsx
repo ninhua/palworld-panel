@@ -826,7 +826,8 @@ export const Settings: React.FC = () => {
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
             <label className="flex flex-col gap-2 text-xs font-bold text-slate-600 md:col-span-2">
               OpenAI-compatible Base URL
-              <input type="url" value={aiBaseURL} onChange={(event) => setAIBaseURL(event.target.value)} placeholder="https://api.example.com/v1" className="rounded-lg border border-slate-200 px-3 py-2.5 font-mono text-xs font-semibold text-slate-700 focus:border-emerald-500 focus:outline-none" />
+              <input type="url" value={aiBaseURL} onChange={(event) => setAIBaseURL(event.target.value)} placeholder="http://ai.local:8000/v1 或 https://api.example.com/v1" className="rounded-lg border border-slate-200 px-3 py-2.5 font-mono text-xs font-semibold text-slate-700 focus:border-emerald-500 focus:outline-none" />
+              <span className="text-[10px] font-medium text-slate-400">支持 HTTP 和 HTTPS；跨公网使用 HTTP 时请求内容和 API Key 不会被加密。</span>
             </label>
             <label className="flex flex-col gap-2 text-xs font-bold text-slate-600">
               Model

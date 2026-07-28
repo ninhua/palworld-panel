@@ -6,7 +6,16 @@ import json
 import secrets
 import time
 from typing import Any
+from urllib.parse import urlparse
 
+
+
+def validate_http_service_url(raw: str, field: str = "URL") -> str:
+    value = str(raw).strip().rstrip("/")
+    parsed = urlparse(value)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        raise RuntimeError(f"{field} must use HTTP or HTTPS")
+    return value
 
 def body_bytes(payload: Any | None) -> bytes:
     if payload is None:

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArchiveRestore, CheckCircle2, Database, FileArchive, Pencil, RefreshCw, Server, Trash2, Upload } from 'lucide-react';
+import { ArchiveRestore, ArrowRightLeft, CheckCircle2, Database, FileArchive, Pencil, RefreshCw, Server, Trash2, Upload } from 'lucide-react';
 import { getErrorMessage } from '../api/client';
 import { saveSourcesApi, type SaveImportInspection } from '../api/saveSources';
+import type { SaveSource } from '../types';
 
 export const SaveSources: React.FC = () => {
   const queryClient = useQueryClient();
@@ -13,6 +14,7 @@ export const SaveSources: React.FC = () => {
   const [candidateID, setCandidateID] = useState('');
   const [renamingID, setRenamingID] = useState('');
   const [renameValue, setRenameValue] = useState('');
+  const [migrationID, setMigrationID] = useState('');
   const sources = useQuery({ queryKey: ['save-sources'], queryFn: saveSourcesApi.list });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['save-sources'] });
   const importMutation = useMutation({
@@ -63,6 +65,31 @@ export const SaveSources: React.FC = () => {
     onSuccess: () => { setRenamingID(''); setRenameValue(''); void refresh(); },
     onError: (error) => setNotice(getErrorMessage(error)),
   });
+
+  const migrateHost = async (source: SaveSource) => {
+    const steamID = window.prompt(`输入联机主机的 SteamID64\n源存档：${source.name}`, '');
+    if (!steamID?.trim()) return;
+    setMigrationID(source.id);
+    setNotice('正在只读预检主机角色迁移……');
+    try {
+      const plan = await saveSourcesApi.planHostMigration(source.id, steamID.trim());
+      if (!plan.can_execute) {
+        setNotice(plan.warnings.join(' ') || `当前迁移策略不可执行：${plan.strategy}`);
+        return;
+      }
+      const confirmed = window.confirm(
+        `只读预检通过。\n\n源 UID：${plan.source_uid}\n目标 UID：${plan.target_uid}\n\n将生成迁移存档，并自动停止服务器、切换 DedicatedServerName；若服务器原来运行，将自动重新启动。继续吗？`,
+      );
+      if (!confirmed) { setNotice('已取消主机角色迁移。'); return; }
+      const result = await saveSourcesApi.executeHostMigration(source.id, steamID.trim(), `${source.name}（主机迁移）`);
+      setNotice(`迁移完成：${result.source.name}。已自动切换 GameUserSettings.ini 的 DedicatedServerName；服务器原为运行状态时已重新启动。地图探索 LocalData.sav 不在服务端迁移范围内。`);
+      await refresh();
+    } catch (error) {
+      setNotice(getErrorMessage(error));
+    } finally {
+      setMigrationID('');
+    }
+  };
 
   const submitRename = (id: string, current: string) => {
     const next = renameValue.trim();
@@ -115,6 +142,7 @@ export const SaveSources: React.FC = () => {
                     <button type="button" className="pp-button" onClick={() => setRenamingID('')}>取消</button>
                   </> : <>
                     <button type="button" className="pp-button" onClick={() => { setRenamingID(source.id); setRenameValue(source.name); }}><Pencil size={14} />重命名</button>
+                    {source.kind !== 'server' && <button type="button" className="pp-button" disabled={migrationID === source.id} onClick={() => void migrateHost(source)}>{migrationID === source.id ? <RefreshCw className="animate-spin" size={14} /> : <ArrowRightLeft size={14} />}主机迁移</button>}
                     {!source.active && <button type="button" className="pp-button accent" onClick={() => action.mutate({ type: 'activate', id: source.id })}><CheckCircle2 size={14} />激活</button>}
                     {source.active && <button type="button" className="pp-button" onClick={() => action.mutate({ type: 'rebuild', id: source.id })}><RefreshCw size={14} />重建</button>}
                     {source.kind !== 'server' && !source.active && <button type="button" className="icon-danger" aria-label="删除存档" onClick={() => window.confirm('删除这个导入存档？') && action.mutate({ type: 'remove', id: source.id })}><Trash2 size={15} /></button>}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Ban as BanIcon, Eye, LogOut, RefreshCw, X } from 'lucide-react';
+import { AlertCircle, Ban as BanIcon, Eye, FileText, LogOut, RefreshCw, Save, Tag, Trash2, X } from 'lucide-react';
 import { getErrorMessage } from '../api/client';
 import { playersApi } from '../api/players';
 import { saveIndexApi } from '../api/saveIndex';
@@ -15,8 +15,26 @@ import { appConfig } from '../config/defaults';
 
 const pageSize = 50;
 
+const formatPresenceDuration = (seconds?: number) => {
+  const value = Math.max(0, Math.floor(Number(seconds) || 0));
+  const days = Math.floor(value / 86400);
+  const hours = Math.floor((value % 86400) / 3600);
+  const minutes = Math.floor((value % 3600) / 60);
+  if (days > 0) return `${days} 天 ${hours} 小时`;
+  if (hours > 0) return `${hours} 小时 ${minutes} 分`;
+  return `${minutes} 分钟`;
+};
+
+const formatPresenceTime = (value?: string) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('zh-CN', { hour12: false });
+};
+
 export const Players: React.FC = () => {
-  const { refreshKey } = useServerStore();
+  const { refreshKey, session } = useServerStore();
+  const canWriteAnnotations = Boolean(session?.permissions.includes('players:write'));
   const queryClient = useQueryClient();
   const [searchText, setSearchText] = useState('');
   const [activeTab, setActiveTab] = useState('all');
@@ -42,6 +60,47 @@ export const Players: React.FC = () => {
         online: onlineFilter,
       }),
     placeholderData: (previous) => previous,
+  });
+
+  const annotationMutation = useMutation({
+    mutationFn: ({ player, note, tags }: { player: Player; note: string; tags: string[] }) =>
+      playersApi.updateAnnotation(player.player_uid || player.steam_id, note, tags),
+    onSuccess: async (result) => {
+      setSelectedPlayer((current) => current ? {
+        ...current,
+        note: result.player.note,
+        tags: result.player.tags,
+        has_annotation: result.player.has_annotation,
+        annotation_updated_at: result.player.annotation_updated_at,
+      } : result.player);
+      setNotice('玩家备注已保存');
+      setActionError(null);
+      await queryClient.invalidateQueries({ queryKey: ['players'] });
+    },
+    onError: (annotationError) => {
+      setNotice(null);
+      setActionError(getErrorMessage(annotationError));
+    },
+  });
+
+  const clearAnnotationMutation = useMutation({
+    mutationFn: (player: Player) => playersApi.clearAnnotation(player.player_uid || player.steam_id),
+    onSuccess: async (result) => {
+      setSelectedPlayer((current) => current ? {
+        ...current,
+        note: '',
+        tags: [],
+        has_annotation: false,
+        annotation_updated_at: '',
+      } : result.player);
+      setNotice('玩家备注与标签已清除');
+      setActionError(null);
+      await queryClient.invalidateQueries({ queryKey: ['players'] });
+    },
+    onError: (annotationError) => {
+      setNotice(null);
+      setActionError(getErrorMessage(annotationError));
+    },
   });
 
   const rebuildMutation = useMutation({
@@ -166,7 +225,7 @@ export const Players: React.FC = () => {
             data={players}
             searchText={searchText}
             onSearchChange={setSearchText}
-            searchPlaceholder="搜索玩家昵称或 SteamID"
+            searchPlaceholder="搜索玩家昵称、SteamID、备注或标签"
             tabs={[
               { id: 'all', label: '全部' },
               { id: 'online', label: '在线' },
@@ -232,7 +291,16 @@ export const Players: React.FC = () => {
           />
         )}
       </section>
-      {selectedPlayer && <PlayerDetail player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />}
+      {selectedPlayer && (
+        <PlayerDetail
+          player={selectedPlayer}
+          canWrite={canWriteAnnotations}
+          saving={annotationMutation.isPending || clearAnnotationMutation.isPending}
+          onSave={(note, tags) => annotationMutation.mutate({ player: selectedPlayer, note, tags })}
+          onClear={() => clearAnnotationMutation.mutate(selectedPlayer)}
+          onClose={() => setSelectedPlayer(null)}
+        />
+      )}
     </div>
   );
 };
@@ -257,6 +325,19 @@ const PlayerIdentity: React.FC<{ player: Player }> = ({ player }) => (
     <div className="min-w-0">
       <p className="truncate text-xs font-bold text-slate-700">{player.nickname}</p>
       <p className="truncate font-mono text-[10px] text-slate-400">{player.steam_id}</p>
+      {(player.tags?.length ?? 0) > 0 && (
+        <div className="mt-1 flex max-w-[220px] flex-wrap gap-1">
+          {player.tags!.slice(0, 3).map((tag) => (
+            <span key={tag} className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold text-violet-600">{tag}</span>
+          ))}
+          {(player.tags?.length ?? 0) > 3 && <span className="text-[9px] font-bold text-slate-400">+{player.tags!.length - 3}</span>}
+        </div>
+      )}
+      {player.presence_available && (
+        <p className="mt-1 truncate text-[9px] font-semibold text-sky-600">
+          {player.is_online ? '本次在线' : '上次在线'} {formatPresenceDuration(player.session_seconds)} · 累计 {formatPresenceDuration(player.total_seconds)}
+        </p>
+      )}
     </div>
   </div>
 );
@@ -324,6 +405,7 @@ const PlayerCard: React.FC<{
         坐标: {player.x.toFixed(0)}, {player.y.toFixed(0)}, {player.z.toFixed(0)}
       </span>
       <span className="col-span-2 text-slate-400">最后在线: {player.last_online_time}</span>
+      {player.note && <span className="col-span-2 line-clamp-2 rounded-lg bg-amber-50 px-2 py-1.5 text-amber-700">备注: {player.note}</span>}
     </div>
     <div className="mt-4">
       <PlayerActions player={player} pendingAction={pendingAction} onDetail={onDetail} onKick={onKick} onBan={onBan} />
@@ -331,8 +413,30 @@ const PlayerCard: React.FC<{
   </div>
 );
 
-const PlayerDetail: React.FC<{ player: Player; onClose: () => void }> = ({ player, onClose }) => {
+const PlayerDetail: React.FC<{
+  player: Player;
+  canWrite: boolean;
+  saving: boolean;
+  onSave: (note: string, tags: string[]) => void;
+  onClear: () => void;
+  onClose: () => void;
+}> = ({ player, canWrite, saving, onSave, onClear, onClose }) => {
   const inventoryEntries = Object.entries(player.inventory_summary || {});
+  const [note, setNote] = useState(player.note || '');
+  const [tagText, setTagText] = useState((player.tags || []).join('，'));
+
+  useEffect(() => {
+    setNote(player.note || '');
+    setTagText((player.tags || []).join('，'));
+  }, [player.annotation_updated_at, player.note, player.tags]);
+
+  const normalizedTags = () => Array.from(new Set(
+    tagText
+      .split(/[,，\n]/)
+      .map((tag) => tag.trim())
+      .filter(Boolean),
+  )).slice(0, 8);
+
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/20 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">
       <aside className="flex h-full w-full max-w-md flex-col rounded-2xl border border-slate-100 bg-white shadow-2xl">
@@ -355,7 +459,80 @@ const PlayerDetail: React.FC<{ player: Player; onClose: () => void }> = ({ playe
             <Detail label="Steam ID" value={player.steam_id || '-'} mono />
             <Detail label="坐标" value={`${player.x.toFixed(0)}, ${player.y.toFixed(0)}, ${player.z.toFixed(0)}`} mono />
             <Detail label="Ping" value={player.ping == null ? '-' : `${player.ping} ms`} />
+            <Detail label={player.is_online ? '本次在线' : '上次在线'} value={player.presence_available ? formatPresenceDuration(player.session_seconds) : '统计暂不可用'} />
+            <Detail label="累计在线" value={player.presence_available ? formatPresenceDuration(player.total_seconds) : '统计暂不可用'} />
+            <Detail label="最近上线" value={formatPresenceTime(player.last_online_at)} />
+            <Detail label="最近下线" value={formatPresenceTime(player.last_offline_at)} />
           </div>
+
+          {(player.presence_sessions?.length ?? 0) > 0 && (
+            <section className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/40 p-4">
+              <h3 className="text-xs font-bold text-slate-700">最近在线记录</h3>
+              <div className="mt-3 space-y-2">
+                {[...player.presence_sessions!].slice(-5).reverse().map((session) => (
+                  <div key={`${session.started_at}-${session.ended_at}`} className="rounded-xl border border-sky-100 bg-white px-3 py-2">
+                    <div className="flex items-center justify-between gap-3 text-[10px]">
+                      <span className="font-semibold text-slate-500">{formatPresenceTime(session.started_at)}</span>
+                      <span className="font-bold text-sky-600">{formatPresenceDuration(session.duration_seconds)}</span>
+                    </div>
+                    <p className="mt-1 text-[9px] text-slate-400">下线：{formatPresenceTime(session.ended_at)}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/40 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-xs font-bold text-slate-700"><FileText size={14} className="text-violet-500" />玩家备注</h3>
+                <p className="mt-1 text-[10px] font-semibold text-slate-400">仅保存在面板数据库中，不修改玩家存档。</p>
+              </div>
+              {player.annotation_updated_at && <span className="text-[9px] font-semibold text-slate-400">已记录</span>}
+            </div>
+            <textarea
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              disabled={!canWrite || saving}
+              maxLength={500}
+              rows={5}
+              placeholder="记录玩家行为、职责或管理注意事项"
+              className="mt-3 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-violet-300 disabled:bg-slate-50"
+            />
+            <label className="mt-3 block text-[10px] font-bold text-slate-500">
+              <span className="mb-1.5 flex items-center gap-1"><Tag size={11} />标签，最多 8 个</span>
+              <input
+                value={tagText}
+                onChange={(event) => setTagText(event.target.value)}
+                disabled={!canWrite || saving}
+                placeholder="活跃，建筑师，重点观察"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-violet-300 disabled:bg-slate-50"
+              />
+            </label>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[10px] font-semibold text-slate-400">{note.length}/500 字符</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={onClear}
+                  disabled={!canWrite || saving || !player.has_annotation}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-3 py-2 text-[10px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-40"
+                >
+                  <Trash2 size={12} />清除
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSave(note, normalizedTags())}
+                  disabled={!canWrite || saving}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-violet-700 disabled:opacity-40"
+                >
+                  <Save size={12} />{saving ? '保存中' : '保存备注'}
+                </button>
+              </div>
+            </div>
+            {!canWrite && <p className="mt-2 text-[10px] font-semibold text-amber-600">当前账号缺少 players:write 权限，只能查看。</p>}
+          </section>
+
           <div className="mt-5">
             <p className="text-[11px] font-bold uppercase text-slate-400">背包摘要</p>
             {inventoryEntries.length > 0 ? (

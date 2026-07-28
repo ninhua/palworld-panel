@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Activity, Archive, ClipboardList, Database, Dna, FolderArchive, Globe2, LayoutDashboard,
-  ListTodo, Map as MapIcon, Puzzle, Settings as SettingsIcon, Shield, Sparkles,
+  Gift, ListTodo, Map as MapIcon, PackageSearch, Puzzle, Settings as SettingsIcon, Shield, Sparkles,
   UserCog, UserX, Users,
 } from 'lucide-react';
 import type { TranslationKey } from './i18n';
@@ -24,6 +24,9 @@ const Pals = lazyPage(() => import('./pages/Pals'), 'Pals');
 const PalDefenderGM = lazyPage(() => import('./pages/PalDefenderGM'), 'PalDefenderGM');
 const Players = lazyPage(() => import('./pages/Players'), 'Players');
 const SaveSources = lazyPage(() => import('./pages/SaveSources'), 'SaveSources');
+const Inventory = lazyPage(() => import('./pages/Inventory'), 'Inventory');
+const StarterGift = lazyPage(() => import('./pages/StarterGift'), 'StarterGift');
+const PlayerSummary = lazyPage(() => import('./pages/PlayerSummary'), 'PlayerSummary');
 const Security = lazyPage(() => import('./pages/Security'), 'Security');
 const Settings = lazyPage(() => import('./pages/Settings'), 'Settings');
 const Setup = lazyPage(() => import('./pages/Setup'), 'Setup');
@@ -50,8 +53,10 @@ export const appRoutes: AppRoute[] = [
   { id: 'monitor', path: '/monitor', title: '实时监控', navLabel: '实时监控', titleKey: 'route.monitor', navGroup: 'workspace', icon: <Activity size={18} />, element: <Monitor /> },
   { id: 'community-servers', path: '/community-servers', title: '社区服务器', navLabel: '社区服务器', titleKey: 'route.communityServers', navGroup: 'workspace', icon: <Globe2 size={18} />, element: <CommunityServers /> },
   { id: 'player-center', path: '/player-center', title: '玩家中心', navLabel: '玩家中心', titleKey: 'route.playerCenter', navGroup: 'world', activePaths: ['/gm'], icon: <UserCog size={18} />, element: <PalDefenderGM /> },
+  { id: 'starter-gift', path: '/starter-gift', title: '新玩家礼包', navLabel: '新玩家礼包', titleKey: 'route.starterGift', navGroup: 'world', icon: <Gift size={18} />, element: <StarterGift /> },
   { id: 'save-sources', path: '/save-sources', title: '存档中心', navLabel: '存档中心', titleKey: 'route.saveSources', navGroup: 'world', icon: <FolderArchive size={18} />, element: <SaveSources /> },
-  { id: 'world-archive', path: '/world', title: '世界档案', navLabel: '世界档案', titleKey: 'route.worldArchive', navGroup: 'world', activePaths: ['/players', '/guilds', '/bases'], icon: <Database size={18} />, element: <Players /> },
+  { id: 'global-inventory', path: '/inventory', title: '库存管理', navLabel: '库存管理', titleKey: 'route.inventory', navGroup: 'world', icon: <PackageSearch size={18} />, element: <Inventory /> },
+  { id: 'world-archive', path: '/world', title: '世界档案', navLabel: '世界档案', titleKey: 'route.worldArchive', navGroup: 'world', activePaths: ['/players', '/guilds', '/bases', '/player-summary'], icon: <Database size={18} />, element: <Players /> },
   { id: 'pal-inventory', path: '/pal-inventory', title: '帕鲁仓库', navLabel: '帕鲁仓库', titleKey: 'route.palInventory', navGroup: 'world', activePaths: ['/pals'], icon: <Dna size={18} />, element: <Pals /> },
   { id: 'breeding', path: '/breeding', title: '配种实验室', navLabel: '配种实验室', titleKey: 'route.breeding', navGroup: 'world', icon: <Dna size={18} />, element: <BreedingLab /> },
   { id: 'live-map', path: '/map', title: '实时地图', navLabel: '实时地图', titleKey: 'route.liveMap', navGroup: 'world', icon: <MapIcon size={18} />, element: <LiveMap /> },
@@ -65,6 +70,7 @@ export const appRoutes: AppRoute[] = [
 
   // Legacy routes remain directly addressable and are highlighted under their new parent entries.
   { id: 'legacy-gm', path: '/gm', title: '玩家中心', navLabel: '玩家中心', titleKey: 'route.playerCenter', navGroup: 'world', navVisible: false, icon: <UserCog size={18} />, element: <PalDefenderGM /> },
+  { id: 'player-summary', path: '/player-summary', title: '世界档案 · 玩家概览', navLabel: '玩家概览', titleKey: 'route.worldArchive', navGroup: 'world', navVisible: false, icon: <ClipboardList size={18} />, element: <PlayerSummary /> },
   { id: 'legacy-players', path: '/players', title: '世界档案 · 玩家', navLabel: '玩家', titleKey: 'route.worldArchive', navGroup: 'world', navVisible: false, icon: <Users size={18} />, element: <Players /> },
   { id: 'legacy-guilds', path: '/guilds', title: '世界档案 · 公会', navLabel: '公会', titleKey: 'route.worldArchive', navGroup: 'world', navVisible: false, icon: <Users size={18} />, element: <Guilds /> },
   { id: 'legacy-bases', path: '/bases', title: '世界档案 · 基地', navLabel: '基地', titleKey: 'route.worldArchive', navGroup: 'world', navVisible: false, icon: <Users size={18} />, element: <Bases /> },

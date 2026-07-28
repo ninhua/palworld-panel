@@ -1,7 +1,8 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Download, ExternalLink, FileJson, LoaderCircle, RefreshCw, Save, Search, Send, Sparkles, Sword, Trash2, Upload, X } from 'lucide-react';
 import { palDefenderGMApi } from '../../api/paldefenderGM';
+import { starterGiftApi, type PalTemplateInfo } from '../../api/starterGift';
 import type { Pal, PalDefenderPalCatalogEntry, PalDefenderPalTemplate } from '../../types';
 import { PalIcon } from './PalIcon';
 
@@ -27,6 +28,8 @@ export const PalWorkspace: React.FC<{
   const [palLevel, setPalLevel] = useState('1');
   const [palCount, setPalCount] = useState('1');
   const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [templateIndex, setTemplateIndex] = useState('all');
   const [templateCount, setTemplateCount] = useState('1');
   const [selectedExport, setSelectedExport] = useState('');
   const [editor, setEditor] = useState<TemplateEditor>(() => emptyTemplateEditor());
@@ -68,11 +71,35 @@ export const PalWorkspace: React.FC<{
     queryFn: palDefenderGMApi.templates,
     enabled: available,
   });
+  const indexedTemplateQuery = useQuery({
+    queryKey: ['paldefender-gm', 'template-index-catalog'],
+    queryFn: starterGiftApi.get,
+    enabled: available,
+    staleTime: 5 * 60 * 1000,
+  });
   const exportedQuery = useQuery({
     queryKey: ['paldefender-gm', 'exported-templates', identifier],
     queryFn: () => palDefenderGMApi.exportedPalTemplates(identifier),
     enabled: Boolean(identifier),
   });
+
+  const indexedTemplateByName = useMemo(() => new Map(
+    (indexedTemplateQuery.data?.templates ?? []).map((template) => [template.name.toLowerCase(), template] as const),
+  ), [indexedTemplateQuery.data]);
+  const templateIndexLabels = useMemo(() => new Map(
+    (indexedTemplateQuery.data?.template_indexes ?? []).map((index) => [index.name, index.label || index.name] as const),
+  ), [indexedTemplateQuery.data]);
+  const visibleManagedTemplates = useMemo(() => {
+    const needle = templateSearch.trim().toLowerCase();
+    return (templatesQuery.data?.templates ?? []).map((template) => {
+      const info = indexedTemplateByName.get(template.name.toLowerCase()) as PalTemplateInfo | undefined;
+      return { template, info };
+    }).filter(({ template, info }) => {
+      if (templateIndex !== 'all' && !info?.index_names.includes(templateIndex)) return false;
+      const text = `${template.name} ${info?.pal_id || ''} ${info?.pal_name || ''} ${info?.english_name || ''} ${info?.category || ''} ${info?.usage_category || ''} ${info?.overall_grade || ''} ${(info?.classification_tags ?? []).join(' ')}`.toLowerCase();
+      return !needle || text.includes(needle);
+    }).slice(0, 120);
+  }, [indexedTemplateByName, templateIndex, templateSearch, templatesQuery.data]);
 
   const directGrant = async () => {
     const level = Number(palLevel);
@@ -268,6 +295,17 @@ export const PalWorkspace: React.FC<{
             <label className="text-xs font-bold text-slate-600">已保存模板<select aria-label="已保存模板" value={selectedTemplate} onChange={(event) => setSelectedTemplate(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700"><option value="">请选择</option>{(templatesQuery.data?.templates ?? []).map((template) => <option key={template.name} value={template.name}>{template.name}</option>)}</select></label>
             <label className="text-xs font-bold text-slate-600">导出文件<select aria-label="导出帕鲁模板" value={selectedExport} onChange={(event) => setSelectedExport(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700"><option value="">请选择</option>{(exportedQuery.data?.templates ?? []).map((template) => <option key={template.name} value={template.name}>{template.name}</option>)}</select></label>
 			<label className="text-xs font-bold text-slate-600">发放数量<input aria-label="模板发放数量" type="number" min={1} max={20} value={templateCount} onChange={(event) => setTemplateCount(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-700 focus:border-violet-500 focus:outline-none" /></label>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem]">
+            <label className="relative block"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input aria-label="搜索已保存帕鲁模板" value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="搜索中文名、PalID、用途或分类" className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-700" /></label>
+            <select aria-label="按帕鲁模板索引筛选" value={templateIndex} onChange={(event) => setTemplateIndex(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700"><option value="all">全部索引</option>{(indexedTemplateQuery.data?.template_indexes ?? []).map((index) => <option key={index.name} value={index.name}>{index.label}（{index.count}）</option>)}</select>
+          </div>
+          <div className="mt-3 grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+            {visibleManagedTemplates.map(({ template, info }) => <button type="button" key={template.name} onClick={() => setSelectedTemplate(template.name)} aria-pressed={selectedTemplate === template.name} className={`flex min-w-0 items-center gap-2 rounded-xl border p-2 text-left ${selectedTemplate === template.name ? 'border-violet-300 bg-violet-50' : 'border-slate-100 bg-slate-50/70'}`}>
+              <PalIcon characterID={info?.pal_id || ''} name={info?.pal_name || template.name} className="h-10 w-10 rounded-lg" />
+              <span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-bold text-slate-700">{info?.category ? `${info.category} · ` : ''}{info?.pal_name || template.name}</span><span className="mt-1 block truncate font-mono text-[9px] text-slate-400">{info?.pal_id || template.name}</span><span className="mt-1 flex flex-wrap gap-1">{info?.overall_grade && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800">{info.overall_grade}</span>}{info?.usage_category && <span className="max-w-32 truncate rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">{info.usage_category}</span>}{info?.index_names.slice(0, 1).map((name) => <span key={name} className="max-w-32 truncate rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-700">{templateIndexLabels.get(name) || name}</span>)}</span></span>
+            </button>)}
+            {visibleManagedTemplates.length === 0 && <p className="col-span-full rounded-xl bg-slate-50 px-3 py-6 text-center text-[11px] font-semibold text-slate-400">没有匹配的模板；索引 JSON 与模板 JSON 应一起放在 Templates 目录。</p>}
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" onClick={() => void giveTemplate()} disabled={disabled || !selectedTemplate} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40">{pending === 'give-template' ? <LoaderCircle size={14} className="animate-spin" /> : <Upload size={14} />}发放模板</button>

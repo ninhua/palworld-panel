@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"palpanel/internal/auditdetail"
 )
 
 func ok(c *gin.Context, data any) {
@@ -19,9 +21,12 @@ func created(c *gin.Context, data any) {
 }
 
 func succeed(c *gin.Context, status int, data any) {
+	c.Set(auditResponseKey, auditdetail.Encode(status, true, data))
 	c.JSON(status, gin.H{"ok": true, "data": data})
 }
 
 func fail(c *gin.Context, status int, code, message string) {
-	c.JSON(status, gin.H{"ok": false, "error": gin.H{"code": code, "message": message}})
+	detail := gin.H{"code": code, "message": message}
+	c.Set(auditResponseKey, auditdetail.Encode(status, false, detail))
+	c.JSON(status, gin.H{"ok": false, "error": detail})
 }

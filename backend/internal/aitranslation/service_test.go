@@ -71,7 +71,6 @@ func TestConfigSecretIsAtomicPrivateAndNotExposed(t *testing.T) {
 
 func TestBaseURLValidation(t *testing.T) {
 	for _, raw := range []string{
-		"http://example.com/v1",
 		"https://user:password@example.com/v1",
 		"ftp://example.com/v1",
 		"/relative/v1",
@@ -83,7 +82,7 @@ func TestBaseURLValidation(t *testing.T) {
 			}
 		})
 	}
-	for _, raw := range []string{"https://example.com/v1/", "http://localhost:9000/v1", "http://127.0.0.1:9000/v1", "http://[::1]:9000/v1"} {
+	for _, raw := range []string{"https://example.com/v1/", "http://example.com/v1", "http://192.168.1.20:9000/v1", "http://localhost:9000/v1", "http://127.0.0.1:9000/v1", "http://[::1]:9000/v1"} {
 		if _, err := validateBaseURL(raw); err != nil {
 			t.Fatalf("expected %q to be accepted: %v", raw, err)
 		}

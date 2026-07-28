@@ -823,6 +823,12 @@ export interface TokenResult {
   path: string;
 }
 
+export interface PlayerPresenceSession {
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number;
+}
+
 export interface Player {
   id: string;
   player_uid?: string;
@@ -842,6 +848,21 @@ export interface Player {
   ping?: number;
   ip?: string;
   inventory_summary?: Record<string, unknown>;
+  note?: string;
+  tags?: string[];
+  has_annotation?: boolean;
+  annotation_updated_at?: string;
+  presence_available?: boolean;
+  presence_stale?: boolean;
+  presence_observed_at?: string;
+  presence_online?: boolean;
+  session_seconds?: number;
+  total_seconds?: number;
+  session_started_at?: string;
+  last_seen_at?: string;
+  last_online_at?: string;
+  last_offline_at?: string;
+  presence_sessions?: PlayerPresenceSession[];
 }
 
 export interface SaveInventorySlot {
@@ -922,11 +943,15 @@ export interface Pal {
   container_id?: string;
   slot_index?: number;
   location_type?: string;
+  location_kind?: string;
+  terminal_location?: string;
   gender?: 'male' | 'female' | 'wildcard' | string;
   rank?: number;
+  stars?: number;
   iv_hp?: number;
   iv_attack?: number;
   iv_defense?: number;
+  iv_average?: number;
   equipped_skills?: string[];
   old_owner_uids?: string[];
   on_expedition?: boolean;
@@ -943,9 +968,99 @@ export interface Pal {
   z: number;
 }
 
+export interface BaseStorageSlot {
+  slot: number;
+  item_id: string;
+  item_name: string;
+  item_icon: string;
+  count: number;
+  durability?: number;
+}
+
+export interface BaseStorageContainer {
+  container_id: string;
+  owner_type: string;
+  owner_id: string;
+  container_type: string;
+  container_name: string;
+  slots: BaseStorageSlot[];
+}
+
+export interface BaseStorageResponse {
+  containers: BaseStorageContainer[];
+  status: SaveIndexStatus;
+}
+
+export interface BaseFeedBox {
+  container_id: string;
+  container_type: string;
+  container_name: string;
+  slots: BaseStorageSlot[];
+}
+
+export interface BaseFeedItemSummary {
+  item_id: string;
+  item_name: string;
+  item_icon: string;
+  count: number;
+  box_count: number;
+}
+
+export interface BaseFeedBoxSummary {
+  box_count: number;
+  empty_box_count: number;
+  occupied_slots: number;
+  total_items: number;
+  item_types: number;
+}
+
+export interface BaseFeedBoxesResponse {
+  base: Base;
+  feed_boxes: BaseFeedBox[];
+  items: BaseFeedItemSummary[];
+  summary: BaseFeedBoxSummary;
+  status: SaveIndexStatus;
+  source_id: string;
+}
+
+export interface BaseWorker {
+  instance_id: string;
+  character_id: string;
+  species_name: string;
+  name: string;
+  nickname: string;
+  level: number;
+  gender: string;
+  rank: number;
+  status: string;
+  location_type: string;
+  passives: string[];
+  raw_passives: string[];
+  on_expedition: boolean;
+}
+
+export interface BaseWorkerSummary {
+  total: number;
+  average_level: number;
+  max_level: number;
+  named_count: number;
+  species_count: number;
+}
+
+export interface BaseWorkersResponse {
+  base: Base;
+  workers: BaseWorker[];
+  summary: BaseWorkerSummary;
+  status: SaveIndexStatus;
+  source_id: string;
+}
+
 export interface Base {
   id: string;
   name: string;
+  raw_name?: string;
+  custom_name?: string;
+  has_custom_name?: boolean;
   guild_id?: string;
   guild_name: string;
   x: number;
@@ -979,6 +1094,42 @@ export interface Guild {
   members: GuildMember[];
   base_ids: string[];
   online_member_count: number;
+}
+
+export interface GuildMemberDetail {
+  id: string;
+  player_uid: string;
+  steam_id: string;
+  nickname: string;
+  level: number;
+  is_online: boolean;
+  last_online_time: string;
+  is_owner: boolean;
+  note: string;
+  tags: string[];
+  has_annotation: boolean;
+}
+
+export interface GuildBaseDetail {
+  id: string;
+  name: string;
+  raw_name: string;
+  custom_name: string;
+  has_custom_name: boolean;
+  x: number;
+  y: number;
+  z: number;
+  structures_count: number;
+  workers_count: number;
+  status: string;
+}
+
+export interface GuildDetailResponse {
+  guild: Guild;
+  members: GuildMemberDetail[];
+  bases: GuildBaseDetail[];
+  status: SaveIndexStatus;
+  source_id: string;
 }
 
 export interface SaveIndexCounts {
@@ -1135,6 +1286,16 @@ export interface EntityListParams {
   owner_player_uid?: string;
   guild_id?: string;
   container_id?: string;
+}
+
+export interface PalListParams extends EntityListParams {
+  min_level?: number;
+  min_stars?: number;
+  min_iv_average?: number;
+  gender?: string;
+  location?: string;
+  passive?: string;
+  sort?: 'level_desc' | 'iv_desc' | 'stars_desc' | 'name_asc';
 }
 
 export type UnsupportedActionResult = {

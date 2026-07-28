@@ -46,7 +46,7 @@ PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更�
 - 配置每日或按间隔执行的安全重启与自动备份
 - 创建、校验、下载和恢复备份，并在备份完成后上传到 WebDAV
 - 通过后端缓存查询中国区或全球可发现社区服务器；国内网络可配置 HTTP/HTTPS/SOCKS5 代理或自建 API 镜像
-- 在“系统设置 → 网络与代理”中分别配置公共下载/服务器更新代理和社区服查询代理；前者覆盖 SteamCMD、Workshop、GitHub/HTTPS MOD、PalDefender 与 UE4SS，代理密码不会回显，保存后从下一次任务生效
+- 在“系统设置 → 网络与代理”中分别配置公共下载/服务器更新代理和社区服查询代理；前者覆盖 SteamCMD、Workshop、GitHub/HTTP(S) MOD、PalDefender 与 UE4SS，代理密码不会回显，保存后从下一次任务生效
 - 使用保存世界、广播倒计时、正常退出和受控兜底组成的安全关服流程
 
 ### 存档与地图
@@ -133,7 +133,7 @@ PalCalc 通过 .NET 9 侧车运行。侧车不可用时只会关闭配种功能�
 3. 运行 `PalPanel.exe`，在浏览器中注册第一个管理员。
 4. 在开服向导中安装服务端，或接管已有的 `PalServer.exe` 目录。
 
-如果 SteamCMD、Workshop、GitHub/HTTPS MOD、PalDefender 或 UE4SS 下载失败，进入“系统设置 → 网络与代理”，为“公共下载与服务器更新”填写可用的 `http://`、`https://`、`socks5://` 或 `socks5h://` 地址并启用。Windows SteamCMD 执行时会临时使用当前用户代理，任务结束后自动恢复；其他下载使用进程内客户端代理。面板不会在 API、日志或任务消息中返回代理密码。
+如果 SteamCMD、Workshop、GitHub/HTTP(S) MOD、PalDefender 或 UE4SS 下载失败，进入“系统设置 → 网络与代理”，为“公共下载与服务器更新”填写可用的 `http://`、`https://`、`socks5://` 或 `socks5h://` 地址并启用。Windows SteamCMD 执行时会临时使用当前用户代理，任务结束后自动恢复；其他下载使用进程内客户端代理。面板不会在 API、日志或任务消息中返回代理密码。
 
 不要直接在 ZIP 里运行程序。当前 Windows 包没有 Authenticode 签名，SmartScreen 可能显示“未知发布者”。
 
@@ -228,7 +228,7 @@ docker logs --tail 100 palworld-wine-server
 | `listen_host:listen_port` | `PALPANEL_ASTRBOT_PLUGIN_URL` | 默认 `127.0.0.1:8092` |
 | `allowed_group_id` | — | 允许使用命令的 QQ 群 |
 
-双方请求使用 HMAC-SHA256，并校验时间戳和随机数。跨主机部署时应使用 HTTPS。
+双方请求使用 HMAC-SHA256，并校验时间戳和随机数。PalPanel 与 AstrBot 之间支持 HTTP 和 HTTPS；跨公网使用 HTTP 时传输内容不会被加密。
 
 ## 从源码运行
 
@@ -269,7 +269,7 @@ python -m unittest discover -s astrbot_plugin_palpanel/tests
 - 管理员会话和 QQ 配种会话使用不同的 Cookie 与权限检查
 - QQ 用户不能读取其他玩家、原始存档路径或管理接口
 - WebDAV 密码、开发 Token、HMAC 密钥和游戏管理员密码不会写入日志
-- 公网 WebDAV 地址必须使用 HTTPS；回环与私有网络地址可以使用 HTTP
+- WebDAV、AstrBot 和其他可配置服务地址支持 HTTP 与 HTTPS；跨公网使用 HTTP 时凭据和数据不会被加密
 - 当前不支持 Xbox WGS、多 PalPanel 租户和 QQ 用户自行上传个人存档
 
 ## 交流

@@ -56,7 +56,7 @@ func TestSaveIndexDisplayLocalization(t *testing.T) {
 		Slots:       []saveindex.Slot{{Slot: 0, ItemID: "Stone", Count: 7}},
 	}})
 	slots := containers[0]["slots"].([]gin.H)
-	if slots[0]["item_name"] != "石头" || slots[0]["item_id"] != "Stone" {
+	if slots[0]["item_name"] != "石头" || slots[0]["item_id"] != "Stone" || slots[0]["item_icon"] != "stone" {
 		t.Fatalf("item name was not localized: %#v", slots)
 	}
 
@@ -378,7 +378,7 @@ func TestSaveIndexQueryHelpersAndFilters(t *testing.T) {
 	}
 	bases := []saveindex.Base{{ID: "base-1", Name: "Main", GuildID: "guild-1"}, {ID: "base-2", Name: "Other", GuildID: "guild-2"}}
 	context = newQueryContext("/api/bases?guild_id=guild-1&q=main")
-	if got := filterBases(bases, context); len(got) != 1 || got[0].ID != "base-1" {
+	if got := filterBases(bases, nil, context); len(got) != 1 || got[0].ID != "base-1" {
 		t.Fatalf("filterBases = %#v", got)
 	}
 	pals := []saveindex.Pal{

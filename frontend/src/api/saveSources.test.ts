@@ -9,7 +9,7 @@ describe('save sources api timeouts', () => {
   });
 
   it('does not apply the global eight-second timeout to archive imports', async () => {
-    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: { ok: true, data: { id: 'save-1', name: 'Imported', kind: 'import' } } });
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ status: 200, data: { ok: true, data: { id: 'save-1', name: 'Imported', kind: 'import' } } });
     const file = new File(['archive'], 'world.tar.gz', { type: 'application/gzip' });
 
     await saveSourcesApi.importArchive(file, 'Imported');
@@ -22,7 +22,7 @@ describe('save sources api timeouts', () => {
   });
 
   it('inspects, selects, and imports an archive candidate through the staged API', async () => {
-    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: { ok: true, data: {} } });
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ status: 200, data: { ok: true, data: {} } });
     const file = new File(['archive'], 'world.zip', { type: 'application/zip' });
 
     await saveSourcesApi.inspectArchive(file, 'Imported');
@@ -43,7 +43,7 @@ describe('save sources api timeouts', () => {
   });
 
   it('allows activation and rebuild to wait for save indexing', async () => {
-    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: { ok: true, data: {} } });
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ status: 200, data: { ok: true, data: {} } });
 
     await saveSourcesApi.activate('save with spaces');
     await saveSourcesApi.rebuild('save with spaces');

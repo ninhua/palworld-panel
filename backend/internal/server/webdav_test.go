@@ -123,8 +123,8 @@ func TestWebDAVConfigValidationAndPasswordLifecycle(t *testing.T) {
 	defer cleanup()
 	enabled := true
 	plainHTTP := "http://example.com/dav"
-	if _, err := manager.UpdateWebDAVConfig(t.Context(), WebDAVConfigUpdate{Enabled: &enabled, BaseURL: &plainHTTP}); err == nil {
-		t.Fatal("expected public HTTP WebDAV URL to be rejected")
+	if _, err := manager.UpdateWebDAVConfig(t.Context(), WebDAVConfigUpdate{Enabled: &enabled, BaseURL: &plainHTTP}); err != nil {
+		t.Fatalf("public HTTP WebDAV URL should be accepted: %v", err)
 	}
 	privateHTTP := "http://192.168.1.20/dav"
 	disabled := false

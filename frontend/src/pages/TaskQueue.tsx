@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Check, DownloadCloud, FolderDown, Play, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertTriangle, Check, DownloadCloud, FolderDown, PackageCheck, Play, RefreshCw, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { getErrorMessage } from '../api/client';
 import { schedulesApi } from '../api/schedules';
@@ -29,6 +29,8 @@ const jobTypeLabel = (type: string) => {
       return '检查后更新';
     case 'install':
       return '服务端安装';
+    case 'patch_hot_update':
+      return '补丁热更新';
     case 'bootstrap':
       return '开服初始化';
     case 'docker_install':
@@ -136,6 +138,7 @@ export const TaskQueue: React.FC = () => {
   }, [jobs]);
 
   const openAlerts = useMemo(() => alerts.filter((alert) => alert.status !== 'acked'), [alerts]);
+  const patchUpdateRunning = jobs.some((job) => job.type === 'patch_hot_update' && (job.status === 'waiting' || job.status === 'running'));
 
   const createBackup = async () => {
     try {
@@ -152,6 +155,16 @@ export const TaskQueue: React.FC = () => {
       await tasksApi.createUpdateJob();
       await fetchJobs();
       setMessage('更新任务已提交');
+    } catch (actionError) {
+      setMessage(getErrorMessage(actionError));
+    }
+  };
+
+  const createPatchUpdate = async () => {
+    try {
+      await tasksApi.createPatchUpdateJob();
+      await fetchJobs();
+      setMessage('补丁热更新任务已提交');
     } catch (actionError) {
       setMessage(getErrorMessage(actionError));
     }
@@ -263,6 +276,16 @@ export const TaskQueue: React.FC = () => {
         >
           <DownloadCloud size={14} />
           检查并更新服务端
+        </button>
+
+        <button
+          type="button"
+          onClick={createPatchUpdate}
+          disabled={patchUpdateRunning}
+          className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          <PackageCheck size={14} />
+          {patchUpdateRunning ? '补丁更新中' : '补丁热更新'}
         </button>
       </div>
 

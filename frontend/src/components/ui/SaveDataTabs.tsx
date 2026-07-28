@@ -5,6 +5,7 @@ import { NavLink } from 'react-router-dom';
 const tabs = [
   { path: '/player-center', label: '玩家中心', icon: <UserCog size={15} /> },
   { path: '/world', label: '玩家档案', icon: <Users size={15} /> },
+  { path: '/player-summary', label: '玩家概览', icon: <Users size={15} /> },
   { path: '/guilds', label: '公会', icon: <Network size={15} /> },
   { path: '/bases', label: '基地', icon: <Home size={15} /> },
   { path: '/pal-inventory', label: '帕鲁仓库', icon: <Sword size={15} /> },

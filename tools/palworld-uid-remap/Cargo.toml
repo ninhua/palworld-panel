@@ -12,6 +12,9 @@ path = "src/lib.rs"
 [[bin]]
 name = "palworld-uid-remap"
 path = "src/main.rs"
+[features]
+default = ["oodle"]
+oodle = ["uesave/oodle"]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }

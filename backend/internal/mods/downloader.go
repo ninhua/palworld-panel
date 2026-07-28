@@ -133,8 +133,8 @@ func (d *safeDownloader) Download(ctx context.Context, rawURL, destination strin
 }
 
 func (d *safeDownloader) validateURL(ctx context.Context, parsed *url.URL) error {
-	if parsed == nil || !strings.EqualFold(parsed.Scheme, "https") {
-		return errors.New("only public HTTPS URLs are allowed")
+	if parsed == nil || (!strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https")) {
+		return errors.New("only public HTTP(S) URLs are allowed")
 	}
 	if parsed.User != nil {
 		return errors.New("URLs containing credentials are not allowed")

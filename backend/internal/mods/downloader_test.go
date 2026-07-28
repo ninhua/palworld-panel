@@ -33,7 +33,7 @@ func TestSafeDownloaderRejectsNonPublicDestinationsAndCredentials(t *testing.T) 
 		"docs.example":    {{IP: net.ParseIP("203.0.113.20")}},
 	}
 	tests := []string{
-		"http://public.example/mod.zip",
+		"ftp://public.example/mod.zip",
 		"https://user:password@public.example/mod.zip",
 		"https://private.example/mod.zip",
 		"https://mixed.example/mod.zip",
@@ -52,9 +52,11 @@ func TestSafeDownloaderRejectsNonPublicDestinationsAndCredentials(t *testing.T) 
 			t.Errorf("expected %s to be rejected", rawURL)
 		}
 	}
-	parsed, err := parseRemoteURL("https://public.example/mod.zip")
-	if err != nil || downloader.validateURL(context.Background(), parsed) != nil {
-		t.Fatalf("public URL was rejected: %v", err)
+	for _, rawURL := range []string{"http://public.example/mod.zip", "https://public.example/mod.zip"} {
+		parsed, err := parseRemoteURL(rawURL)
+		if err != nil || downloader.validateURL(context.Background(), parsed) != nil {
+			t.Fatalf("public URL %q was rejected: %v", rawURL, err)
+		}
 	}
 	transport, ok := downloader.client.Transport.(*http.Transport)
 	if !ok || transport.Proxy != nil {

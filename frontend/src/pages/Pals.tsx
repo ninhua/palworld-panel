@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Hammer, HeartPulse, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertCircle, Hammer, HeartPulse, MapPin, RefreshCw, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { getErrorMessage } from '../api/client';
 import { palsApi } from '../api/pals';
 import { saveIndexApi } from '../api/saveIndex';
@@ -46,23 +46,38 @@ export const Pals: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [activeFilterTab, setActiveFilterTab] = useState('all');
   const [page, setPage] = useState(1);
+  const [minLevel, setMinLevel] = useState(0);
+  const [minStars, setMinStars] = useState(0);
+  const [minIVAverage, setMinIVAverage] = useState(0);
+  const [gender, setGender] = useState('');
+  const [location, setLocation] = useState('');
+  const [passive, setPassive] = useState('');
+  const [sort, setSort] = useState<'level_desc' | 'iv_desc' | 'stars_desc' | 'name_asc'>('level_desc');
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const debouncedSearch = useDebouncedValue(searchText, 250);
+  const debouncedPassive = useDebouncedValue(passive, 250);
   const statusFilter = statusFilterByTab[activeFilterTab];
 
   useEffect(() => {
     setPage(1);
-  }, [activeFilterTab, debouncedSearch]);
+  }, [activeFilterTab, debouncedSearch, debouncedPassive, gender, location, minIVAverage, minLevel, minStars, sort]);
 
   const palsQuery = useQuery({
-    queryKey: ['pals', { page, q: debouncedSearch, status: statusFilter, refreshKey }],
+    queryKey: ['pals', { page, q: debouncedSearch, status: statusFilter, minLevel, minStars, minIVAverage, gender, location, passive: debouncedPassive, sort, refreshKey }],
     queryFn: () =>
       palsApi.getPalsList({
         limit: pageSize,
         offset: (page - 1) * pageSize,
         q: debouncedSearch,
         status: statusFilter,
+        min_level: minLevel || undefined,
+        min_stars: minStars || undefined,
+        min_iv_average: minIVAverage || undefined,
+        gender: gender || undefined,
+        location: location || undefined,
+        passive: debouncedPassive || undefined,
+        sort,
       }),
     placeholderData: (previous) => previous,
   });
@@ -87,6 +102,16 @@ export const Pals: React.FC = () => {
   const error = actionError || (palsQuery.error ? getErrorMessage(palsQuery.error) : null);
   const totalItems = summary?.total ?? pals.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const filtersActive = minLevel > 0 || minStars > 0 || minIVAverage > 0 || gender !== '' || location !== '' || passive.trim() !== '' || sort !== 'level_desc';
+  const resetFilters = () => {
+    setMinLevel(0);
+    setMinStars(0);
+    setMinIVAverage(0);
+    setGender('');
+    setLocation('');
+    setPassive('');
+    setSort('level_desc');
+  };
 
   const unsupported = async (promise: Promise<{ message: string }>) => {
     const result = await promise;
@@ -96,9 +121,11 @@ export const Pals: React.FC = () => {
   const headers = [
     { key: 'name', label: '帕鲁 / 稀有度' },
     { key: 'level', label: '等级' },
+    { key: 'quality', label: '星级 / 个体值' },
     { key: 'health', label: '生命值' },
     { key: 'suitability', label: '工作适应性' },
     { key: 'owner', label: '所属玩家' },
+    { key: 'location', label: '终端位置' },
     { key: 'status', label: '状态' },
     { key: 'actions', label: '操作', align: 'center' as const },
   ];
@@ -133,6 +160,56 @@ export const Pals: React.FC = () => {
         onRefresh={() => void palsQuery.refetch()}
         onRebuild={() => rebuildMutation.mutate()}
       />
+
+      <section className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_2px_12px_-3px_rgba(15,23,42,0.02)] sm:p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+            <SlidersHorizontal size={15} className="text-sky-500" />
+            多项筛选
+          </div>
+          <button type="button" disabled={!filtersActive} onClick={resetFilters} className="text-[11px] font-bold text-sky-600 disabled:text-slate-300">
+            重置筛选
+          </button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <FilterNumber label="最低等级" value={minLevel} max={65} onChange={setMinLevel} />
+          <FilterNumber label="最低星级" value={minStars} max={4} onChange={setMinStars} />
+          <FilterNumber label="最低平均 IV" value={minIVAverage} max={100} onChange={setMinIVAverage} />
+          <label className="flex flex-col gap-1.5 text-[10px] font-bold text-slate-500">
+            性别
+            <select value={gender} onChange={(event) => setGender(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+              <option value="">全部</option>
+              <option value="male">雄性</option>
+              <option value="female">雌性</option>
+              <option value="wildcard">通配</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5 text-[10px] font-bold text-slate-500">
+            位置
+            <select value={location} onChange={(event) => setLocation(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+              <option value="">全部</option>
+              <option value="storage">帕鲁终端</option>
+              <option value="party">队伍</option>
+              <option value="base">据点工作</option>
+              <option value="expedition">远征</option>
+              <option value="unknown">未知</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5 text-[10px] font-bold text-slate-500">
+            被动词条（逗号分隔）
+            <input value={passive} onChange={(event) => setPassive(event.target.value)} placeholder="例如：工匠精神,认真" className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700" />
+          </label>
+          <label className="flex flex-col gap-1.5 text-[10px] font-bold text-slate-500">
+            排序
+            <select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+              <option value="level_desc">等级从高到低</option>
+              <option value="iv_desc">平均 IV 从高到低</option>
+              <option value="stars_desc">星级从高到低</option>
+              <option value="name_asc">名称排序</option>
+            </select>
+          </label>
+        </div>
+      </section>
 
       <section className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_2px_12px_-3px_rgba(15,23,42,0.02)] sm:p-6">
         {loading && pals.length === 0 ? (
@@ -182,6 +259,9 @@ export const Pals: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-xs font-bold text-slate-600">Lv.{pal.level}</td>
                   <td className="px-6 py-4">
+                    <PalQuality pal={pal} />
+                  </td>
+                  <td className="px-6 py-4">
                     <HealthBar pal={pal} hpPercent={hpPercent} />
                   </td>
                   <td className="px-6 py-4">
@@ -192,6 +272,9 @@ export const Pals: React.FC = () => {
                       <p className="truncate text-xs font-bold text-slate-600">{pal.owner_nickname}</p>
                       <p className="truncate font-mono text-[9px] text-slate-400">{pal.owner_steam_id}</p>
                     </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <PalLocation pal={pal} />
                   </td>
                   <td className="px-6 py-4">
                     <StatusBadge status={pal.status} />
@@ -293,6 +376,35 @@ const Suitability: React.FC<{ pal: Pal }> = ({ pal }) => (
   </div>
 );
 
+const FilterNumber: React.FC<{ label: string; value: number; max: number; onChange: (value: number) => void }> = ({ label, value, max, onChange }) => (
+  <label className="flex flex-col gap-1.5 text-[10px] font-bold text-slate-500">
+    {label}
+    <input
+      type="number"
+      min={0}
+      max={max}
+      value={value}
+      onChange={(event) => onChange(Math.max(0, Math.min(max, Number(event.target.value) || 0)))}
+      className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700"
+    />
+  </label>
+);
+
+const PalQuality: React.FC<{ pal: Pal }> = ({ pal }) => (
+  <div className="space-y-1 text-[10px] font-semibold text-slate-500">
+    <p>{'★'.repeat(pal.stars || 0) || '0 星'}</p>
+    <p>IV {pal.iv_average ?? 0}</p>
+    <p className="font-mono text-[9px] text-slate-400">{pal.iv_hp ?? 0}/{pal.iv_attack ?? 0}/{pal.iv_defense ?? 0}</p>
+  </div>
+);
+
+const PalLocation: React.FC<{ pal: Pal }> = ({ pal }) => (
+  <div className="flex max-w-[180px] items-start gap-1.5 text-[10px] font-semibold text-slate-500">
+    <MapPin size={12} className="mt-0.5 shrink-0 text-sky-500" />
+    <span>{pal.terminal_location || pal.location_type || '位置未知'}</span>
+  </div>
+);
+
 const PalCard: React.FC<{ pal: Pal; onHeal: () => void; onDelete: () => void }> = ({ pal, onHeal, onDelete }) => {
   const hpPercent = Math.min(100, Math.max(0, (pal.health / Math.max(1, pal.max_health)) * 100));
   return (
@@ -306,6 +418,10 @@ const PalCard: React.FC<{ pal: Pal; onHeal: () => void; onDelete: () => void }> 
       </div>
       <div className="mt-4">
         <Suitability pal={pal} />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3">
+        <PalQuality pal={pal} />
+        <PalLocation pal={pal} />
       </div>
       <p className="mt-3 truncate text-[11px] font-semibold text-slate-500">所属玩家: {pal.owner_nickname}</p>
       <div className="mt-4 grid grid-cols-2 gap-2">

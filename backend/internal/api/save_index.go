@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -54,10 +55,17 @@ func (s Server) listSavePlayers(c *gin.Context) {
 	if err != nil && !status.Stale {
 		players = []saveindex.Player{}
 	}
-	players = filterPlayers(players, c)
+	annotations, annotationsErr := s.loadPlayerAnnotations(c, view.SourceID)
+	if annotationsErr != nil {
+		fail(c, http.StatusInternalServerError, "player_annotations_read_failed", annotationsErr.Error())
+		return
+	}
+	players = filterPlayersWithAnnotations(players, annotations, c)
 	limit, offset := limitOffset(c)
 	paged, summary := paginate(players, limit, offset)
-	ok(c, gin.H{"players": flattenPlayers(paged, online), "status": status, "summary": summary, "view": view})
+	playerViews := flattenPlayersWithAnnotations(paged, online, annotations)
+	s.attachPlayerPresence(c.Request.Context(), playerViews, view.SourceKind == "server")
+	ok(c, gin.H{"players": playerViews, "status": status, "summary": summary, "view": view})
 }
 
 func (s Server) getSavePlayer(c *gin.Context) {
@@ -74,11 +82,18 @@ func (s Server) getSavePlayer(c *gin.Context) {
 		fail(c, http.StatusServiceUnavailable, "save_index_unavailable", err.Error())
 		return
 	}
+	annotations, annotationsErr := s.loadPlayerAnnotations(c, view.SourceID)
+	if annotationsErr != nil {
+		fail(c, http.StatusInternalServerError, "player_annotations_read_failed", annotationsErr.Error())
+		return
+	}
 	id := c.Param("id")
 	players := playersForView(index.Players, online, overlay)
 	for _, player := range players {
 		if matchesID(id, player.PlayerUID, player.SteamID) {
-			ok(c, gin.H{"player": flattenPlayer(player, online), "status": status, "view": view})
+			playerView := flattenPlayerWithAnnotation(player, online, annotationForPlayer(annotations, player))
+			s.attachPlayerPresence(c.Request.Context(), []gin.H{playerView}, view.SourceKind == "server")
+			ok(c, gin.H{"player": playerView, "status": status, "view": view})
 			return
 		}
 	}
@@ -189,11 +204,23 @@ func (s Server) getSaveGuild(c *gin.Context) {
 	}
 	guilds := append([]saveindex.Guild(nil), index.Guilds...)
 	online := s.onlinePlayers(c)
+	status = statusWithOnlineState(status, online)
 	applyGuildOnlineCounts(guilds, mergeSaveAndOnline(index.Players, online.Players))
 	id := c.Param("id")
 	for _, guild := range guilds {
 		if matchesID(id, guild.ID, guild.OwnerPlayerUID, guild.Name, pallocalize.GuildName(guild.Name)) {
-			ok(c, gin.H{"guild": localizeGuild(guild), "status": status})
+			members, bases, sourceID, detailErr := s.guildDetailViews(c, index, guild, online)
+			if detailErr != nil {
+				fail(c, http.StatusInternalServerError, "guild_detail_read_failed", detailErr.Error())
+				return
+			}
+			ok(c, gin.H{
+				"guild":     localizeGuild(guild),
+				"members":   members,
+				"bases":     bases,
+				"status":    status,
+				"source_id": sourceID,
+			})
 			return
 		}
 	}
@@ -205,10 +232,15 @@ func (s Server) listSaveBases(c *gin.Context) {
 	if err != nil && !status.Stale {
 		index = saveindex.EmptyIndex()
 	}
-	bases := filterBases(index.Bases, c)
+	customNames, sourceID, namesErr := s.activeBaseCustomNames(c)
+	if namesErr != nil {
+		fail(c, http.StatusInternalServerError, "base_custom_names_read_failed", namesErr.Error())
+		return
+	}
+	bases := filterBases(index.Bases, customNames, c)
 	limit, offset := limitOffset(c)
 	paged, summary := paginate(bases, limit, offset)
-	ok(c, gin.H{"bases": flattenBases(paged), "status": status, "summary": summary})
+	ok(c, gin.H{"bases": flattenBasesWithCustomNames(paged, customNames), "status": status, "summary": summary, "source_id": sourceID})
 }
 
 func (s Server) getSaveBase(c *gin.Context) {
@@ -217,10 +249,16 @@ func (s Server) getSaveBase(c *gin.Context) {
 		fail(c, http.StatusServiceUnavailable, "save_index_unavailable", err.Error())
 		return
 	}
+	customNames, sourceID, namesErr := s.activeBaseCustomNames(c)
+	if namesErr != nil {
+		fail(c, http.StatusInternalServerError, "base_custom_names_read_failed", namesErr.Error())
+		return
+	}
 	id := c.Param("id")
 	for _, base := range index.Bases {
-		if matchesID(id, base.ID, base.Name, pallocalize.BaseName(base.Name)) {
-			ok(c, gin.H{"base": flattenBase(base), "status": status})
+		customName := customNames[base.ID]
+		if matchesID(id, base.ID, base.Name, pallocalize.BaseName(base.Name), customName) {
+			ok(c, gin.H{"base": flattenBaseWithCustomName(base, customName), "status": status, "source_id": sourceID})
 			return
 		}
 	}
@@ -233,14 +271,74 @@ func (s Server) getSaveBaseStorage(c *gin.Context) {
 		fail(c, http.StatusServiceUnavailable, "save_index_unavailable", err.Error())
 		return
 	}
-	id := c.Param("id")
-	items := make([]saveindex.Container, 0)
-	for _, container := range index.Containers {
-		if container.OwnerType == "base" && matchesID(id, container.OwnerID) {
-			items = append(items, container)
+	ok(c, gin.H{"containers": baseStorageContainers(index, c.Param("id")), "status": status})
+}
+
+func baseStorageContainers(index saveindex.Index, id string) []gin.H {
+	return flattenBaseStorageContainers(baseContainers(index, id), index.MapEntities)
+}
+
+func baseContainers(index saveindex.Index, id string) []saveindex.Container {
+	linkedContainerIDs := make(map[string]struct{})
+	matchedBaseIDs := make(map[string]struct{})
+	for _, base := range index.Bases {
+		if !matchesID(id, base.ID, base.Name, pallocalize.BaseName(base.Name)) {
+			continue
+		}
+		matchedBaseIDs[normalizeQuery(base.ID)] = struct{}{}
+		for _, containerID := range base.Containers {
+			linkedContainerIDs[normalizeQuery(containerID)] = struct{}{}
 		}
 	}
-	ok(c, gin.H{"containers": flattenContainers(items), "status": status})
+
+	items := make([]saveindex.Container, 0)
+	seen := make(map[string]struct{})
+	for _, container := range index.Containers {
+		containerID := normalizeQuery(container.ContainerID)
+		_, linkedToBase := linkedContainerIDs[containerID]
+		_, ownedByMatchedBase := matchedBaseIDs[normalizeQuery(container.OwnerID)]
+		ownedByRequestedBase := container.OwnerType == "base" && matchesID(id, container.OwnerID)
+		if !linkedToBase && !(container.OwnerType == "base" && ownedByMatchedBase) && !ownedByRequestedBase {
+			continue
+		}
+		if _, duplicate := seen[containerID]; duplicate {
+			continue
+		}
+		seen[containerID] = struct{}{}
+		items = append(items, container)
+	}
+	return items
+}
+
+func flattenBaseStorageContainers(containers []saveindex.Container, entities []saveindex.MapEntity) []gin.H {
+	out := flattenContainers(containers)
+	entityByID := make(map[string]saveindex.MapEntity, len(entities))
+	for _, entity := range entities {
+		entityByID[normalizeQuery(entity.ID)] = entity
+	}
+	for index, container := range containers {
+		containerType, containerName := baseStorageContainerIdentity(container, entityByID)
+		out[index]["container_type"] = containerType
+		out[index]["container_name"] = containerName
+	}
+	return out
+}
+
+func baseStorageContainerIdentity(container saveindex.Container, entityByID map[string]saveindex.MapEntity) (string, string) {
+	if entity, found := entityByID[normalizeQuery(container.OwnerID)]; found && strings.EqualFold(strings.TrimSpace(entity.Type), "map_object") {
+		containerType := strings.TrimSpace(entity.Label)
+		if containerType != "" {
+			return containerType, pallocalize.ContainerName(containerType)
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(container.OwnerType), "base") {
+		return "base", "基地仓库"
+	}
+	containerType := strings.TrimSpace(container.OwnerType)
+	if containerType == "" {
+		containerType = "unknown"
+	}
+	return containerType, "存储容器"
 }
 
 func (s Server) listSavePals(c *gin.Context) {
@@ -249,6 +347,7 @@ func (s Server) listSavePals(c *gin.Context) {
 		index = saveindex.EmptyIndex()
 	}
 	pals := filterPals(index.Pals, index.Players, c)
+	sortPals(pals, c.Query("sort"))
 	limit, offset := limitOffset(c)
 	paged, summary := paginate(pals, limit, offset)
 	ok(c, gin.H{"pals": flattenPals(paged, index.Players), "status": status, "summary": summary})
@@ -371,9 +470,13 @@ func onlinePlayerFor(online map[string]onlinePlayer, player saveindex.Player) on
 }
 
 func flattenBases(bases []saveindex.Base) []gin.H {
+	return flattenBasesWithCustomNames(bases, nil)
+}
+
+func flattenBasesWithCustomNames(bases []saveindex.Base, customNames map[string]string) []gin.H {
 	out := make([]gin.H, 0, len(bases))
 	for _, base := range bases {
-		out = append(out, flattenBase(base))
+		out = append(out, flattenBaseWithCustomName(base, customNames[base.ID]))
 	}
 	return out
 }
@@ -413,32 +516,46 @@ func flattenPal(pal saveindex.Pal, lookup map[string]saveindex.Player) gin.H {
 	status := firstNonEmpty(pal.Status, "Healthy")
 	speciesName := pallocalize.PalName(pal.CharacterID)
 	return gin.H{
-		"id":               pal.InstanceID,
-		"instance_id":      pal.InstanceID,
-		"character_id":     pal.CharacterID,
-		"species_name":     speciesName,
-		"name":             firstNonEmpty(pal.Nickname, speciesName, pal.CharacterID, pal.InstanceID),
-		"nickname":         pal.Nickname,
-		"level":            pal.Level,
-		"rarity":           "Common",
-		"rarity_name":      "普通",
-		"owner_player_uid": pal.OwnerPlayerUID,
-		"owner_nickname":   owner.Nickname,
-		"owner_steam_id":   owner.SteamID,
-		"guild_id":         firstNonEmpty(pal.GuildID, owner.GuildID),
-		"container_id":     pal.ContainerID,
-		"location":         pal.Location,
-		"x":                pal.Location.X,
-		"y":                pal.Location.Y,
-		"z":                pal.Location.Z,
-		"skills":           []gin.H{},
-		"passives":         localizeStrings(pal.Passives, pallocalize.PassiveName),
-		"raw_passives":     pal.Passives,
-		"raw_skills":       pal.Skills,
-		"work_suitability": []gin.H{},
-		"health":           0,
-		"max_health":       0,
-		"status":           status,
+		"id":                pal.InstanceID,
+		"instance_id":       pal.InstanceID,
+		"character_id":      pal.CharacterID,
+		"species_name":      speciesName,
+		"name":              firstNonEmpty(pal.Nickname, speciesName, pal.CharacterID, pal.InstanceID),
+		"nickname":          pal.Nickname,
+		"level":             pal.Level,
+		"rarity":            "Common",
+		"rarity_name":       "普通",
+		"owner_player_uid":  pal.OwnerPlayerUID,
+		"owner_nickname":    owner.Nickname,
+		"owner_steam_id":    owner.SteamID,
+		"guild_id":          firstNonEmpty(pal.GuildID, owner.GuildID),
+		"container_id":      pal.ContainerID,
+		"slot_index":        pal.SlotIndex,
+		"location_type":     pal.LocationType,
+		"location_kind":     palLocationKind(pal),
+		"terminal_location": palTerminalLocation(pal),
+		"gender":            pal.Gender,
+		"rank":              pal.Rank,
+		"stars":             palStars(pal),
+		"iv_hp":             pal.IVHP,
+		"iv_attack":         pal.IVAttack,
+		"iv_defense":        pal.IVDefense,
+		"iv_average":        palIVAverage(pal),
+		"equipped_skills":   append([]string(nil), pal.EquippedSkills...),
+		"old_owner_uids":    append([]string(nil), pal.OldOwnerUIDs...),
+		"on_expedition":     pal.OnExpedition,
+		"location":          pal.Location,
+		"x":                 pal.Location.X,
+		"y":                 pal.Location.Y,
+		"z":                 pal.Location.Z,
+		"skills":            []gin.H{},
+		"passives":          localizeStrings(pal.Passives, pallocalize.PassiveName),
+		"raw_passives":      pal.Passives,
+		"raw_skills":        pal.Skills,
+		"work_suitability":  []gin.H{},
+		"health":            0,
+		"max_health":        0,
+		"status":            status,
 	}
 }
 
@@ -488,6 +605,7 @@ func flattenContainers(containers []saveindex.Container) []gin.H {
 				"slot":       slot.Slot,
 				"item_id":    slot.ItemID,
 				"item_name":  pallocalize.ItemName(slot.ItemID),
+				"item_icon":  pallocalize.ItemIcon(slot.ItemID),
 				"count":      slot.Count,
 				"durability": slot.Durability,
 			})
@@ -1074,11 +1192,18 @@ func paginate[T any](items []T, limit, offset int) ([]T, gin.H) {
 }
 
 func filterPlayers(players []saveindex.Player, c *gin.Context) []saveindex.Player {
+	return filterPlayersWithAnnotations(players, nil, c)
+}
+
+func filterPlayersWithAnnotations(players []saveindex.Player, annotations map[string]playerAnnotation, c *gin.Context) []saveindex.Player {
 	q := normalizeQuery(c.Query("q"))
 	online := strings.ToLower(strings.TrimSpace(c.Query("online")))
 	out := make([]saveindex.Player, 0, len(players))
 	for _, player := range players {
-		if q != "" && !containsAny(q, player.Nickname, player.SteamID, player.PlayerUID, player.GuildName, player.GuildID) {
+		annotationValues := playerAnnotationSearchValues(annotationForPlayer(annotations, player))
+		searchValues := []string{player.Nickname, player.SteamID, player.PlayerUID, player.GuildName, player.GuildID}
+		searchValues = append(searchValues, annotationValues...)
+		if q != "" && !containsAny(q, searchValues...) {
 			continue
 		}
 		if online == "true" || online == "1" {
@@ -1110,7 +1235,7 @@ func filterGuilds(guilds []saveindex.Guild, c *gin.Context) []saveindex.Guild {
 	return out
 }
 
-func filterBases(bases []saveindex.Base, c *gin.Context) []saveindex.Base {
+func filterBases(bases []saveindex.Base, customNames map[string]string, c *gin.Context) []saveindex.Base {
 	q := normalizeQuery(c.Query("q"))
 	guildID := normalizeQuery(c.Query("guild_id"))
 	out := make([]saveindex.Base, 0, len(bases))
@@ -1118,7 +1243,7 @@ func filterBases(bases []saveindex.Base, c *gin.Context) []saveindex.Base {
 		if guildID != "" && normalizeQuery(base.GuildID) != guildID {
 			continue
 		}
-		if q != "" && !containsAny(q, base.ID, base.Name, pallocalize.BaseName(base.Name), base.GuildName, pallocalize.GuildName(base.GuildName), base.GuildID) {
+		if q != "" && !containsAny(q, baseSearchNames(base, customNames[base.ID])...) {
 			continue
 		}
 		out = append(out, base)
@@ -1132,12 +1257,27 @@ func filterPals(pals []saveindex.Pal, players []saveindex.Player, c *gin.Context
 	ownerUID := normalizeQuery(c.Query("owner_player_uid"))
 	guildID := normalizeQuery(c.Query("guild_id"))
 	containerID := normalizeQuery(c.Query("container_id"))
+	gender := normalizeQuery(c.Query("gender"))
+	location := normalizeQuery(c.Query("location"))
+	minLevel := boundedQueryInt(c.Query("min_level"), 0, 65)
+	minStars := boundedQueryInt(c.Query("min_stars"), 0, 4)
+	minIVAverage := boundedQueryInt(c.Query("min_iv_average"), 0, 100)
+	requiredPassives := splitQueryList(c.Query("passive"))
 	lookup := playerLookup(players)
 	out := make([]saveindex.Pal, 0, len(pals))
 	for _, pal := range pals {
 		owner := lookup[pal.OwnerPlayerUID]
 		palGuildID := firstNonEmpty(pal.GuildID, owner.GuildID)
+		if pal.Level < minLevel || palStars(pal) < minStars || palIVAverage(pal) < minIVAverage {
+			continue
+		}
 		if status != "" && normalizeQuery(pal.Status) != status {
+			continue
+		}
+		if gender != "" && normalizeQuery(pal.Gender) != gender {
+			continue
+		}
+		if location != "" && palLocationKind(pal) != location {
 			continue
 		}
 		if ownerUID != "" && normalizeQuery(pal.OwnerPlayerUID) != ownerUID {
@@ -1152,9 +1292,143 @@ func filterPals(pals []saveindex.Pal, players []saveindex.Player, c *gin.Context
 		if q != "" && !containsAny(q, pal.InstanceID, pal.CharacterID, pallocalize.PalName(pal.CharacterID), pal.Nickname, owner.Nickname, owner.SteamID) {
 			continue
 		}
+		if !palHasAllPassives(pal, requiredPassives) {
+			continue
+		}
 		out = append(out, pal)
 	}
 	return out
+}
+
+func boundedQueryInt(value string, minimum, maximum int) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < minimum {
+		return minimum
+	}
+	if parsed > maximum {
+		return maximum
+	}
+	return parsed
+}
+
+func splitQueryList(value string) []string {
+	value = strings.NewReplacer("，", ",", ";", ",", "；", ",").Replace(value)
+	seen := map[string]bool{}
+	out := make([]string, 0)
+	for _, item := range strings.Split(value, ",") {
+		item = normalizeQuery(item)
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		out = append(out, item)
+	}
+	return out
+}
+
+func palHasAllPassives(pal saveindex.Pal, required []string) bool {
+	if len(required) == 0 {
+		return true
+	}
+	available := map[string]bool{}
+	for _, passive := range pal.Passives {
+		available[normalizeQuery(passive)] = true
+		available[normalizeQuery(pallocalize.PassiveName(passive))] = true
+	}
+	for _, passive := range required {
+		if !available[passive] {
+			return false
+		}
+	}
+	return true
+}
+
+func palStars(pal saveindex.Pal) int {
+	stars := pal.Rank - 1
+	if stars < 0 {
+		return 0
+	}
+	if stars > 4 {
+		return 4
+	}
+	return stars
+}
+
+func palIVAverage(pal saveindex.Pal) int {
+	total := pal.IVHP + pal.IVAttack + pal.IVDefense
+	if total <= 0 {
+		return 0
+	}
+	return (total + 1) / 3
+}
+
+func palLocationKind(pal saveindex.Pal) string {
+	location := normalizeQuery(pal.LocationType)
+	switch {
+	case pal.OnExpedition || strings.Contains(location, "expedition"):
+		return "expedition"
+	case strings.Contains(location, "storage"), strings.Contains(location, "palbox"):
+		return "storage"
+	case strings.Contains(location, "party"), strings.Contains(location, "otomo"):
+		return "party"
+	case strings.Contains(location, "base"), strings.Contains(location, "worker"):
+		return "base"
+	case location == "":
+		return "unknown"
+	default:
+		return location
+	}
+}
+
+func palTerminalLocation(pal saveindex.Pal) string {
+	slot := pal.SlotIndex
+	if slot < 0 {
+		slot = 0
+	}
+	switch palLocationKind(pal) {
+	case "storage":
+		pageSlot := slot % 30
+		return "终端第" + strconv.Itoa(slot/30+1) + "页 · 第" + strconv.Itoa(pageSlot/6+1) + "行第" + strconv.Itoa(pageSlot%6+1) + "列"
+	case "party":
+		return "队伍第" + strconv.Itoa(slot+1) + "位"
+	case "base":
+		return "据点工作位 " + strconv.Itoa(slot+1)
+	case "expedition":
+		return "远征中"
+	default:
+		return firstNonEmpty(pal.LocationType, "位置未知")
+	}
+}
+
+func sortPals(pals []saveindex.Pal, order string) {
+	order = normalizeQuery(order)
+	sort.SliceStable(pals, func(i, j int) bool {
+		left, right := pals[i], pals[j]
+		switch order {
+		case "iv_desc":
+			if palIVAverage(left) != palIVAverage(right) {
+				return palIVAverage(left) > palIVAverage(right)
+			}
+		case "stars_desc":
+			if palStars(left) != palStars(right) {
+				return palStars(left) > palStars(right)
+			}
+		case "name_asc":
+			leftName := normalizeQuery(firstNonEmpty(left.Nickname, pallocalize.PalName(left.CharacterID), left.CharacterID))
+			rightName := normalizeQuery(firstNonEmpty(right.Nickname, pallocalize.PalName(right.CharacterID), right.CharacterID))
+			if leftName != rightName {
+				return leftName < rightName
+			}
+		default:
+			if left.Level != right.Level {
+				return left.Level > right.Level
+			}
+		}
+		if left.Level != right.Level {
+			return left.Level > right.Level
+		}
+		return normalizeQuery(left.InstanceID) < normalizeQuery(right.InstanceID)
+	})
 }
 
 func normalizeQuery(value string) string {

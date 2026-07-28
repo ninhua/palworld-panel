@@ -82,6 +82,14 @@ func TestNewContractRoutes(t *testing.T) {
 	if readyRecorder.Code != http.StatusOK || !strings.Contains(readyRecorder.Body.String(), `"status":"ready"`) {
 		t.Fatalf("unexpected readiness response: %d %s", readyRecorder.Code, readyRecorder.Body.String())
 	}
+	patchInfoRequest := httptest.NewRequest(http.MethodGet, "/api/patch/info", nil)
+	patchInfoRecorder := httptest.NewRecorder()
+	router.ServeHTTP(patchInfoRecorder, patchInfoRequest)
+	if patchInfoRecorder.Code != http.StatusOK ||
+		!strings.Contains(patchInfoRecorder.Body.String(), `"repository":"ninhua/Palworld-Panel-Patches"`) ||
+		!strings.Contains(patchInfoRecorder.Body.String(), `"target_version":"v1.3.0"`) {
+		t.Fatalf("unexpected patch info response: %d %s", patchInfoRecorder.Code, patchInfoRecorder.Body.String())
+	}
 
 	for _, path := range []string{
 		"/api/server/startup",
@@ -108,6 +116,9 @@ func TestNewContractRoutes(t *testing.T) {
 		"POST /api/server/force-stop",
 		"GET /api/server/version",
 		"GET /api/server/game-data",
+		"GET /api/patch/update/status",
+		"POST /api/patch/update/check",
+		"POST /api/patch/update",
 		"GET /api/auth/me",
 		"GET /api/server/world",
 		"POST /api/server/world/reset",
@@ -149,11 +160,15 @@ func TestNewContractRoutes(t *testing.T) {
 		"GET /api/players",
 		"GET /api/players/:id",
 		"GET /api/players/:id/inventory",
+		"PUT /api/players/:id/annotation",
+		"DELETE /api/players/:id/annotation",
 		"GET /api/guilds",
 		"GET /api/guilds/:id",
 		"GET /api/bases",
 		"GET /api/bases/:id",
 		"GET /api/bases/:id/storage",
+		"GET /api/bases/:id/workers",
+		"GET /api/bases/:id/feed-boxes",
 		"GET /api/pals",
 		"GET /api/pals/:id",
 		"GET /api/map/entities",

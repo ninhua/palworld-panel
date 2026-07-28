@@ -1,7 +1,7 @@
 import { apiClient, handleRequest } from './client';
 import { emptySummary, entityListQuery, mapSummary } from './entityList';
 import { emptySaveIndexStatus, mapSaveIndexStatus } from './saveIndex';
-import type { EntityListParams, EntityListResponse, Pal, UnsupportedActionResult } from '../types';
+import type { EntityListResponse, Pal, PalListParams, UnsupportedActionResult } from '../types';
 
 export const mapPal = (raw: unknown): Pal => {
   const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
@@ -23,11 +23,15 @@ export const mapPal = (raw: unknown): Pal => {
     container_id: data.container_id ? String(data.container_id) : undefined,
     slot_index: data.slot_index == null ? undefined : Number(data.slot_index),
     location_type: data.location_type ? String(data.location_type) : undefined,
+    location_kind: data.location_kind ? String(data.location_kind) : undefined,
+    terminal_location: data.terminal_location ? String(data.terminal_location) : undefined,
     gender: data.gender ? String(data.gender) : undefined,
     rank: data.rank == null ? undefined : Number(data.rank),
+    stars: data.stars == null ? undefined : Number(data.stars),
     iv_hp: data.iv_hp == null ? undefined : Number(data.iv_hp),
     iv_attack: data.iv_attack == null ? undefined : Number(data.iv_attack),
     iv_defense: data.iv_defense == null ? undefined : Number(data.iv_defense),
+    iv_average: data.iv_average == null ? undefined : Number(data.iv_average),
     equipped_skills: Array.isArray(data.equipped_skills) ? data.equipped_skills.map(String) : [],
     old_owner_uids: Array.isArray(data.old_owner_uids) ? data.old_owner_uids.map(String) : [],
     on_expedition: Boolean(data.on_expedition),
@@ -72,7 +76,7 @@ const unsupported = (message: string): Promise<UnsupportedActionResult> =>
   Promise.resolve({ ok: false, unsupported: true, message });
 
 export const palsApi = {
-  getPalsList: (params: EntityListParams = {}) =>
+  getPalsList: (params: PalListParams = {}) =>
     handleRequest<unknown, EntityListResponse<Pal>>(
       () => apiClient.get(`/pals${entityListQuery(params)}`),
       { items: [], status: emptySaveIndexStatus, summary: emptySummary },

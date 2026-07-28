@@ -70,6 +70,30 @@ export const mapPlayer = (raw: unknown): Player | null => {
       player.inventory_summary && typeof player.inventory_summary === 'object'
         ? (player.inventory_summary as Record<string, unknown>)
         : undefined,
+    note: String(player.note || ''),
+    tags: Array.isArray(player.tags) ? player.tags.map((tag) => String(tag)).filter(Boolean) : [],
+    has_annotation: Boolean(player.has_annotation),
+    annotation_updated_at: String(player.annotation_updated_at || ''),
+    presence_available: Boolean(player.presence_available),
+    presence_stale: Boolean(player.presence_stale),
+    presence_observed_at: String(player.presence_observed_at || ''),
+    presence_online: Boolean(player.presence_online),
+    session_seconds: Math.max(0, Number(player.session_seconds || 0)),
+    total_seconds: Math.max(0, Number(player.total_seconds || 0)),
+    session_started_at: String(player.session_started_at || ''),
+    last_seen_at: String(player.last_seen_at || ''),
+    last_online_at: String(player.last_online_at || ''),
+    last_offline_at: String(player.last_offline_at || ''),
+    presence_sessions: Array.isArray(player.presence_sessions)
+      ? player.presence_sessions.map((rawSession) => {
+          const session = (rawSession && typeof rawSession === 'object' ? rawSession : {}) as Record<string, unknown>;
+          return {
+            started_at: String(session.started_at || ''),
+            ended_at: String(session.ended_at || ''),
+            duration_seconds: Math.max(0, Number(session.duration_seconds || 0)),
+          };
+        })
+      : [],
   };
 };
 
@@ -172,6 +196,41 @@ export const playersApi = {
             player: mapPlayer(data.player) || mapPlayer({ player_uid: identifier })!,
             status: data.status ? mapSaveIndexStatus(data.status) : emptySaveIndexStatus,
             view: mapPlayerView(data.view, source),
+          };
+        },
+        quiet: true,
+        fallbackOnError: false,
+      },
+    ),
+
+  updateAnnotation: (identifier: string, note: string, tags: string[], source?: PlayerSource) =>
+    handleRequest<unknown, { player: Player; source_id: string }>(
+      () => apiClient.put(withPlayerSource(`/players/${encodeURIComponent(identifier)}/annotation`, source), { note, tags }),
+      { player: mapPlayer({ player_uid: identifier, note, tags, has_annotation: Boolean(note.trim() || tags.length) })!, source_id: source === 'server' ? 'server' : '' },
+      {
+        map: (raw) => {
+          const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+          return {
+            player: mapPlayer(data.player) || mapPlayer({ player_uid: identifier, note, tags })!,
+            source_id: String(data.source_id || ''),
+          };
+        },
+        quiet: true,
+        fallbackOnError: false,
+      },
+    ),
+
+  clearAnnotation: (identifier: string, source?: PlayerSource) =>
+    handleRequest<unknown, { player: Player; source_id: string; deleted: boolean }>(
+      () => apiClient.delete(withPlayerSource(`/players/${encodeURIComponent(identifier)}/annotation`, source)),
+      { player: mapPlayer({ player_uid: identifier, note: '', tags: [], has_annotation: false })!, source_id: source === 'server' ? 'server' : '', deleted: true },
+      {
+        map: (raw) => {
+          const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+          return {
+            player: mapPlayer(data.player) || mapPlayer({ player_uid: identifier })!,
+            source_id: String(data.source_id || ''),
+            deleted: Boolean(data.deleted),
           };
         },
         quiet: true,

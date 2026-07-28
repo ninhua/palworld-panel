@@ -1,6 +1,6 @@
 {
-  "panel_url": {"type": "string", "description": "PalPanel 地址", "default": "http://127.0.0.1:8080"},
-  "panel_public_url": {"type": "string", "description": "群成员访问的 PalPanel 公网或局域网地址", "default": "http://127.0.0.1:8080"},
+  "panel_url": {"type": "string", "description": "PalPanel 地址，支持 HTTP/HTTPS", "default": "http://127.0.0.1:8080"},
+  "panel_public_url": {"type": "string", "description": "群成员访问的 PalPanel 公网或局域网地址，支持 HTTP/HTTPS", "default": "http://127.0.0.1:8080"},
   "panel_id": {"type": "string", "description": "面板实例 ID", "default": "palpanel"},
   "shared_secret": {"type": "string", "description": "与 PalPanel 相同的 HMAC 密钥", "default": "", "obvious_hint": true},
   "allowed_group_id": {"type": "string", "description": "允许使用插件的 QQ 群号", "default": ""},

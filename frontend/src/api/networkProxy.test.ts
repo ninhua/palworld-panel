@@ -14,7 +14,7 @@ describe('networkProxyApi', () => {
   });
 
   it('sends proxy URLs only in the write request', async () => {
-    const put = vi.spyOn(apiClient, 'put').mockResolvedValue({ data: { ok: true, data: {
+    const put = vi.spyOn(apiClient, 'put').mockResolvedValue({ status: 200, data: { ok: true, data: {
       install: { enabled: true, configured: true, url: 'http://127.0.0.1:7890', scheme: 'http', authentication_configured: true, source: 'managed' },
       community: { enabled: false, configured: false, url: '', authentication_configured: false, source: 'managed' },
     } } });

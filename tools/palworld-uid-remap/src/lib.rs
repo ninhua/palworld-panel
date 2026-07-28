@@ -8,8 +8,13 @@ use uesave::FGuid;
 
 mod visitor;
 mod engine;
+mod host;
 
 pub use engine::{remap_world, RemapError, RemapOptions, VerificationReport};
+pub use host::{
+    analyze_host_migration, execute_host_migration, steam_id_to_player_uid,
+    HostMigrationError, HostMigrationPlan, HostMigrationResult, SOURCE_HOST_UID,
+};
 pub use visitor::{
     rewrite_typed_tree, CandidateKind, FieldCategory, OpaqueCandidate, RewriteReport,
 };

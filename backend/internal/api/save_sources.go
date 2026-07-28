@@ -47,7 +47,7 @@ func (s Server) listSaveSources(c *gin.Context) {
 }
 
 func (s Server) importSaveSource(c *gin.Context) {
-	s.handleSaveSourceImport(c)
+	s.dispatchSaveSourceImport(c)
 }
 
 func (s Server) activateSaveSource(c *gin.Context) {

@@ -199,6 +199,36 @@ func TestGitHubReleaseRequiresSelectionForMultipleZipAssets(t *testing.T) {
 	}
 }
 
+func TestHTTPZipSourceIsInspected(t *testing.T) {
+	manager, _ := newImportTestManager(t)
+	archive := modArchive(t, "HTTP ZIP", "HTTPZipPackage", "1", "http")
+	manager.imports.downloader.resolver = staticResolver{
+		"public.example": {{IP: net.ParseIP("8.8.8.8")}},
+	}
+	redirectCheck := manager.imports.downloader.client.CheckRedirect
+	manager.imports.downloader.client = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode:    http.StatusOK,
+			Header:        make(http.Header),
+			Body:          io.NopCloser(bytes.NewReader(archive)),
+			ContentLength: int64(len(archive)),
+			Request:       request,
+		}, nil
+	}), CheckRedirect: redirectCheck}
+
+	inspection, err := manager.InspectSource(context.Background(), "http://public.example/mod.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.SourceType != "https_zip" || len(inspection.Candidates) != 1 {
+		t.Fatalf("HTTP ZIP inspection = %#v", inspection)
+	}
+	candidate := inspection.Candidates[0]
+	if !candidate.Ready || candidate.PackageName != "HTTPZipPackage" || candidate.Action != "new" {
+		t.Fatalf("HTTP ZIP candidate = %#v", candidate)
+	}
+}
+
 func TestAtomicInstallRestoresExistingDirectoryWhenSettingsSnapshotFails(t *testing.T) {
 	manager, store := newImportTestManager(t)
 	target := filepath.Join(manager.cfg.WorkshopModsDir(), "mod_existing")
@@ -304,6 +334,7 @@ func TestAtomicInstallRollsBackDatabaseSettingsAndFilesWhenRestartFlagFails(t *t
 func TestWorkshopSourceRecognition(t *testing.T) {
 	for _, source := range []string{
 		"123456789",
+		"http://steamcommunity.com/sharedfiles/filedetails/?id=123456789",
 		"https://steamcommunity.com/sharedfiles/filedetails/?id=123456789",
 		"https://www.steamcommunity.com/sharedfiles/filedetails/?id=123456789",
 	} {
@@ -315,7 +346,7 @@ func TestWorkshopSourceRecognition(t *testing.T) {
 		t.Fatal("untrusted host was recognized as Workshop")
 	}
 	for _, source := range []string{
-		"http://steamcommunity.com/sharedfiles/filedetails/?id=123456789",
+		"ftp://steamcommunity.com/sharedfiles/filedetails/?id=123456789",
 		"https://steamcommunity.com/not-a-workshop-page?id=123456789",
 	} {
 		if _, ok := workshopIDFromSource(source); ok {

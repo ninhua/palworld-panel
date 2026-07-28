@@ -5,7 +5,7 @@ import json
 import secrets
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from aiohttp import ClientSession, web
@@ -14,7 +14,7 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 
-from .security import body_bytes, signed_headers, verify_headers
+from .security import body_bytes, signed_headers, validate_http_service_url, verify_headers
 from .storage import PalPanelStore
 from .operations import (
     admin_allowed,
@@ -390,10 +390,10 @@ class Main(Star):
     async def _panel_post(self, path: str, payload: dict) -> dict:
         if not self.http:
             raise RuntimeError("plugin is not initialized")
-        base_url = str(self.config.get("panel_url", "http://127.0.0.1:8080")).rstrip("/")
-        parsed = urlparse(base_url)
-        if parsed.scheme != "https" and parsed.hostname not in {"127.0.0.1", "::1", "localhost"}:
-            raise RuntimeError("panel_url must use HTTPS outside loopback")
+        base_url = validate_http_service_url(
+            str(self.config.get("panel_url", "http://127.0.0.1:8080")),
+            "panel_url",
+        )
         raw = body_bytes(payload)
         headers = signed_headers(str(self.config.get("shared_secret", "")), str(self.config.get("panel_id", "palpanel")), "POST", path, raw)
         url = base_url + path

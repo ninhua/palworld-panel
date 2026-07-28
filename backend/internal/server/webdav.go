@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -239,9 +238,6 @@ func normalizeWebDAVConfig(config webDAVStoredConfig) (webDAVStoredConfig, error
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return webDAVStoredConfig{}, errors.New("WebDAV URL must not include credentials, query parameters, or fragments")
 	}
-	if parsed.Scheme == "http" && !isLocalWebDAVHost(parsed.Hostname()) {
-		return webDAVStoredConfig{}, errors.New("public WebDAV servers require HTTPS")
-	}
 	return config, nil
 }
 
@@ -254,15 +250,6 @@ func publicWebDAVConfig(config webDAVStoredConfig) WebDAVConfig {
 		UploadAfterBackup:  config.UploadAfterBackup,
 		PasswordConfigured: config.Password != "",
 	}
-}
-
-func isLocalWebDAVHost(host string) bool {
-	lower := strings.ToLower(strings.TrimSpace(host))
-	if lower == "localhost" || strings.HasSuffix(lower, ".localhost") || strings.HasSuffix(lower, ".local") || strings.HasSuffix(lower, ".lan") || !strings.Contains(lower, ".") {
-		return true
-	}
-	ip := net.ParseIP(lower)
-	return ip != nil && (ip.IsLoopback() || ip.IsPrivate())
 }
 
 func (m Manager) uploadFileToWebDAV(ctx context.Context, config webDAVStoredConfig, localPath, name string) error {

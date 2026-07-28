@@ -61,6 +61,43 @@ describe('save player detail mappers', () => {
     });
   });
 
+
+  it('maps player notes and tags', () => {
+    expect(mapPlayer({
+      player_uid: 'uid-note',
+      note: '负责建筑规划',
+      tags: ['建筑师', '活跃'],
+      has_annotation: true,
+      annotation_updated_at: '2026-07-24T00:00:00Z',
+    })).toMatchObject({
+      note: '负责建筑规划',
+      tags: ['建筑师', '活跃'],
+      has_annotation: true,
+      annotation_updated_at: '2026-07-24T00:00:00Z',
+    });
+  });
+
+  it('maps player presence totals and completed sessions', () => {
+    expect(mapPlayer({
+      player_uid: 'uid-presence',
+      presence_available: true,
+      session_seconds: 90,
+      total_seconds: 3600,
+      last_online_at: '2026-07-24T10:00:00Z',
+      last_offline_at: '2026-07-24T11:00:00Z',
+      presence_sessions: [{
+        started_at: '2026-07-24T10:00:00Z',
+        ended_at: '2026-07-24T11:00:00Z',
+        duration_seconds: 3600,
+      }],
+    })).toMatchObject({
+      presence_available: true,
+      session_seconds: 90,
+      total_seconds: 3600,
+      presence_sessions: [{ duration_seconds: 3600 }],
+    });
+  });
+
   it('maps parsed inventory slots and ignores entries without an ItemID', () => {
     expect(mapSaveInventoryContainers({
       containers: [{
@@ -77,16 +114,22 @@ describe('save player detail mappers', () => {
 });
 
 describe('player source requests', () => {
-  it('adds the server source to list, detail, and inventory requests', async () => {
+  it('adds the server source to list, detail, inventory, and annotation requests', async () => {
     const get = vi.spyOn(apiClient, 'get').mockResolvedValue({ data: { ok: true, data: {} }, status: 200 } as AxiosResponse);
+    const put = vi.spyOn(apiClient, 'put').mockResolvedValue({ data: { ok: true, data: {} }, status: 200 } as AxiosResponse);
+    const del = vi.spyOn(apiClient, 'delete').mockResolvedValue({ data: { ok: true, data: {} }, status: 200 } as AxiosResponse);
 
     await playersApi.getPlayersList({ limit: 50 }, { source: 'server' });
     await playersApi.getPlayer('uid/live', 'server');
     await playersApi.getInventory('uid/live', 'server');
+    await playersApi.updateAnnotation('uid/live', 'note', ['tag'], 'server');
+    await playersApi.clearAnnotation('uid/live', 'server');
 
     expect(get).toHaveBeenNthCalledWith(1, '/players?limit=50&source=server');
     expect(get).toHaveBeenNthCalledWith(2, '/players/uid%2Flive?source=server');
     expect(get).toHaveBeenNthCalledWith(3, '/players/uid%2Flive/inventory?source=server');
+    expect(put).toHaveBeenCalledWith('/players/uid%2Flive/annotation?source=server', { note: 'note', tags: ['tag'] });
+    expect(del).toHaveBeenCalledWith('/players/uid%2Flive/annotation?source=server');
   });
 
   it('keeps world archive requests on the active source by default', async () => {

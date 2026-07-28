@@ -126,4 +126,11 @@ export const tasksApi = {
       createFallbackJob('update', '已提交更新任务'),
       { map: mapJob, quiet: true, fallbackOnError: false },
     ),
+
+  createPatchUpdateJob: () =>
+    handleRequest<unknown, Job>(
+      () => apiClient.post('/patch/update'),
+      createFallbackJob('patch_hot_update', '已提交面板补丁热更新任务'),
+      { map: mapJob, quiet: true, fallbackOnError: false },
+    ),
 };

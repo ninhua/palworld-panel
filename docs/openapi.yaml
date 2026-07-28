@@ -135,6 +135,11 @@ x-player-inventory: &playerInventory
   content:
     application/json:
       schema: {$ref: '#/components/schemas/PlayerInventoryEnvelope'}
+x-guild-detail: &guildDetail
+  description: Enriched guild detail with member annotations and linked bases.
+  content:
+    application/json:
+      schema: {$ref: '#/components/schemas/GuildDetailEnvelope'}
 x-mod-config-adapters: &modConfigAdapters
   description: Registered typed Mod configuration adapters and their opaque files.
   content:
@@ -235,6 +240,26 @@ paths:
     get: {operationId: getHealth, tags: [system], security: [], x-palpanel-permission: public, responses: {'200': *success}}
   /ready:
     get: {operationId: getReadiness, tags: [system], security: [], x-palpanel-permission: public, responses: {'200': *success, '503': *error}}
+  /patch/info:
+    get:
+      operationId: getPatchInfo
+      tags: [system]
+      security: []
+      x-palpanel-permission: public
+      responses:
+        '200':
+          description: Patch provenance, compatibility target, feature list, and build metadata.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PatchInfoEnvelope'}
+  /catalog:
+    get:
+      operationId: getAPICatalog
+      tags: [system]
+      summary: List every runtime API route with authentication, permission, request, and response guidance.
+      x-palpanel-permission: read
+      responses:
+        '200': *success
   /auth/status:
     get:
       operationId: getAuthenticationStatus
@@ -302,6 +327,12 @@ paths:
   /jobs/{id}:
     parameters: [*idParameter]
     get: {operationId: getJob, tags: [system], x-palpanel-permission: read, responses: *readResponses}
+  /patch/update/status:
+    get: {operationId: getPatchUpdateStatus, tags: [system], x-palpanel-permission: read, responses: {'200': *success, '401': *error, '502': *error}}
+  /patch/update/check:
+    post: {operationId: checkPatchUpdate, tags: [system], x-palpanel-permission: 'server:control', responses: {'202': *accepted, '401': *error, '403': *error, '500': *error}}
+  /patch/update:
+    post: {operationId: applyPatchUpdate, tags: [system], x-palpanel-permission: 'server:control', responses: {'202': *accepted, '401': *error, '403': *error, '500': *error}}
   /audit-logs:
     get: {operationId: listAuditLogs, tags: [system], x-palpanel-permission: 'audit:read', responses: *readResponses}
   /system/debug:
@@ -992,8 +1023,17 @@ paths:
         content:
           multipart/form-data:
             schema: {$ref: '#/components/schemas/SaveImportInspectRequest'}
+          application/json:
+            schema: {$ref: '#/components/schemas/HostMigrationRequest'}
       responses:
-        '200': *saveImportInspection
+        '200':
+          description: Save archive inspection or host-role migration preflight.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - {$ref: '#/components/schemas/SaveImportInspectionEnvelope'}
+                  - {$ref: '#/components/schemas/HostMigrationPlanEnvelope'}
         '400': *error
         '401': *error
         '403': *error
@@ -1149,19 +1189,55 @@ paths:
   /players/{id}/inventory:
     parameters: [*idParameter, *playerSourceParameter]
     get: {operationId: getPlayerInventory, tags: [world], x-palpanel-permission: read, responses: {'200': *playerInventory, '400': *error, '401': *error, '404': *error}}
+  /players/{id}/annotation:
+    parameters: [*idParameter, *playerSourceParameter]
+    put:
+      operationId: updatePlayerAnnotation
+      tags: [world]
+      x-palpanel-permission: 'players:write'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PlayerAnnotationUpdate'}
+      responses: *writeResponses
+    delete: {operationId: deletePlayerAnnotation, tags: [world], x-palpanel-permission: 'players:write', responses: *writeResponses}
   /guilds:
     get: {operationId: listGuilds, tags: [world], x-palpanel-permission: read, responses: *readResponses}
   /guilds/{id}:
     parameters: [*idParameter]
-    get: {operationId: getGuild, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+    get: {operationId: getGuild, tags: [world], x-palpanel-permission: read, responses: {'200': *guildDetail, '401': *error, '404': *error, '500': *error}}
   /bases:
     get: {operationId: listBases, tags: [world], x-palpanel-permission: read, responses: *readResponses}
   /bases/{id}:
     parameters: [*idParameter]
     get: {operationId: getBase, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+  /bases/{id}/name:
+    parameters: [*idParameter]
+    put: {operationId: updateBaseCustomName, tags: [world], x-palpanel-permission: 'server:control', requestBody: *jsonRequest, responses: *writeResponses}
+    delete: {operationId: deleteBaseCustomName, tags: [world], x-palpanel-permission: 'server:control', responses: *writeResponses}
   /bases/{id}/storage:
     parameters: [*idParameter]
     get: {operationId: getBaseStorage, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+  /bases/{id}/workers:
+    parameters: [*idParameter]
+    get: {operationId: getBaseWorkers, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+  /bases/{id}/feed-boxes:
+    parameters: [*idParameter]
+    get: {operationId: getBaseFeedBoxes, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+  /inventory:
+    get:
+      operationId: listGlobalInventory
+      tags: [world]
+      x-palpanel-permission: read
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: category, in: query, schema: {type: string}}
+        - {name: owner_type, in: query, schema: {type: string, enum: [all, base, player, unknown], default: all}}
+        - {name: sort, in: query, schema: {type: string, enum: [count_desc, name_asc, name_desc], default: count_desc}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      responses: *readResponses
   /pals:
     get: {operationId: listPals, tags: [world], x-palpanel-permission: read, responses: *readResponses}
   /pals/{id}:
@@ -1188,6 +1264,24 @@ paths:
   /players/{id}/unban:
     parameters: [*idParameter]
     post: {operationId: unbanPlayer, tags: [world], x-palpanel-permission: 'players:write', responses: *writeResponses}
+  /security/paldefender/starter-gift:
+    get: {operationId: getStarterGift, tags: [security], x-palpanel-permission: read, responses: *readResponses}
+    put:
+      operationId: putStarterGift
+      tags: [security]
+      x-palpanel-permission: 'security:write'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StarterGiftConfig'}
+      responses: *writeResponses
+  /security/paldefender/starter-gift/grants/{id}/retry:
+    parameters: [*idParameter]
+    post: {operationId: retryStarterGift, tags: [security], x-palpanel-permission: 'security:write', responses: *writeResponses}
+  /security/paldefender/starter-gift/grants/{id}:
+    parameters: [*idParameter]
+    delete: {operationId: forgetStarterGift, tags: [security], x-palpanel-permission: 'security:write', responses: *writeResponses}
 components:
   securitySchemes:
     sessionCookie:
@@ -1249,8 +1343,36 @@ components:
         location_y: {type: number}
         location_z: {type: number}
         inventory_summary: {type: object, additionalProperties: true}
+        note: {type: string, maxLength: 500}
+        tags: {type: array, maxItems: 8, items: {type: string, maxLength: 24}}
+        has_annotation: {type: boolean}
+        annotation_updated_at: {type: string}
+        presence_available: {type: boolean}
+        presence_stale: {type: boolean}
+        presence_observed_at: {type: string, format: date-time}
+        presence_online: {type: boolean}
+        session_seconds: {type: integer, format: int64, minimum: 0}
+        total_seconds: {type: integer, format: int64, minimum: 0}
+        session_started_at: {type: string, format: date-time}
+        last_seen_at: {type: string, format: date-time}
+        last_online_at: {type: string, format: date-time}
+        last_offline_at: {type: string, format: date-time}
+        presence_sessions: {type: array, items: {$ref: '#/components/schemas/PlayerPresenceSession'}}
         ping: {type: number}
         ip: {type: string}
+    PlayerPresenceSession:
+      type: object
+      required: [started_at, ended_at, duration_seconds]
+      properties:
+        started_at: {type: string, format: date-time}
+        ended_at: {type: string, format: date-time}
+        duration_seconds: {type: integer, format: int64, minimum: 0}
+    PlayerAnnotationUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        note: {type: string, maxLength: 500}
+        tags: {type: array, maxItems: 8, items: {type: string, maxLength: 24}}
     PlayerDataView:
       type: object
       required: [scope, source_id, source_kind, source_name, online_overlay]
@@ -1262,21 +1384,309 @@ components:
         online_overlay: {type: boolean}
     SaveInventorySlot:
       type: object
-      required: [slot, item_id, item_name, count, durability]
+      required: [slot, item_id, item_name, item_icon, count, durability]
       properties:
         slot: {type: integer, minimum: 0}
         item_id: {type: string}
         item_name: {type: string}
+        item_icon: {type: string}
         count: {type: integer, minimum: 0}
         durability: {anyOf: [{type: number}, {type: 'null'}]}
     SaveInventoryContainer:
       type: object
-      required: [container_id, owner_type, owner_id, slots]
+      required: [container_id, owner_type, owner_id, container_type, container_name, slots]
       properties:
         container_id: {type: string}
         owner_type: {type: string}
         owner_id: {type: string}
+        container_type: {type: string}
+        container_name: {type: string}
         slots: {type: array, items: {$ref: '#/components/schemas/SaveInventorySlot'}}
+    BaseFeedBox:
+      type: object
+      required: [container_id, container_type, container_name, slots]
+      properties:
+        container_id: {type: string}
+        container_type: {type: string}
+        container_name: {type: string}
+        slots: {type: array, items: {$ref: '#/components/schemas/SaveInventorySlot'}}
+    BaseFeedBoxSummary:
+      type: object
+      required: [box_count, empty_box_count, occupied_slots, total_items, item_types]
+      properties:
+        box_count: {type: integer, minimum: 0}
+        empty_box_count: {type: integer, minimum: 0}
+        occupied_slots: {type: integer, minimum: 0}
+        total_items: {type: integer, minimum: 0}
+        item_types: {type: integer, minimum: 0}
+    BaseFeedBoxesEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/BaseFeedBoxesResult'}
+    BaseFeedBoxesResult:
+      type: object
+      required: [base, feed_boxes, items, summary, status, source_id]
+      properties:
+        base: {$ref: '#/components/schemas/BaseWorkerBase'}
+        feed_boxes: {type: array, items: {$ref: '#/components/schemas/BaseFeedBox'}}
+        items: {type: array, items: {$ref: '#/components/schemas/BaseFeedItemSummary'}}
+        summary: {$ref: '#/components/schemas/BaseFeedBoxSummary'}
+        status: {$ref: '#/components/schemas/SaveIndexStatus'}
+        source_id: {type: string}
+    BaseFeedItemSummary:
+      type: object
+      required: [item_id, item_name, item_icon, count, box_count]
+      properties:
+        item_id: {type: string}
+        item_name: {type: string}
+        item_icon: {type: string}
+        count: {type: integer, minimum: 0}
+        box_count: {type: integer, minimum: 0}
+    BaseWorkerBase:
+      type: object
+      required: [id, name, raw_name, custom_name, has_custom_name, guild_id, guild_name, x, y, z]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        raw_name: {type: string}
+        custom_name: {type: string}
+        has_custom_name: {type: boolean}
+        guild_id: {type: string}
+        guild_name: {type: string}
+        x: {type: number}
+        y: {type: number}
+        z: {type: number}
+    BaseWorkerDetail:
+      type: object
+      required: [instance_id, character_id, species_name, name, nickname, level, gender, rank, status, location_type, passives, raw_passives, on_expedition]
+      properties:
+        instance_id: {type: string}
+        character_id: {type: string}
+        species_name: {type: string}
+        name: {type: string}
+        nickname: {type: string}
+        level: {type: integer, minimum: 0}
+        gender: {type: string}
+        rank: {type: integer, minimum: 0}
+        status: {type: string}
+        location_type: {type: string}
+        passives: {type: array, items: {type: string}}
+        raw_passives: {type: array, items: {type: string}}
+        on_expedition: {type: boolean}
+    BaseWorkerSummary:
+      type: object
+      required: [total, average_level, max_level, named_count, species_count]
+      properties:
+        total: {type: integer, minimum: 0}
+        average_level: {type: number, minimum: 0}
+        max_level: {type: integer, minimum: 0}
+        named_count: {type: integer, minimum: 0}
+        species_count: {type: integer, minimum: 0}
+    BaseWorkersResult:
+      type: object
+      required: [base, workers, summary, status, source_id]
+      properties:
+        base: {$ref: '#/components/schemas/BaseWorkerBase'}
+        workers: {type: array, items: {$ref: '#/components/schemas/BaseWorkerDetail'}}
+        summary: {$ref: '#/components/schemas/BaseWorkerSummary'}
+        status: {$ref: '#/components/schemas/SaveIndexStatus'}
+        source_id: {type: string}
+    BaseWorkersEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/BaseWorkersResult'}
+    GuildMemberSummary:
+      type: object
+      required: [player_uid, nickname]
+      properties:
+        player_uid: {type: string}
+        nickname: {type: string}
+        last_online_time: {type: string}
+    Guild:
+      type: object
+      required: [id, name, owner_player_uid, members, base_ids, online_member_count]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        owner_player_uid: {type: string}
+        members: {type: array, items: {$ref: '#/components/schemas/GuildMemberSummary'}}
+        base_ids: {type: array, items: {type: string}}
+        online_member_count: {type: integer, minimum: 0}
+    GuildMemberDetail:
+      type: object
+      required: [id, player_uid, steam_id, nickname, level, is_online, last_online_time, is_owner, note, tags, has_annotation]
+      properties:
+        id: {type: string}
+        player_uid: {type: string}
+        steam_id: {type: string}
+        nickname: {type: string}
+        level: {type: integer, minimum: 0}
+        is_online: {type: boolean}
+        last_online_time: {type: string}
+        is_owner: {type: boolean}
+        note: {type: string, maxLength: 500}
+        tags: {type: array, maxItems: 8, items: {type: string, maxLength: 24}}
+        has_annotation: {type: boolean}
+        annotation_updated_at: {type: string}
+    GuildBaseDetail:
+      type: object
+      required: [id, name, raw_name, custom_name, has_custom_name, x, y, z, structures_count, workers_count, status]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        raw_name: {type: string}
+        custom_name: {type: string}
+        has_custom_name: {type: boolean}
+        x: {type: number}
+        y: {type: number}
+        z: {type: number}
+        structures_count: {type: integer, minimum: 0}
+        workers_count: {type: integer, minimum: 0}
+        status: {type: string}
+    GuildDetailResult:
+      type: object
+      required: [guild, members, bases, status, source_id]
+      properties:
+        guild: {$ref: '#/components/schemas/Guild'}
+        members: {type: array, items: {$ref: '#/components/schemas/GuildMemberDetail'}}
+        bases: {type: array, items: {$ref: '#/components/schemas/GuildBaseDetail'}}
+        status: {$ref: '#/components/schemas/SaveIndexStatus'}
+        source_id: {type: string}
+    GuildDetailEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/GuildDetailResult'}
+    GlobalInventoryLocation:
+      type: object
+      required: [owner_type, owner_id, owner_name, container_id, container_type, container_name, slot, count]
+      additionalProperties: false
+      properties:
+        owner_type: {type: string, enum: [base, player, unknown]}
+        owner_id: {type: string}
+        owner_name: {type: string}
+        guild_name: {type: string}
+        container_id: {type: string}
+        container_type: {type: string}
+        container_name: {type: string}
+        slot: {type: integer, minimum: 0}
+        count: {type: integer, format: int64, minimum: 1}
+    GlobalInventoryItem:
+      type: object
+      required: [item_id, item_name, item_icon, category, total_count, locations]
+      additionalProperties: false
+      properties:
+        item_id: {type: string}
+        item_name: {type: string}
+        item_icon: {type: string}
+        category: {type: string}
+        total_count: {type: integer, format: int64, minimum: 1}
+        locations: {type: array, items: {$ref: '#/components/schemas/GlobalInventoryLocation'}}
+    GlobalInventorySummary:
+      type: object
+      required: [item_types, total_count, container_count, location_count, unresolved_containers, returned, offset, limit]
+      additionalProperties: false
+      properties:
+        item_types: {type: integer, minimum: 0}
+        total_count: {type: integer, format: int64, minimum: 0}
+        container_count: {type: integer, minimum: 0}
+        location_count: {type: integer, minimum: 0}
+        unresolved_containers: {type: integer, minimum: 0}
+        returned: {type: integer, minimum: 0}
+        offset: {type: integer, minimum: 0}
+        limit: {type: integer, minimum: 1, maximum: 500}
+    GlobalInventoryResult:
+      type: object
+      required: [items, summary, filters, status, source_id]
+      additionalProperties: false
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/GlobalInventoryItem'}}
+        summary: {$ref: '#/components/schemas/GlobalInventorySummary'}
+        filters:
+          type: object
+          required: [categories, owner_types]
+          properties:
+            categories: {type: array, items: {type: string}}
+            owner_types: {type: array, items: {type: string, enum: [all, base, player, unknown]}}
+        status: {$ref: '#/components/schemas/SaveIndexStatus'}
+        source_id: {type: string}
+    StarterGiftItem:
+      type: object
+      required: [item_id, count]
+      additionalProperties: false
+      properties:
+        item_id: {type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_:-]+$'}
+        count: {type: integer, format: int64, minimum: 1, maximum: 2147483647}
+    StarterGiftConfig:
+      type: object
+      required: [enabled, items, pal_templates, item_batch_size, template_batch_size, batch_delay_ms]
+      additionalProperties: false
+      properties:
+        enabled: {type: boolean}
+        items: {type: array, maxItems: 500, items: {$ref: '#/components/schemas/StarterGiftItem'}}
+        pal_templates: {type: array, maxItems: 500, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 255}}
+        item_batch_size: {type: integer, minimum: 1, maximum: 100, default: 20}
+        template_batch_size: {type: integer, minimum: 1, maximum: 20, default: 5}
+        batch_delay_ms: {type: integer, minimum: 100, maximum: 10000, default: 500}
+    StarterGiftGrant:
+      type: object
+      required: [player_id, status, next_item, next_template, item_total, template_total, attempts, first_seen_at, updated_at]
+      additionalProperties: false
+      properties:
+        player_id: {type: string}
+        player_uid: {type: string}
+        steam_id: {type: string}
+        nickname: {type: string}
+        status: {type: string, enum: [pending, running, success, failed]}
+        next_item: {type: integer, minimum: 0}
+        next_template: {type: integer, minimum: 0}
+        item_total: {type: integer, minimum: 0}
+        template_total: {type: integer, minimum: 0}
+        attempts: {type: integer, minimum: 0}
+        first_seen_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        completed_at: {type: string, format: date-time}
+        last_error: {type: string, maxLength: 500}
+    StarterGiftTemplateInfo:
+      type: object
+      required: [name]
+      additionalProperties: true
+      properties:
+        name: {type: string}
+        pal_id: {type: string}
+        pal_name: {type: string}
+        english_name: {type: string}
+        category: {type: string}
+        index_names: {type: array, items: {type: string}}
+        nickname: {type: string}
+        level: {type: integer, minimum: 1}
+        modified_at: {type: string, format: date-time}
+        size: {type: integer, format: int64, minimum: 0}
+        parse_error: {type: string}
+    StarterGiftTemplateIndexInfo:
+      type: object
+      required: [name, label, count]
+      additionalProperties: false
+      properties:
+        name: {type: string}
+        label: {type: string}
+        count: {type: integer, minimum: 0}
+    StarterGiftSnapshot:
+      type: object
+      required: [config, grants, templates, item_catalog]
+      additionalProperties: false
+      properties:
+        config: {$ref: '#/components/schemas/StarterGiftConfig'}
+        grants: {type: array, items: {$ref: '#/components/schemas/StarterGiftGrant'}}
+        templates: {type: array, items: {$ref: '#/components/schemas/StarterGiftTemplateInfo'}}
+        template_indexes: {type: array, items: {$ref: '#/components/schemas/StarterGiftTemplateIndexInfo'}}
+        item_catalog: {type: array, items: {$ref: '#/components/schemas/PalDefenderItemCatalogEntry'}}
+        template_error: {type: string}
     ListSummary:
       type: object
       required: [total, limit, offset, returned, page]
@@ -1920,12 +2330,88 @@ components:
         candidate_id: {type: string, minLength: 1}
     SaveImportCommitRequest:
       type: object
-      required: [inspection_id]
       additionalProperties: false
       properties:
         inspection_id: {type: string, minLength: 1}
         candidate_id: {type: string, minLength: 1}
         name: {type: string}
+        migration_source_id: {type: string, minLength: 1}
+        steam_id: {type: string, pattern: '^[0-9]{15,20}$'}
+        confirm: {type: boolean, const: true}
+      oneOf:
+        - required: [inspection_id]
+        - required: [migration_source_id, steam_id, confirm]
+    SaveSource:
+      type: object
+      required: [id, name, kind, active, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: {type: string}
+        name: {type: string}
+        kind: {type: string, enum: [server, import]}
+        path: {type: string}
+        active: {type: boolean}
+        fingerprint: {type: string}
+        parser_version: {type: string}
+        warnings: {type: array, items: {type: string}}
+        indexed_at: {type: string}
+        created_at: {type: string}
+        updated_at: {type: string}
+    HostMigrationRequest:
+      type: object
+      required: [migration_source_id, steam_id]
+      additionalProperties: false
+      properties:
+        migration_source_id: {type: string, minLength: 1}
+        steam_id: {type: string, pattern: '^[0-9]{15,20}$'}
+    HostMigrationExecuteRequest:
+      type: object
+      required: [migration_source_id, steam_id, confirm]
+      additionalProperties: false
+      properties:
+        migration_source_id: {type: string, minLength: 1}
+        steam_id: {type: string, pattern: '^[0-9]{15,20}$'}
+        name: {type: string, maxLength: 80}
+        confirm: {type: boolean, const: true}
+    HostMigrationPlan:
+      type: object
+      required: [steam_id, source_uid, target_uid, strategy, can_execute, source_player_file, source_dps_exists, target_player_exists, target_dps_exists, warnings]
+      additionalProperties: false
+      properties:
+        steam_id: {type: string}
+        source_uid: {type: string, format: uuid}
+        target_uid: {type: string, format: uuid}
+        strategy: {type: string, enum: [direct, target_exists, already_migrated]}
+        can_execute: {type: boolean}
+        source_player_file: {type: string}
+        source_dps_exists: {type: boolean}
+        target_player_exists: {type: boolean}
+        target_dps_exists: {type: boolean}
+        warnings: {type: array, items: {type: string}}
+    HostMigrationPlanEnvelope:
+      type: object
+      required: [ok, data]
+      additionalProperties: false
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/HostMigrationPlan'}
+    HostMigrationResult:
+      type: object
+      required: [source, plan, verification]
+      additionalProperties: false
+      properties:
+        source: {$ref: '#/components/schemas/SaveSource'}
+        plan: {$ref: '#/components/schemas/HostMigrationPlan'}
+        verification:
+          type: object
+          additionalProperties: true
+    HostMigrationResultEnvelope:
+      type: object
+      required: [ok, data]
+      additionalProperties: false
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/HostMigrationResult'}
     SaveImportCandidate:
       type: object
       required: [id, relative_path, player_count, level_sha256, level_size, valid, warnings, errors]
@@ -2525,6 +3011,45 @@ components:
     JsonObject:
       type: object
       additionalProperties: true
+    PatchInfo:
+      type: object
+      required: [upstream, compatibility, patch, build]
+      properties:
+        upstream:
+          type: object
+          required: [repository, ref, commit]
+          properties:
+            repository: {type: string, const: uitok/palworld-panel}
+            ref: {type: string, const: v1.3.0}
+            commit: {type: string}
+        compatibility:
+          type: object
+          required: [target_version, verified]
+          properties:
+            target_version: {type: string, const: v1.3.0}
+            verified: {type: boolean, const: true}
+        patch:
+          type: object
+          required: [version, repository, features]
+          properties:
+            version: {type: string, const: 0.8.18}
+            repository: {type: string, const: ninhua/Palworld-Panel-Patches}
+            features:
+              type: array
+              items: {type: string}
+        build:
+          type: object
+          required: [version, commit, build_time]
+          properties:
+            version: {type: string}
+            commit: {type: string}
+            build_time: {type: string}
+    PatchInfoEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/PatchInfo'}
     SuccessEnvelope:
       type: object
       required: [ok, data]

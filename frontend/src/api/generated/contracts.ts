@@ -90,6 +90,83 @@ export interface components {
       "data": components["schemas"]["AuthStatus"];
       "ok": true;
     };
+    "BaseFeedBox": {
+      "container_id": string;
+      "container_name": string;
+      "container_type": string;
+      "slots": Array<components["schemas"]["SaveInventorySlot"]>;
+    };
+    "BaseFeedBoxSummary": {
+      "box_count": number;
+      "empty_box_count": number;
+      "item_types": number;
+      "occupied_slots": number;
+      "total_items": number;
+    };
+    "BaseFeedBoxesEnvelope": {
+      "data": components["schemas"]["BaseFeedBoxesResult"];
+      "ok": true;
+    };
+    "BaseFeedBoxesResult": {
+      "base": components["schemas"]["BaseWorkerBase"];
+      "feed_boxes": Array<components["schemas"]["BaseFeedBox"]>;
+      "items": Array<components["schemas"]["BaseFeedItemSummary"]>;
+      "source_id": string;
+      "status": components["schemas"]["SaveIndexStatus"];
+      "summary": components["schemas"]["BaseFeedBoxSummary"];
+    };
+    "BaseFeedItemSummary": {
+      "box_count": number;
+      "count": number;
+      "item_icon": string;
+      "item_id": string;
+      "item_name": string;
+    };
+    "BaseWorkerBase": {
+      "custom_name": string;
+      "guild_id": string;
+      "guild_name": string;
+      "has_custom_name": boolean;
+      "id": string;
+      "name": string;
+      "raw_name": string;
+      "x": number;
+      "y": number;
+      "z": number;
+    };
+    "BaseWorkerDetail": {
+      "character_id": string;
+      "gender": string;
+      "instance_id": string;
+      "level": number;
+      "location_type": string;
+      "name": string;
+      "nickname": string;
+      "on_expedition": boolean;
+      "passives": Array<string>;
+      "rank": number;
+      "raw_passives": Array<string>;
+      "species_name": string;
+      "status": string;
+    };
+    "BaseWorkerSummary": {
+      "average_level": number;
+      "max_level": number;
+      "named_count": number;
+      "species_count": number;
+      "total": number;
+    };
+    "BaseWorkersEnvelope": {
+      "data": components["schemas"]["BaseWorkersResult"];
+      "ok": true;
+    };
+    "BaseWorkersResult": {
+      "base": components["schemas"]["BaseWorkerBase"];
+      "source_id": string;
+      "status": components["schemas"]["SaveIndexStatus"];
+      "summary": components["schemas"]["BaseWorkerSummary"];
+      "workers": Array<components["schemas"]["BaseWorkerDetail"]>;
+    };
     "BreedingStatus": {
       "available": boolean;
       "checked_at"?: string;
@@ -180,6 +257,57 @@ export interface components {
         "message": string;
       };
       "ok": false;
+    };
+    "Guild": {
+      "base_ids": Array<string>;
+      "id": string;
+      "members": Array<components["schemas"]["GuildMemberSummary"]>;
+      "name": string;
+      "online_member_count": number;
+      "owner_player_uid": string;
+    };
+    "GuildBaseDetail": {
+      "custom_name": string;
+      "has_custom_name": boolean;
+      "id": string;
+      "name": string;
+      "raw_name": string;
+      "status": string;
+      "structures_count": number;
+      "workers_count": number;
+      "x": number;
+      "y": number;
+      "z": number;
+    };
+    "GuildDetailEnvelope": {
+      "data": components["schemas"]["GuildDetailResult"];
+      "ok": true;
+    };
+    "GuildDetailResult": {
+      "bases": Array<components["schemas"]["GuildBaseDetail"]>;
+      "guild": components["schemas"]["Guild"];
+      "members": Array<components["schemas"]["GuildMemberDetail"]>;
+      "source_id": string;
+      "status": components["schemas"]["SaveIndexStatus"];
+    };
+    "GuildMemberDetail": {
+      "annotation_updated_at"?: string;
+      "has_annotation": boolean;
+      "id": string;
+      "is_online": boolean;
+      "is_owner": boolean;
+      "last_online_time": string;
+      "level": number;
+      "nickname": string;
+      "note": string;
+      "player_uid": string;
+      "steam_id": string;
+      "tags": Array<string>;
+    };
+    "GuildMemberSummary": {
+      "last_online_time"?: string;
+      "nickname": string;
+      "player_uid": string;
     };
     "ImportCandidate": {
       "action": "new" | "update" | "unknown";
@@ -775,10 +903,37 @@ export interface components {
       "current_password": string;
       "new_password": string;
     };
+    "PatchInfo": {
+      "build": {
+        "build_time": string;
+        "commit": string;
+        "version": string;
+      };
+      "compatibility": {
+        "target_version": "v1.2.2";
+        "verified": false;
+      };
+      "patch": {
+        "features": Array<string>;
+        "repository": "ninhua/Palworld-Panel-Patches";
+        "version": "0.8.0-dev.1";
+      };
+      "upstream": {
+        "commit": string;
+        "ref": "dev";
+        "repository": "uitok/palworld-panel";
+      };
+    };
+    "PatchInfoEnvelope": {
+      "data": components["schemas"]["PatchInfo"];
+      "ok": true;
+    };
     "Player": {
+      "annotation_updated_at"?: string;
       "gm_user_id"?: string;
       "guild_id": string;
       "guild_name": string;
+      "has_annotation"?: boolean;
       "id": string;
       "inventory_summary"?: Record<string, unknown>;
       "ip"?: string;
@@ -789,11 +944,17 @@ export interface components {
       "location_y": number;
       "location_z": number;
       "nickname": string;
+      "note"?: string;
       "online_source": "none" | "rest" | "paldefender" | "rest+paldefender";
       "online_stale": boolean;
       "ping"?: number;
       "player_uid": string;
       "steam_id": string;
+      "tags"?: Array<string>;
+    };
+    "PlayerAnnotationUpdate": {
+      "note"?: string;
+      "tags"?: Array<string>;
     };
     "PlayerDataView": {
       "online_overlay": boolean;
@@ -910,6 +1071,8 @@ export interface components {
     };
     "SaveInventoryContainer": {
       "container_id": string;
+      "container_name": string;
+      "container_type": string;
       "owner_id": string;
       "owner_type": string;
       "slots": Array<components["schemas"]["SaveInventorySlot"]>;
@@ -917,6 +1080,7 @@ export interface components {
     "SaveInventorySlot": {
       "count": number;
       "durability": number | null;
+      "item_icon": string;
       "item_id": string;
       "item_name": string;
       "slot": number;

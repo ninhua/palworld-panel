@@ -699,20 +699,12 @@ func validateBaseURL(raw string) (string, error) {
 		return "", validationError("base_url must not contain a query or fragment")
 	}
 	scheme := strings.ToLower(parsed.Scheme)
-	if scheme != "https" && !(scheme == "http" && isLoopbackHost(parsed.Hostname())) {
-		return "", validationError("base_url must use HTTPS; HTTP is allowed only for loopback addresses")
+	if scheme != "http" && scheme != "https" {
+		return "", validationError("base_url must use HTTP or HTTPS")
 	}
 	parsed.Scheme = scheme
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
 	return strings.TrimRight(parsed.String(), "/"), nil
-}
-
-func isLoopbackHost(host string) bool {
-	if strings.EqualFold(strings.TrimSpace(host), "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 func (s *Service) completion(ctx context.Context, cfg runtimeConfig, messages []chatMessage) (string, error) {

@@ -200,7 +200,7 @@ export const Backups: React.FC = () => {
               WebDAV 自动归档
             </h3>
             <p className="mt-1 max-w-2xl text-xs font-medium leading-5 text-slate-500">
-              备份完成后可自动上传到 NAS 或云盘。公网地址必须使用 HTTPS，密码只保存在面板数据目录且不会由 API 回传。
+              备份完成后可自动上传到 NAS 或云盘。地址支持 HTTP 和 HTTPS；使用 HTTP 时凭据与备份内容不会被加密，密码只保存在面板数据目录且不会由 API 回传。
             </p>
           </div>
           <Link to="/tasks?tab=schedules" className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-bold text-sky-700 hover:bg-sky-100">
@@ -216,7 +216,7 @@ export const Backups: React.FC = () => {
               type="url"
               value={webDAVConfig.base_url}
               onChange={(event) => setWebDAVConfig((current) => ({ ...current, base_url: event.target.value }))}
-              placeholder="https://dav.example.com/remote.php/dav/files/user"
+              placeholder="http://nas.local/dav 或 https://dav.example.com/dav"
               className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-sky-500"
             />
           </label>

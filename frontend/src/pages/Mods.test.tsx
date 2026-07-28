@@ -263,7 +263,7 @@ describe('Mods Workshop store', () => {
     expect(screen.queryByRole('button', { name: '配置 Steam 登录' })).not.toBeInTheDocument();
   });
 
-  it('keeps GitHub and HTTPS imports available while blocking Workshop imports behind Steam login', async () => {
+  it('keeps GitHub and HTTP(S) imports available while blocking Workshop imports behind Steam login', async () => {
     mocks.modsApi.workshopAuthStatus.mockResolvedValue({
       supported: true, steamcmd_installed: true, credentials_secure: true, login_in_progress: false,
       logged_in: false, verification_required: true, password_configured: false, steam_guard_required: false,

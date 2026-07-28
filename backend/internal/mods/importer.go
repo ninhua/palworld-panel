@@ -159,8 +159,8 @@ func (m Manager) InspectSource(ctx context.Context, source string) (ImportInspec
 	}
 
 	parsed, parseErr := url.Parse(source)
-	if parseErr != nil || !strings.EqualFold(parsed.Scheme, "https") {
-		return ImportInspection{}, ImportFailure{Code: "invalid_source", Err: errors.New("source must be a Workshop ID/URL, public GitHub release, or public HTTPS ZIP")}
+	if parseErr != nil || (!strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https")) {
+		return ImportInspection{}, ImportFailure{Code: "invalid_source", Err: errors.New("source must be a Workshop ID/URL, public GitHub release, or public HTTP(S) ZIP")}
 	}
 	if parsed.User != nil {
 		return ImportInspection{}, ImportFailure{Code: "invalid_source", Err: errors.New("URLs containing credentials are not allowed")}
@@ -790,7 +790,7 @@ func workshopIDFromSource(source string) (string, bool) {
 		return source, true
 	}
 	parsed, err := url.Parse(source)
-	if err != nil || parsed.User != nil || !strings.EqualFold(parsed.Scheme, "https") ||
+	if err != nil || parsed.User != nil || (!strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https")) ||
 		(!strings.EqualFold(parsed.Hostname(), "steamcommunity.com") && !strings.EqualFold(parsed.Hostname(), "www.steamcommunity.com")) ||
 		!strings.EqualFold(strings.TrimSuffix(parsed.Path, "/"), "/sharedfiles/filedetails") {
 		return "", false

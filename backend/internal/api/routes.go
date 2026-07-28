@@ -13,6 +13,7 @@ import (
 func (s Server) registerRoutes(router *gin.Engine) {
 	router.GET("/api/health", s.health)
 	router.GET("/api/ready", s.ready)
+	router.GET("/api/patch/info", s.patchInfo)
 	authPublic := router.Group("/api/auth")
 	authPublic.Use(SameOriginWrite())
 	authPublic.GET("/status", s.authStatus)
@@ -46,12 +47,13 @@ func (s Server) registerRoutes(router *gin.Engine) {
 	integration.POST("/community-servers", s.astrBotCommunityServers)
 
 	api := router.Group("/api")
-	api.Use(Auth(s.cfg, s.auth), AuditMiddleware(s.store))
+	api.Use(Auth(s.cfg, s.auth), DetailedAuditMiddleware(s.store))
 	s.registerSystemRoutes(api)
 	s.registerServerRoutes(api)
 	s.registerContentRoutes(api)
 	s.registerSecurityRoutes(api)
 	s.registerWorldRoutes(api)
+	api.GET("/catalog", s.apiCatalog(router))
 	s.registerFrontendRoutes(router)
 }
 
@@ -64,6 +66,9 @@ func (s Server) registerSystemRoutes(api *gin.RouterGroup) {
 	api.DELETE("/auth/api-keys/:id", Require(PermSecurityWrite), s.revokeAPIKey)
 	api.GET("/jobs", s.listJobs)
 	api.GET("/jobs/:id", s.getJob)
+	api.GET("/patch/update/status", s.patchUpdateStatus)
+	api.POST("/patch/update/check", Require(PermServerControl), s.patchUpdateCheck)
+	api.POST("/patch/update", Require(PermServerControl), s.patchUpdate)
 	api.GET("/audit-logs", Require(PermAuditRead), s.listAuditLogs)
 	api.GET("/system/debug", s.debugLoggingStatus)
 	api.PUT("/system/debug", Require(PermConfigWrite), s.putDebugLogging)
@@ -214,6 +219,10 @@ func (s Server) registerSecurityRoutes(api *gin.RouterGroup) {
 	api.GET("/security/paldefender/gm/pal-templates/:name", s.palDefenderGMGetTemplate)
 	api.PUT("/security/paldefender/gm/pal-templates/:name", Require(PermSecurityWrite), s.palDefenderGMPutTemplate)
 	api.DELETE("/security/paldefender/gm/pal-templates/:name", Require(PermSecurityWrite), s.palDefenderGMDeleteTemplate)
+	api.GET("/security/paldefender/starter-gift", s.starterGiftConfig)
+	api.PUT("/security/paldefender/starter-gift", Require(PermSecurityWrite), s.putStarterGiftConfig)
+	api.POST("/security/paldefender/starter-gift/grants/:id/retry", Require(PermSecurityWrite), s.retryStarterGift)
+	api.DELETE("/security/paldefender/starter-gift/grants/:id", Require(PermSecurityWrite), s.forgetStarterGift)
 	api.GET("/security/paldefender/access", Require(PermSecurityWrite), s.palDefenderAccessSettings)
 	api.PUT("/security/paldefender/access", Require(PermSecurityWrite), s.palDefenderPutAccessSettings)
 	api.GET("/security/paldefender/whitelist", Require(PermSecurityWrite), s.palDefenderWhitelist)
@@ -224,7 +233,7 @@ func (s Server) registerSecurityRoutes(api *gin.RouterGroup) {
 
 func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
 	api.GET("/save-sources", s.listSaveSources)
-	api.POST("/save-sources/import/inspect", Require(PermServerControl), s.inspectSaveSourceImport)
+	api.POST("/save-sources/import/inspect", Require(PermServerControl), s.inspectSaveSourceImportDispatch)
 	api.POST("/save-sources/import/inspect/:id/select", Require(PermServerControl), s.selectSaveSourceImportCandidate)
 	api.POST("/save-sources/import", Require(PermServerControl), s.importSaveSource)
 	api.POST("/save-sources/:id/activate", Require(PermServerControl), s.activateSaveSource)
@@ -238,7 +247,12 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
 	api.GET("/guilds/:id", s.getSaveGuild)
 	api.GET("/bases", s.listSaveBases)
 	api.GET("/bases/:id", s.getSaveBase)
+	api.PUT("/bases/:id/name", Require(PermServerControl), s.putBaseCustomName)
+	api.DELETE("/bases/:id/name", Require(PermServerControl), s.deleteBaseCustomName)
 	api.GET("/bases/:id/storage", s.getSaveBaseStorage)
+	api.GET("/bases/:id/workers", s.getSaveBaseWorkers)
+	api.GET("/bases/:id/feed-boxes", s.getSaveBaseFeedBoxes)
+	api.GET("/inventory", s.listGlobalInventory)
 	api.GET("/pals", s.listSavePals)
 	api.GET("/pals/:id", s.getSavePal)
 	api.GET("/map/entities", s.listMapEntities)
@@ -265,6 +279,8 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
 	api.POST("/players/:id/ban", Require(PermPlayersWrite), s.banPlayer)
 	api.POST("/players/:id/unban", Require(PermPlayersWrite), s.unbanPlayer)
 	api.GET("/players/:id/inventory", s.getSavePlayerInventory)
+	api.PUT("/players/:id/annotation", Require(PermPlayersWrite), s.putPlayerAnnotation)
+	api.DELETE("/players/:id/annotation", Require(PermPlayersWrite), s.deletePlayerAnnotation)
 	api.GET("/players/:id", s.getSavePlayer)
 }
 

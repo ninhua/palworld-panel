@@ -30,6 +30,30 @@ export interface SaveImportInspection {
   expires_at: string;
 }
 
+export interface HostMigrationPlan {
+  steam_id: string;
+  source_uid: string;
+  target_uid: string;
+  strategy: 'direct' | 'target_exists' | 'already_migrated' | string;
+  can_execute: boolean;
+  source_player_file: string;
+  source_dps_exists: boolean;
+  target_player_exists: boolean;
+  target_dps_exists: boolean;
+  warnings: string[];
+}
+
+export interface HostMigrationResult {
+  source: SaveSource;
+  plan: HostMigrationPlan;
+  verification: Record<string, unknown>;
+}
+
+const mapHostMigrationPlan = (raw: unknown): HostMigrationPlan => {
+  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return { steam_id: String(data.steam_id || ''), source_uid: String(data.source_uid || ''), target_uid: String(data.target_uid || ''), strategy: String(data.strategy || ''), can_execute: Boolean(data.can_execute), source_player_file: String(data.source_player_file || ''), source_dps_exists: Boolean(data.source_dps_exists), target_player_exists: Boolean(data.target_player_exists), target_dps_exists: Boolean(data.target_dps_exists), warnings: Array.isArray(data.warnings) ? data.warnings.map(String) : [] };
+};
+
 const mapSource = (raw: unknown): SaveSource => {
   const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   return {
@@ -125,6 +149,22 @@ export const saveSourcesApi = {
       mapSource({}),
       { fallbackOnError: false, map: mapSource },
     ),
+  planHostMigration: (sourceID: string, steamID: string) => handleRequest<unknown, HostMigrationPlan>(
+    () => apiClient.post('/save-sources/import/inspect', { migration_source_id: sourceID, steam_id: steamID }, { timeout: SAVE_INDEX_OPERATION_TIMEOUT_MS }),
+    mapHostMigrationPlan({}),
+    { fallbackOnError: false, map: mapHostMigrationPlan },
+  ),
+  executeHostMigration: (sourceID: string, steamID: string, name: string) => handleRequest<unknown, HostMigrationResult>(
+    () => apiClient.post('/save-sources/import', { migration_source_id: sourceID, steam_id: steamID, name, confirm: true }, { timeout: SAVE_ARCHIVE_IMPORT_TIMEOUT_MS }),
+    { source: mapSource({}), plan: mapHostMigrationPlan({}), verification: {} },
+    {
+      fallbackOnError: false,
+      map: (raw) => {
+        const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+        return { source: mapSource(data.source), plan: mapHostMigrationPlan(data.plan), verification: data.verification && typeof data.verification === 'object' ? data.verification as Record<string, unknown> : {} };
+      },
+    },
+  ),
   activate: (id: string) => handleRequest(
     () => apiClient.post(`/save-sources/${encodeURIComponent(id)}/activate`, undefined, { timeout: SAVE_INDEX_OPERATION_TIMEOUT_MS }),
     {},

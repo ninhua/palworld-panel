@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -95,8 +94,10 @@ func (c *Client) post(ctx context.Context, path string, payload any) (json.RawMe
 	if err != nil || endpoint.Hostname() == "" {
 		return nil, fmt.Errorf("AstrBot plugin URL is invalid")
 	}
-	if endpoint.Scheme != "https" && !isLoopbackHost(endpoint.Hostname()) {
-		return nil, fmt.Errorf("AstrBot plugin URL must use HTTPS outside loopback")
+	switch strings.ToLower(endpoint.Scheme) {
+	case "http", "https":
+	default:
+		return nil, fmt.Errorf("AstrBot plugin URL must use HTTP or HTTPS")
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -128,14 +129,6 @@ func (c *Client) post(ctx context.Context, path string, payload any) (json.RawMe
 		return nil, fmt.Errorf("AstrBot plugin returned %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	return raw, nil
-}
-
-func isLoopbackHost(host string) bool {
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 func Verify(secret, method, path, timestamp, nonce, supplied string, body []byte) bool {

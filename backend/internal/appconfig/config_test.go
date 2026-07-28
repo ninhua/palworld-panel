@@ -195,3 +195,25 @@ func TestLoadAcceptsCommunityServerSOCKS5HProxy(t *testing.T) {
 		t.Fatalf("proxy URL = %q", cfg.CommunityServersProxyURL)
 	}
 }
+
+func TestValidateHTTPBaseURLAllowsPublicHTTPAndHTTPS(t *testing.T) {
+	for _, raw := range []string{
+		"http://example.com/api",
+		"http://192.168.1.20:8080/api",
+		"https://example.com/api",
+	} {
+		if err := validateHTTPBaseURL("TEST_URL", raw); err != nil {
+			t.Fatalf("expected %q to be accepted: %v", raw, err)
+		}
+	}
+	for _, raw := range []string{
+		"ftp://example.com/file",
+		"https://user:pass@example.com/api",
+		"https://example.com/api?token=secret",
+		"/relative",
+	} {
+		if err := validateHTTPBaseURL("TEST_URL", raw); err == nil {
+			t.Fatalf("expected %q to be rejected", raw)
+		}
+	}
+}

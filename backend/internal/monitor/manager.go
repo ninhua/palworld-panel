@@ -186,6 +186,9 @@ func (m Manager) fillRESTStats(ctx context.Context, sample *db.MonitorSample, ru
 	data := mapFromAny(resp.Body)
 	sample.CurrentPlayers = int(numberValue(data, "current_players", "currentPlayerNum", "currentplayernum", "players"))
 	sample.MaxPlayers = int(numberValue(data, "max_players", "maxPlayerNum", "maxplayernum"))
+	if err := m.observePlayerPresence(ctx, client); err != nil {
+		m.debugf("player presence observation failed: %q", err.Error())
+	}
 }
 
 func (m Manager) palworldREST(settings palconfig.Settings, runtimeMode string) palrest.Client {

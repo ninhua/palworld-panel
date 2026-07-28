@@ -21,13 +21,15 @@ type catalog struct {
 }
 
 type normalizedCatalog struct {
-	pals        map[string]string
-	items       map[string]string
-	passives    map[string]string
-	itemList    []ItemEntry
-	palList     []PalEntry
-	passiveList []PassiveEntry
-	techList    []TechnologyEntry
+	pals         map[string]string
+	items        map[string]string
+	itemIcons    map[string]string
+	passives     map[string]string
+	technologies map[string]string
+	itemList     []ItemEntry
+	palList      []PalEntry
+	passiveList  []PassiveEntry
+	techList     []TechnologyEntry
 }
 
 type ItemEntry struct {
@@ -91,6 +93,10 @@ func loadCatalog() normalizedCatalog {
 		panic("decode embedded Palworld technology catalog: " + err.Error())
 	}
 	techList = normalizeTechnologyEntries(techList)
+	technologyNames := make(map[string]string, len(techList))
+	for _, entry := range techList {
+		technologyNames[normalize(entry.ID)] = entry.Name
+	}
 	sort.Slice(itemList, func(i, j int) bool {
 		return strings.ToLower(itemList[i].ID) < strings.ToLower(itemList[j].ID)
 	})
@@ -101,13 +107,15 @@ func loadCatalog() normalizedCatalog {
 		return strings.ToLower(passiveList[i].ID) < strings.ToLower(passiveList[j].ID)
 	})
 	return normalizedCatalog{
-		pals:        normalizeKeys(source.Pals),
-		items:       normalizeKeys(source.Items),
-		passives:    normalizeKeys(source.Passives),
-		itemList:    itemList,
-		palList:     palList,
-		passiveList: passiveList,
-		techList:    techList,
+		pals:         normalizeKeys(source.Pals),
+		items:        normalizeKeys(source.Items),
+		itemIcons:    normalizeKeys(source.ItemIcons),
+		passives:     normalizeKeys(source.Passives),
+		technologies: technologyNames,
+		itemList:     itemList,
+		palList:      palList,
+		passiveList:  passiveList,
+		techList:     techList,
 	}
 }
 
@@ -168,6 +176,43 @@ func PalName(characterID string) string {
 
 func ItemName(itemID string) string {
 	return lookup(names.items, itemID)
+}
+
+func ItemIcon(itemID string) string {
+	return strings.TrimSpace(names.itemIcons[normalize(itemID)])
+}
+
+func ContainerName(objectID string) string {
+	trimmed := strings.TrimSpace(objectID)
+	if trimmed == "" {
+		return ""
+	}
+	if translated := strings.TrimSpace(names.technologies[normalize(trimmed)]); translated != "" {
+		return translated
+	}
+	switch normalize(trimmed) {
+	case "itemchest":
+		return "木箱"
+	case "itemchest_02":
+		return "金属箱"
+	case "itemchest_03":
+		return "精炼金属箱"
+	case "itemchest_04":
+		return "高等文明箱子"
+	case "palfoodbox":
+		return "饲料箱"
+	case "coolerbox":
+		return "保冷箱"
+	case "coolerpalfoodbox":
+		return "低温保鲜饲料箱"
+	case "refrigerator":
+		return "冰箱"
+	}
+	localized := MapObjectName(trimmed)
+	if localized != trimmed {
+		return localized
+	}
+	return trimmed
 }
 
 func SearchItems(query string, limit int) []ItemEntry {

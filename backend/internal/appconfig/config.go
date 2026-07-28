@@ -605,21 +605,12 @@ func validateHTTPBaseURL(name, raw string) error {
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return fmt.Errorf("%s must be an absolute HTTP(S) URL without credentials, query, or fragment", name)
 	}
-	if parsed.Scheme == "https" {
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https":
 		return nil
+	default:
+		return fmt.Errorf("%s must use HTTP or HTTPS", name)
 	}
-	if parsed.Scheme != "http" {
-		return fmt.Errorf("%s must use HTTPS, except for loopback HTTP endpoints", name)
-	}
-	host := parsed.Hostname()
-	if strings.EqualFold(host, "localhost") {
-		return nil
-	}
-	ip := net.ParseIP(host)
-	if ip == nil || !ip.IsLoopback() {
-		return fmt.Errorf("%s must use HTTPS, except for loopback HTTP endpoints", name)
-	}
-	return nil
 }
 
 func validateProxyURL(name, raw string) error {

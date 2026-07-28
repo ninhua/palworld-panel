@@ -1,7 +1,7 @@
 import time
 import unittest
 
-from astrbot_plugin_palpanel.security import body_bytes, signature, verify_headers
+from astrbot_plugin_palpanel.security import body_bytes, signature, validate_http_service_url, verify_headers
 
 
 class SecurityTests(unittest.TestCase):
@@ -16,6 +16,13 @@ class SecurityTests(unittest.TestCase):
         }
         self.assertEqual(verify_headers("secret", "POST", "/v1/catalog/sync", headers, body), (True, nonce))
         self.assertFalse(verify_headers("secret", "POST", "/v1/catalog/sync", headers, body + b"x")[0])
+
+    def test_http_service_url_accepts_http_and_https(self):
+        self.assertEqual(validate_http_service_url("http://192.168.1.20:8080/", "panel_url"), "http://192.168.1.20:8080")
+        self.assertEqual(validate_http_service_url("https://panel.example.com/", "panel_url"), "https://panel.example.com")
+        for value in ("ftp://panel.example.com", "/relative", ""):
+            with self.assertRaisesRegex(RuntimeError, "panel_url must use HTTP or HTTPS"):
+                validate_http_service_url(value, "panel_url")
 
     def test_signature_rejects_expired_timestamp(self):
         timestamp = str(int(time.time()) - 120)

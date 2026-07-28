@@ -10,6 +10,7 @@ import {
   FolderOpen,
   Gauge,
   HardDriveDownload,
+  PackageCheck,
   Play,
   RefreshCw,
   Save,
@@ -75,6 +76,7 @@ const recoverableSetupJobTypes = new Set([
   'update',
   'smart_update',
   'version_check',
+  'patch_hot_update',
 ]);
 
 const isRecoverableSetupJob = (job: Job) => recoverableSetupJobTypes.has(job.type) && !isJobDone(job);
@@ -634,6 +636,7 @@ export const Setup: React.FC = () => {
         }}
         onCheckVersion={() => runJob(serverApi.checkVersion)}
         onUpdateIfNeeded={() => runJob(serverApi.updateIfNeeded)}
+        onPatchUpdate={() => runJob(tasksApi.createPatchUpdateJob)}
       />
 
       <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-[0_2px_12px_-3px_rgba(15,23,42,0.02)]">
@@ -1020,6 +1023,7 @@ const AdvancedSetupPanel: React.FC<{
   onToggleMirrorScript: () => void;
   onCheckVersion: () => void;
   onUpdateIfNeeded: () => void;
+  onPatchUpdate: () => void;
 }> = ({
   open,
   onToggle,
@@ -1048,6 +1052,7 @@ const AdvancedSetupPanel: React.FC<{
   onToggleMirrorScript,
   onCheckVersion,
   onUpdateIfNeeded,
+  onPatchUpdate,
 }) => {
   const canInstallDocker = Boolean(!dockerReady && !isJobRunning && dockerPlan?.supported && dockerPlan.can_auto_install);
   const canConfigureMirrors = Boolean(
@@ -1252,6 +1257,14 @@ const AdvancedSetupPanel: React.FC<{
               </button>
               <button type="button" onClick={onUpdateIfNeeded} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-700 hover:bg-sky-100">
                 检查后更新
+              </button>
+              <button
+                type="button"
+                onClick={onPatchUpdate}
+                disabled={isJobRunning}
+                className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-2 xl:col-span-1 2xl:col-span-2"
+              >
+                <PackageCheck size={13} className="mr-1 inline" />补丁热更新
               </button>
             </div>
 

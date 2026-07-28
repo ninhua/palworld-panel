@@ -1,21 +1,41 @@
 package astrbotclient
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 	"time"
+
+	"palpanel/internal/appconfig"
 )
 
-func TestLoopbackHostDetection(t *testing.T) {
-	for _, host := range []string{"localhost", "127.0.0.1", "::1"} {
-		if !isLoopbackHost(host) {
-			t.Fatalf("expected %q to be loopback", host)
-		}
+func TestClientAllowsHTTPAstrBotEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client := New(appconfig.Config{
+		AstrBotPluginURL:    server.URL,
+		AstrBotPanelID:      "panel",
+		AstrBotSharedSecret: "secret",
+	})
+	if _, err := client.post(context.Background(), "/v1/test", map[string]any{"ok": true}); err != nil {
+		t.Fatalf("HTTP AstrBot endpoint should be accepted: %v", err)
 	}
-	for _, host := range []string{"192.168.1.10", "example.com", ""} {
-		if isLoopbackHost(host) {
-			t.Fatalf("expected %q not to be loopback", host)
-		}
+}
+
+func TestClientRejectsUnsupportedAstrBotScheme(t *testing.T) {
+	client := New(appconfig.Config{
+		AstrBotPluginURL:    "ftp://example.com/plugin",
+		AstrBotPanelID:      "panel",
+		AstrBotSharedSecret: "secret",
+	})
+	if _, err := client.post(context.Background(), "/v1/test", map[string]any{}); err == nil {
+		t.Fatal("expected unsupported AstrBot URL scheme to be rejected")
 	}
 }
 
