@@ -127,6 +127,11 @@ func normalizePatchUpdateRequest(request PatchUpdateRequest) (PatchUpdateRequest
 	if !patchRepositoryPattern.MatchString(request.Repository) {
 		return request, fmt.Errorf("invalid patch repository: %s", request.Repository)
 	}
+	repositoryParts := strings.Split(request.Repository, "/")
+	if repositoryParts[0] == "." || repositoryParts[0] == ".." ||
+		repositoryParts[1] == "." || repositoryParts[1] == ".." {
+		return request, fmt.Errorf("invalid patch repository: %s", request.Repository)
+	}
 	return request, nil
 }
 
