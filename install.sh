@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-repo="${PALPANEL_REPO:-uitok/palworld-panel}"
+repo="${PALPANEL_REPO:-ninhua/palworld-panel}"
 version="${PALPANEL_VERSION:-latest}"
 listen_addr="${PALPANEL_LISTEN_ADDR:-127.0.0.1:8080}"
 listen_explicit=0
@@ -33,7 +33,7 @@ Options:
   --docker             grant the service account Docker socket access
   --no-docker          do not grant Docker socket access
   --proxy URL          proxy for GitHub downloads (for example socks5h://127.0.0.1:10808)
-  --repo OWNER/REPO    GitHub repository (default: uitok/palworld-panel)
+  --repo OWNER/REPO    GitHub repository (default: ninhua/palworld-panel)
   --migrate-container NAME
                        migrate an older containerized PalPanel in place
   -h, --help           show this help

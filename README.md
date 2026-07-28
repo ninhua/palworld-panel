@@ -8,8 +8,10 @@ PalPanel 是给《幻兽帕鲁》专用服务器用的自托管面板。后端�
 
 PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更新、备份、Mod、存档索引和配种查询集中在一个面板里，同时支持多存档、简体中文/English 切换、PalDefender GM、WebDAV 归档和 AstrBot QQ 插件。
 
+本仓库是基于 [`uitok/palworld-panel`](https://github.com/uitok/palworld-panel) 维护的自定义源码 Fork。实际发布源码位于 `custom-stable`，`upstream-stable` 只用于同步官方稳定版本。面板完整版本采用 `v<上游版本>-custom.<自定义版本>` 格式。
+
 <p align="center">
-  <a href="https://github.com/uitok/palworld-panel/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/uitok/palworld-panel?display_name=tag&sort=semver"></a>
+  <a href="https://github.com/ninhua/palworld-panel/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/ninhua/palworld-panel?display_name=tag&sort=semver"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0--or--later-356a9a"></a>
   <img alt="Windows amd64" src="https://img.shields.io/badge/Windows-amd64-607d9b">
   <img alt="Linux amd64" src="https://img.shields.io/badge/Linux-amd64-b06f52">
@@ -48,6 +50,7 @@ PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更�
 - 通过后端缓存查询中国区或全球可发现社区服务器；国内网络可配置 HTTP/HTTPS/SOCKS5 代理或自建 API 镜像
 - 在“系统设置 → 网络与代理”中分别配置公共下载/服务器更新代理和社区服查询代理；前者覆盖 SteamCMD、Workshop、GitHub/HTTP(S) MOD、PalDefender 与 UE4SS，代理密码不会回显，保存后从下一次任务生效
 - 使用保存世界、广播倒计时、正常退出和受控兜底组成的安全关服流程
+- 在 Linux amd64 上从本仓库 Release 检查并安装完整面板更新；更新包经过 `SHA256SUMS` 校验，并保留旧二进制用于启动失败回滚
 
 ### 存档与地图
 
@@ -128,7 +131,7 @@ PalCalc 通过 .NET 9 侧车运行。侧车不可用时只会关闭配种功能�
 
 ### Windows amd64
 
-1. 从 [Releases](https://github.com/uitok/palworld-panel/releases) 下载 Windows ZIP 和 `SHA256SUMS`。
+1. 从 [Releases](https://github.com/ninhua/palworld-panel/releases) 下载 Windows ZIP 和 `SHA256SUMS`。
 2. 校验后解压到固定的可写目录，例如 `D:\PalPanel`。
 3. 运行 `PalPanel.exe`，在浏览器中注册第一个管理员。
 4. 在开服向导中安装服务端，或接管已有的 `PalServer.exe` 目录。
@@ -165,19 +168,19 @@ New-NetFirewallRule `
 安装最新正式版。默认使用 `https://ghfast.top/` 加速获取 GitHub 上的安装脚本：
 
 ```bash
-curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/uitok/palworld-panel/main/install.sh | sudo bash
+curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/ninhua/palworld-panel/custom-stable/install.sh | sudo bash
 ```
 
 如果加速地址不可用，可改用 GitHub 官方直链：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/uitok/palworld-panel/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/ninhua/palworld-panel/custom-stable/install.sh | sudo bash
 ```
 
 默认只监听 `127.0.0.1:8080`。需要从局域网访问时，可以在安装时指定地址：
 
 ```bash
-curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/uitok/palworld-panel/main/install.sh | sudo bash -s -- --listen 0.0.0.0:8080
+curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/ninhua/palworld-panel/custom-stable/install.sh | sudo bash -s -- --listen 0.0.0.0:8080
 ```
 
 常用命令：
@@ -235,7 +238,7 @@ docker logs --tail 100 palworld-wine-server
 需要 Go `1.25.12`、Node.js 22、npm 和 .NET 9 SDK。Windows 构建 `sav-cli` 还需要 MinGW-w64。
 
 ```bash
-git clone --recurse-submodules https://github.com/uitok/palworld-panel.git
+git clone --recurse-submodules --branch custom-stable https://github.com/ninhua/palworld-panel.git
 cd palworld-panel
 ```
 
@@ -262,7 +265,18 @@ docs/                       OpenAPI、发布说明和截图
 python -m unittest discover -s astrbot_plugin_palpanel/tests
 ```
 
-接口定义在 [`docs/openapi.yaml`](docs/openapi.yaml)。`dev` 分支每次推送后会生成 Windows/Linux 开发包，正式版本以 [Releases](https://github.com/uitok/palworld-panel/releases) 为准。
+接口定义在 [`docs/openapi.yaml`](docs/openapi.yaml)。CI 通过 GitHub Actions 验证 Linux 和 Windows 构建，正式版本以本仓库的 [Releases](https://github.com/ninhua/palworld-panel/releases) 为准。
+
+## 面板更新
+
+Linux amd64 可以直接在面板任务队列或设置页执行“更新面板”。面板会：
+
+1. 检查 [`ninhua/palworld-panel`](https://github.com/ninhua/palworld-panel/releases) 最新的非草稿、非预发布 Release。
+2. 下载 `palpanel_<版本>_linux_amd64.tar.gz` 和 `SHA256SUMS`。
+3. 校验归档与候选二进制，备份当前程序后原子替换并重启。
+4. 启动校验失败时恢复上一份二进制。
+
+这是完整 Release 更新，不再使用补丁热更新、补丁清单或 `Palworld-Panel-Patches` 补丁链。Windows 版本目前通过下载新 Release ZIP 后运行升级程序更新。
 
 ## 安全与限制
 

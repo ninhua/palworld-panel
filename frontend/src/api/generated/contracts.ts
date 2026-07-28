@@ -989,7 +989,7 @@ export interface components {
       };
       "patch": {
         "features": Array<string>;
-        "repository": "ninhua/Palworld-Panel-Patches";
+        "repository": "ninhua/palworld-panel";
         "version": "0.8.18";
       };
       "upstream": {

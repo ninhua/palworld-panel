@@ -69,7 +69,7 @@ The GitHub bootstrap installer also supports migration from an older
 containerized PalPanel when its data directory is mounted on the host:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/uitok/palworld-panel/main/install.sh | \
+curl -fsSL https://raw.githubusercontent.com/ninhua/palworld-panel/custom-stable/install.sh | \
   sudo bash -s -- --migrate-container palpanel
 ```
 
