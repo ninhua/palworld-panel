@@ -629,3 +629,19 @@ func TestCancelNextLoginKeepsSeenAndClearsRearm(t *testing.T) {
 		t.Fatalf("decision=%#v", decisions)
 	}
 }
+
+func TestCoalescePlayerIdentitiesMergesOfflineAndOnlineAliases(t *testing.T) {
+	players := coalescePlayerIdentities([]playerpresence.OnlinePlayer{
+		{PlayerUID: "f23d556c-0000-0000-0000-000000000000", Nickname: "tiantian"},
+		{PlayerUID: "F23D556C000000000000000000000000", SteamID: "steam_76561199032061430", Nickname: "tiantian"},
+	})
+	if len(players) != 1 {
+		t.Fatalf("players = %#v, want one merged identity", players)
+	}
+	if players[0].SteamID != "steam_76561199032061430" {
+		t.Fatalf("SteamID = %q", players[0].SteamID)
+	}
+	if identity(players[0].PlayerUID) != "f23d556c000000000000000000000000" {
+		t.Fatalf("PlayerUID = %q", players[0].PlayerUID)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,6 +33,8 @@ const (
 var (
 	panelRepositoryPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 	panelReleasePattern    = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)-custom\.(\d+)\.(\d+)\.(\d+)(?:[-+][A-Za-z0-9.-]+)?$`)
+	panelGitHubAPIBaseURL  = "https://api.github.com"
+	panelGitHubWebBaseURL  = "https://github.com"
 )
 
 type PanelUpdateRequest struct {
@@ -263,10 +266,14 @@ func (m Manager) runPanelUpdate(ctx context.Context, jobID string, request Panel
 }
 
 func (m Manager) resolvePanelRelease(ctx context.Context, request PanelUpdateRequest) (panelReleaseSelection, error) {
-	endpoint := "https://api.github.com/repos/" + request.Repository + "/releases?per_page=100"
+	endpoint := strings.TrimRight(panelGitHubAPIBaseURL, "/") + "/repos/" + request.Repository + "/releases?per_page=100"
 	var releases []panelGitHubRelease
 	if err := m.getPanelJSON(ctx, endpoint, &releases); err != nil {
-		return panelReleaseSelection{}, err
+		fallback, fallbackErr := m.resolvePanelReleaseFromLatest(ctx, request)
+		if fallbackErr == nil {
+			return fallback, nil
+		}
+		return panelReleaseSelection{}, fmt.Errorf("%w; latest-release fallback failed: %v", err, fallbackErr)
 	}
 	var best panelReleaseSelection
 	for _, release := range releases {
@@ -294,6 +301,54 @@ func (m Manager) resolvePanelRelease(ctx context.Context, request PanelUpdateReq
 		return panelReleaseSelection{}, fmt.Errorf("no stable PalPanel release with linux-amd64 package found")
 	}
 	return best, nil
+}
+
+func (m Manager) resolvePanelReleaseFromLatest(ctx context.Context, request PanelUpdateRequest) (panelReleaseSelection, error) {
+	client := m.downloadClient
+	if client == nil {
+		client = &http.Client{Timeout: 2 * time.Minute}
+	}
+	endpoint := strings.TrimRight(panelGitHubWebBaseURL, "/") + "/" + request.Repository + "/releases/latest"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return panelReleaseSelection{}, err
+	}
+	setPanelRequestHeaders(req)
+	resp, err := client.Do(req)
+	if err != nil {
+		return panelReleaseSelection{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return panelReleaseSelection{}, fmt.Errorf("github latest release returned %s", resp.Status)
+	}
+	return panelReleaseFromLatestURL(request.Repository, resp.Request.URL)
+}
+
+func panelReleaseFromLatestURL(repository string, finalURL *url.URL) (panelReleaseSelection, error) {
+	if finalURL == nil {
+		return panelReleaseSelection{}, fmt.Errorf("github latest release did not return a final URL")
+	}
+	const marker = "/releases/tag/"
+	position := strings.LastIndex(finalURL.Path, marker)
+	if position < 0 {
+		return panelReleaseSelection{}, fmt.Errorf("github latest release did not redirect to a tag")
+	}
+	tag, err := url.PathUnescape(strings.TrimSpace(finalURL.Path[position+len(marker):]))
+	if err != nil || !panelReleasePattern.MatchString(tag) {
+		return panelReleaseSelection{}, fmt.Errorf("github latest release returned invalid tag %q", tag)
+	}
+	webBase := strings.TrimRight(panelGitHubWebBaseURL, "/")
+	downloadBase := webBase + "/" + repository + "/releases/download/" + url.PathEscape(tag) + "/"
+	archiveName := "palpanel_" + tag + "_linux_amd64.tar.gz"
+	return panelReleaseSelection{
+		Release: panelGitHubRelease{
+			TagName: tag,
+			HTMLURL: webBase + "/" + repository + "/releases/tag/" + url.PathEscape(tag),
+		},
+		Archive:   panelGitHubAsset{Name: archiveName, BrowserDownloadURL: downloadBase + archiveName},
+		Checksums: panelGitHubAsset{Name: "SHA256SUMS", BrowserDownloadURL: downloadBase + "SHA256SUMS"},
+	}, nil
 }
 
 func (m Manager) getPanelJSON(ctx context.Context, endpoint string, destination any) error {

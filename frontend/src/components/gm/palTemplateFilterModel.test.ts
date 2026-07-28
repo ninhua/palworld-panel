@@ -22,18 +22,31 @@ const template: PalTemplateInfo = {
 describe('palTemplateMatchesFilters', () => {
   it('supports every rich index dimension together', () => {
     expect(palTemplateMatchesFilters(template, {
-      index: 'pal-template-index.json',
-      category: '工作',
-      overallGrade: '常用毕业',
-      usageCategory: '手工作业＋采矿＋搬运',
-      classificationTag: '毕业:工作',
-      graduationUse: '工作',
-      status: 'current-graduation',
+      index: ['pal-template-index.json'],
+      category: ['工作'],
+      overallGrade: ['常用毕业'],
+      usageCategory: ['手工作业＋采矿＋搬运'],
+      classificationTag: ['毕业:工作'],
+      graduationUse: ['工作'],
+      status: ['current-graduation'],
     })).toBe(true);
   });
 
   it('rejects a mismatched dimension and supports unindexed status', () => {
-    expect(palTemplateMatchesFilters(template, { ...createEmptyPalTemplateFilters(), overallGrade: '普通' })).toBe(false);
-    expect(palTemplateMatchesFilters({ ...template, index_names: [] }, { ...createEmptyPalTemplateFilters(), status: 'unindexed' })).toBe(true);
+    expect(palTemplateMatchesFilters(template, { ...createEmptyPalTemplateFilters(), overallGrade: ['普通'] })).toBe(false);
+    expect(palTemplateMatchesFilters({ ...template, index_names: [] }, { ...createEmptyPalTemplateFilters(), status: ['unindexed'] })).toBe(true);
+  });
+
+  it('uses OR within one dimension and AND across dimensions', () => {
+    expect(palTemplateMatchesFilters(template, {
+      ...createEmptyPalTemplateFilters(),
+      usageCategory: ['播种', '手工作业＋采矿＋搬运'],
+      overallGrade: ['常用毕业'],
+    })).toBe(true);
+    expect(palTemplateMatchesFilters(template, {
+      ...createEmptyPalTemplateFilters(),
+      usageCategory: ['播种', '手工作业＋采矿＋搬运'],
+      overallGrade: ['普通'],
+    })).toBe(false);
   });
 });

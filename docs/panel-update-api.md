@@ -18,7 +18,7 @@ v<上游版本>-custom.<自定义版本>
 示例：
 
 ```text
-v1.3.0-custom.0.8.19
+v1.3.0-custom.0.8.20
 ```
 
 ## 鉴权与权限
@@ -71,17 +71,18 @@ curl -fsS \
   "ok": true,
   "data": {
     "current_version": "v1.3.0-custom.0.8.19",
-    "latest_version": "v1.3.0-custom.0.8.19",
-    "release_tag": "v1.3.0-custom.0.8.19",
-    "release_url": "https://github.com/ninhua/palworld-panel/releases/tag/v1.3.0-custom.0.8.19",
-    "update_available": false,
+    "latest_version": "v1.3.0-custom.0.8.20",
+    "release_tag": "v1.3.0-custom.0.8.20",
+    "release_url": "https://github.com/ninhua/palworld-panel/releases/tag/v1.3.0-custom.0.8.20",
+    "update_available": true,
     "checked_at": "2026-07-29T04:00:00Z",
-    "message": "当前面板已是最新版本 v1.3.0-custom.0.8.19"
+    "message": "发现面板新版本 v1.3.0-custom.0.8.20"
   }
 }
 ```
 
-该接口直接查询 GitHub Releases，只选择：
+该接口优先查询 GitHub Releases API；如果匿名 API 配额耗尽，会自动通过 GitHub `releases/latest`
+网页重定向解析最新版，不要求服务器配置 GitHub Token。查询结果只选择：
 
 - 非草稿 Release；
 - 非预发布 Release；
@@ -237,8 +238,8 @@ Linux 归档中必须且只能包含一个以 `/bin/palpanel` 结尾的普通文
 当前正式发布示例：
 
 ```text
-palpanel_v1.3.0-custom.0.8.19_linux_amd64.tar.gz
-palpanel_v1.3.0-custom.0.8.19_windows_amd64.zip
+palpanel_v1.3.0-custom.0.8.20_linux_amd64.tar.gz
+palpanel_v1.3.0-custom.0.8.20_windows_amd64.zip
 ```
 
 ## GitHub 访问配置

@@ -247,6 +247,7 @@ func LoadSnapshot(ctx context.Context, store *db.Store, scope playerpresence.Sco
 }
 
 func InspectPlayers(ctx context.Context, store *db.Store, scope playerpresence.Scope, players []playerpresence.OnlinePlayer) ([]PlayerDecision, error) {
+	players = coalescePlayerIdentities(players)
 	stateMu.Lock()
 	defer stateMu.Unlock()
 	state, err := loadState(ctx, store, scope)
@@ -465,6 +466,7 @@ func ApplyAction(ctx context.Context, store *db.Store, scope playerpresence.Scop
 }
 
 func ReconcilePlayerAliases(ctx context.Context, store *db.Store, scope playerpresence.Scope, players []playerpresence.OnlinePlayer) error {
+	players = coalescePlayerIdentities(players)
 	stateMu.Lock()
 	defer stateMu.Unlock()
 	state, err := loadState(ctx, store, scope)
@@ -1257,6 +1259,62 @@ func onlineAliasSet(players []playerpresence.OnlinePlayer) map[string]bool {
 
 func playerAliases(player playerpresence.OnlinePlayer) []string {
 	return uniqueStrings([]string{identity(player.SteamID), identity(player.PlayerUID)})
+}
+
+func coalescePlayerIdentities(players []playerpresence.OnlinePlayer) []playerpresence.OnlinePlayer {
+	result := make([]playerpresence.OnlinePlayer, 0, len(players))
+	for _, player := range players {
+		aliases := playerAliases(player)
+		if len(aliases) == 0 {
+			continue
+		}
+		match := -1
+		for index, existing := range result {
+			for _, alias := range playerAliases(existing) {
+				if containsString(aliases, alias) {
+					match = index
+					break
+				}
+			}
+			if match >= 0 {
+				break
+			}
+		}
+		if match < 0 {
+			result = append(result, player)
+			continue
+		}
+		existing := result[match]
+		existing.PlayerUID = firstNonEmpty(player.PlayerUID, existing.PlayerUID)
+		existing.SteamID = firstNonEmpty(player.SteamID, existing.SteamID)
+		existing.Nickname = firstNonEmpty(player.Nickname, existing.Nickname)
+		result[match] = existing
+	}
+	for merged := true; merged; {
+		merged = false
+		for left := 0; left < len(result) && !merged; left++ {
+			leftAliases := playerAliases(result[left])
+			for right := left + 1; right < len(result); right++ {
+				overlaps := false
+				for _, alias := range playerAliases(result[right]) {
+					if containsString(leftAliases, alias) {
+						overlaps = true
+						break
+					}
+				}
+				if !overlaps {
+					continue
+				}
+				result[left].PlayerUID = firstNonEmpty(result[right].PlayerUID, result[left].PlayerUID)
+				result[left].SteamID = firstNonEmpty(result[right].SteamID, result[left].SteamID)
+				result[left].Nickname = firstNonEmpty(result[right].Nickname, result[left].Nickname)
+				result = append(result[:right], result[right+1:]...)
+				merged = true
+				break
+			}
+		}
+	}
+	return result
 }
 
 func recordAliases(record playerpresence.Record) []string {
