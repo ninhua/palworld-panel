@@ -19,7 +19,7 @@ func TestDockerHelperNormalizationAndFormatting(t *testing.T) {
 	if got := normalizeDockerSource("unknown"); got != "auto" {
 		t.Fatalf("normalizeDockerSource(unknown) = %q", got)
 	}
-	if got := normalizeDockerMirror(" DockerProxy "); got != "dockerproxy" {
+	if got := normalizeDockerMirror(" DOCKERPROXY_NET "); got != "dockerproxy_net" {
 		t.Fatalf("normalizeDockerMirror() = %q", got)
 	}
 	if got := dockerProbeURL("apt", "https://example.test/"); got != "https://example.test/gpg" {
