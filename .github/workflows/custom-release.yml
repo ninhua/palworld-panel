@@ -8,13 +8,11 @@ on:
         required: true
         default: custom-stable
       upstream_version:
-        description: Upstream version, for example v1.3.0
-        required: true
-        default: v1.3.0
+        description: Optional upstream version override (auto-detected from source)
+        required: false
       custom_version:
-        description: Custom version, for example 0.8.18
-        required: true
-        default: 0.8.18
+        description: Optional custom version override (auto-detected from source)
+        required: false
       prerelease:
         description: Publish as a prerelease
         required: true
@@ -23,9 +21,6 @@ on:
 
 permissions:
   contents: read
-
-env:
-  RELEASE_TAG: ${{ inputs.upstream_version }}-custom.${{ inputs.custom_version }}
 
 jobs:
   validate:
@@ -40,13 +35,24 @@ jobs:
           fetch-depth: 0
           submodules: recursive
       - id: version
-        name: Validate release version
+        name: Detect and validate release version
         shell: bash
         run: |
-          [[ "${{ inputs.upstream_version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          [[ "${{ inputs.custom_version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-custom\.[A-Za-z0-9.-]+$ ]]
-          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          version_file="backend/internal/api/patch_info.go"
+          detected_upstream="$(sed -nE 's/^[[:space:]]*patchTargetVersion[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$version_file")"
+          detected_custom="$(sed -nE 's/^[[:space:]]*patchVersion[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$version_file")"
+          upstream_version="${{ inputs.upstream_version }}"
+          custom_version="${{ inputs.custom_version }}"
+          upstream_version="${upstream_version:-$detected_upstream}"
+          custom_version="${custom_version:-$detected_custom}"
+          [[ "$upstream_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$custom_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]
+          release_tag="${upstream_version}-custom.${custom_version}"
+          [[ "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-custom\.[A-Za-z0-9.-]+$ ]]
+          echo "Detected upstream version: $upstream_version"
+          echo "Detected custom version: $custom_version"
+          echo "Release tag: $release_tag"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
       - id: source
         name: Resolve source commit
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -66,6 +72,8 @@ jobs:
   build-linux:
     needs: validate
     runs-on: ubuntu-24.04
+    env:
+      RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -112,6 +120,8 @@ jobs:
   build-windows:
     needs: validate
     runs-on: windows-2025
+    env:
+      RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -160,6 +170,8 @@ jobs:
   publish:
     needs: [validate, build-linux, build-windows]
     runs-on: ubuntu-24.04
+    env:
+      RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
     permissions:
       contents: write
     steps:
