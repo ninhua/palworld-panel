@@ -258,6 +258,45 @@ export interface components {
       };
       "ok": false;
     };
+    "GlobalInventoryItem": {
+      "category": string;
+      "item_icon": string;
+      "item_id": string;
+      "item_name": string;
+      "locations": Array<components["schemas"]["GlobalInventoryLocation"]>;
+      "total_count": number;
+    };
+    "GlobalInventoryLocation": {
+      "container_id": string;
+      "container_name": string;
+      "container_type": string;
+      "count": number;
+      "guild_name"?: string;
+      "owner_id": string;
+      "owner_name": string;
+      "owner_type": "base" | "player" | "unknown";
+      "slot": number;
+    };
+    "GlobalInventoryResult": {
+      "filters": {
+        "categories": Array<string>;
+        "owner_types": Array<"all" | "base" | "player" | "unknown">;
+      };
+      "items": Array<components["schemas"]["GlobalInventoryItem"]>;
+      "source_id": string;
+      "status": components["schemas"]["SaveIndexStatus"];
+      "summary": components["schemas"]["GlobalInventorySummary"];
+    };
+    "GlobalInventorySummary": {
+      "container_count": number;
+      "item_types": number;
+      "limit": number;
+      "location_count": number;
+      "offset": number;
+      "returned": number;
+      "total_count": number;
+      "unresolved_containers": number;
+    };
     "Guild": {
       "base_ids": Array<string>;
       "id": string;
@@ -308,6 +347,41 @@ export interface components {
       "last_online_time"?: string;
       "nickname": string;
       "player_uid": string;
+    };
+    "HostMigrationExecuteRequest": {
+      "confirm": true;
+      "migration_source_id": string;
+      "name"?: string;
+      "steam_id": string;
+    };
+    "HostMigrationPlan": {
+      "can_execute": boolean;
+      "source_dps_exists": boolean;
+      "source_player_file": string;
+      "source_uid": string;
+      "steam_id": string;
+      "strategy": "direct" | "target_exists" | "already_migrated";
+      "target_dps_exists": boolean;
+      "target_player_exists": boolean;
+      "target_uid": string;
+      "warnings": Array<string>;
+    };
+    "HostMigrationPlanEnvelope": {
+      "data": components["schemas"]["HostMigrationPlan"];
+      "ok": true;
+    };
+    "HostMigrationRequest": {
+      "migration_source_id": string;
+      "steam_id": string;
+    };
+    "HostMigrationResult": {
+      "plan": components["schemas"]["HostMigrationPlan"];
+      "source": components["schemas"]["SaveSource"];
+      "verification": Record<string, unknown>;
+    };
+    "HostMigrationResultEnvelope": {
+      "data": components["schemas"]["HostMigrationResult"];
+      "ok": true;
     };
     "ImportCandidate": {
       "action": "new" | "update" | "unknown";
@@ -910,17 +984,17 @@ export interface components {
         "version": string;
       };
       "compatibility": {
-        "target_version": "v1.2.2";
-        "verified": false;
+        "target_version": "v1.3.0";
+        "verified": true;
       };
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/Palworld-Panel-Patches";
-        "version": "0.8.0-dev.1";
+        "version": "0.8.18";
       };
       "upstream": {
         "commit": string;
-        "ref": "dev";
+        "ref": "v1.3.0";
         "repository": "uitok/palworld-panel";
       };
     };
@@ -938,7 +1012,10 @@ export interface components {
       "inventory_summary"?: Record<string, unknown>;
       "ip"?: string;
       "is_online": boolean;
+      "last_offline_at"?: string;
+      "last_online_at"?: string;
       "last_online_time": string;
+      "last_seen_at"?: string;
       "level": number;
       "location_x": number;
       "location_y": number;
@@ -949,8 +1026,16 @@ export interface components {
       "online_stale": boolean;
       "ping"?: number;
       "player_uid": string;
+      "presence_available"?: boolean;
+      "presence_observed_at"?: string;
+      "presence_online"?: boolean;
+      "presence_sessions"?: Array<components["schemas"]["PlayerPresenceSession"]>;
+      "presence_stale"?: boolean;
+      "session_seconds"?: number;
+      "session_started_at"?: string;
       "steam_id": string;
       "tags"?: Array<string>;
+      "total_seconds"?: number;
     };
     "PlayerAnnotationUpdate": {
       "note"?: string;
@@ -991,6 +1076,11 @@ export interface components {
       "summary": components["schemas"]["ListSummary"];
       "view": components["schemas"]["PlayerDataView"];
     };
+    "PlayerPresenceSession": {
+      "duration_seconds": number;
+      "ended_at": string;
+      "started_at": string;
+    };
     "SafeLifecycleRequest": {
       "message"?: string;
       "waittime"?: number;
@@ -1008,8 +1098,11 @@ export interface components {
     };
     "SaveImportCommitRequest": {
       "candidate_id"?: string;
-      "inspection_id": string;
+      "confirm"?: true;
+      "inspection_id"?: string;
+      "migration_source_id"?: string;
       "name"?: string;
+      "steam_id"?: string;
     };
     "SaveImportConflictEnvelope": {
       "error": {
@@ -1085,6 +1178,19 @@ export interface components {
       "item_name": string;
       "slot": number;
     };
+    "SaveSource": {
+      "active": boolean;
+      "created_at": string;
+      "fingerprint"?: string;
+      "id": string;
+      "indexed_at"?: string;
+      "kind": "server" | "import";
+      "name": string;
+      "parser_version"?: string;
+      "path"?: string;
+      "updated_at": string;
+      "warnings"?: Array<string>;
+    };
     "SaveSourceImportRequest": {
       "file": string;
       "name"?: string;
@@ -1115,6 +1221,60 @@ export interface components {
       "name": string;
       "permissions": Array<string>;
       "role": "admin" | "operator" | "viewer";
+    };
+    "StarterGiftConfig": {
+      "batch_delay_ms": number;
+      "enabled": boolean;
+      "item_batch_size": number;
+      "items": Array<components["schemas"]["StarterGiftItem"]>;
+      "pal_templates": Array<string>;
+      "template_batch_size": number;
+    };
+    "StarterGiftGrant": {
+      "attempts": number;
+      "completed_at"?: string;
+      "first_seen_at": string;
+      "item_total": number;
+      "last_error"?: string;
+      "next_item": number;
+      "next_template": number;
+      "nickname"?: string;
+      "player_id": string;
+      "player_uid"?: string;
+      "status": "pending" | "running" | "success" | "failed";
+      "steam_id"?: string;
+      "template_total": number;
+      "updated_at": string;
+    };
+    "StarterGiftItem": {
+      "count": number;
+      "item_id": string;
+    };
+    "StarterGiftSnapshot": {
+      "config": components["schemas"]["StarterGiftConfig"];
+      "grants": Array<components["schemas"]["StarterGiftGrant"]>;
+      "item_catalog": Array<components["schemas"]["PalDefenderItemCatalogEntry"]>;
+      "template_error"?: string;
+      "template_indexes"?: Array<components["schemas"]["StarterGiftTemplateIndexInfo"]>;
+      "templates": Array<components["schemas"]["StarterGiftTemplateInfo"]>;
+    };
+    "StarterGiftTemplateIndexInfo": {
+      "count": number;
+      "label": string;
+      "name": string;
+    };
+    "StarterGiftTemplateInfo": {
+      "category"?: string;
+      "english_name"?: string;
+      "index_names"?: Array<string>;
+      "level"?: number;
+      "modified_at"?: string;
+      "name": string;
+      "nickname"?: string;
+      "pal_id"?: string;
+      "pal_name"?: string;
+      "parse_error"?: string;
+      "size"?: number;
     };
     "SteamWorkshopAuthRequest": {
       "account_name"?: string;
