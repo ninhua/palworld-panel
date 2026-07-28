@@ -14,6 +14,8 @@ import {
   type StarterGiftSnapshot,
 } from '../api/starterGift';
 import { PalIcon } from '../components/gm/PalIcon';
+import { PalTemplateFilters } from '../components/gm/PalTemplateFilters';
+import { createEmptyPalTemplateFilters, palTemplateMatchesFilters } from '../components/gm/palTemplateFilterModel';
 
 const emptyConfig: StarterGiftConfig = {
   enabled: false,
@@ -140,8 +142,7 @@ export const StarterGift: React.FC = () => {
   const [itemCategory, setItemCategory] = useState<ItemCategory>('all');
   const [onlySelectedItems, setOnlySelectedItems] = useState(false);
   const [templateSearch, setTemplateSearch] = useState('');
-  const [templateIndex, setTemplateIndex] = useState('all');
-  const [templateCategory, setTemplateCategory] = useState('all');
+  const [templateFilters, setTemplateFilters] = useState(createEmptyPalTemplateFilters);
   const [onlySelectedTemplates, setOnlySelectedTemplates] = useState(false);
   const [playerSearch, setPlayerSearch] = useState('');
   const [playerDecision, setPlayerDecision] = useState('all');
@@ -187,14 +188,12 @@ export const StarterGift: React.FC = () => {
   const templates = useMemo(() => (snapshot?.templates || []).filter((item) => item.name), [snapshot]);
   const templateIndexes = useMemo(() => snapshot?.template_indexes || [], [snapshot]);
   const templateIndexLabels = useMemo(() => new Map(templateIndexes.map((index) => [index.name, index.label || index.name])), [templateIndexes]);
-  const templateCategories = useMemo(() => Array.from(new Set<string>(templates.map(templateCategoryName))).sort((left, right) => left.localeCompare(right, 'zh-CN')), [templates]);
   const selectedTemplates = useMemo(() => new Set(config.pal_templates), [config.pal_templates]);
   const visibleTemplates = useMemo(() => {
     const query = templateSearch.trim().toLowerCase();
     return templates
       .filter((template) => {
-        if (templateIndex !== 'all' && !template.index_names.includes(templateIndex)) return false;
-        if (templateCategory !== 'all' && templateCategoryName(template) !== templateCategory) return false;
+        if (!palTemplateMatchesFilters(template, templateFilters)) return false;
         if (onlySelectedTemplates && !selectedTemplates.has(template.name)) return false;
         return !query || templateSearchText(template).includes(query);
       })
@@ -204,7 +203,7 @@ export const StarterGift: React.FC = () => {
         const byPal = templateDisplayName(left).localeCompare(templateDisplayName(right), 'zh-CN');
         return byPal || left.name.localeCompare(right.name, 'zh-CN');
       });
-  }, [templates, templateIndex, templateCategory, templateSearch, onlySelectedTemplates, selectedTemplates]);
+  }, [templates, templateFilters, templateSearch, onlySelectedTemplates, selectedTemplates]);
 
   const grantCounts = useMemo(() => {
     const grants = snapshot?.grants || [];
@@ -287,10 +286,12 @@ export const StarterGift: React.FC = () => {
     const messages: Record<StarterGiftPlayerAction, string> = {
       retry: '已重新排队，将从未完成批次继续。', supplement: '已排队补发未完成内容，不会重复已成功批次。',
       reissue: '已创建完整重发任务，将从第一批重新发放。', next_login: '已标记为新玩家；当前在线时需先离线，再次进入后自动发放。',
+      cancel_next_login: '已取消“下次进入重新发放”标记；后续上线不会因此创建新任务。',
     };
     const confirms: Partial<Record<StarterGiftPlayerAction, string>> = {
       reissue: '完整重发会从第一批重新发放，可能产生重复物品或帕鲁。确认继续？',
       next_login: '将清除该玩家现有礼包任务并标记为“下次进入视为新玩家”。确认继续？',
+      cancel_next_login: '确认取消该玩家的“下次进入重新发放”标记？',
     };
     if (confirms[action] && !window.confirm(confirms[action])) return;
     setBusy(true); setNotice('');
@@ -376,7 +377,7 @@ export const StarterGift: React.FC = () => {
               <div className="flex flex-col gap-3 xl:flex-row xl:items-start">
                 <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="truncate text-sm font-black text-slate-800">{player.nickname || player.player_id}</strong><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${player.online ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>{player.online ? <Wifi size={11} /> : <WifiOff size={11} />}{player.online ? '在线' : '离线'}</span><span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${decisionClass(player.decision)}`}>{decisionLabel(player.decision)}</span>{player.rearmed && <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-black text-violet-700">rearm</span>}</div>
                 <p className="mt-2 text-xs font-semibold leading-5 text-slate-700">{player.reason}</p><div className="mt-2 flex flex-wrap gap-1.5">{player.evidence.map((evidence) => <span key={evidence} className="rounded-lg bg-slate-100 px-2 py-1 font-mono text-[9px] text-slate-600">{evidence}</span>)}</div><p className="mt-2 truncate font-mono text-[10px] text-slate-400">PlayerID {player.player_id}{player.player_uid ? ` · UID ${player.player_uid}` : ''}{player.steam_id ? ` · Steam ${player.steam_id}` : ''}</p></div>
-                <div className="flex shrink-0 flex-wrap gap-2 xl:max-w-sm xl:justify-end"><button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(player.player_id, 'next_login')}><Flag size={14} />下次进入视为新玩家</button>{player.grant_status && player.grant_status !== 'success' && <button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(player.player_id, 'supplement')}><PackageCheck size={14} />补发未完成</button>}<button type="button" className="pp-button" disabled={busy || !config.enabled} title={config.enabled ? '从头创建完整发放任务' : '请先启用并保存自动发放配置'} onClick={() => void runPlayerAction(player.player_id, 'reissue')}><PlayCircle size={14} />立即完整重发</button></div>
+                <div className="flex shrink-0 flex-wrap gap-2 xl:max-w-sm xl:justify-end">{player.rearmed ? <button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(player.player_id, 'cancel_next_login')}><RotateCcw size={14} />取消下次进入重发</button> : <button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(player.player_id, 'next_login')}><Flag size={14} />下次进入视为新玩家</button>}{player.grant_status && player.grant_status !== 'success' && <button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(player.player_id, 'supplement')}><PackageCheck size={14} />补发未完成</button>}<button type="button" className="pp-button" disabled={busy || !config.enabled} title={config.enabled ? '从头创建完整发放任务' : '请先启用并保存自动发放配置'} onClick={() => void runPlayerAction(player.player_id, 'reissue')}><PlayCircle size={14} />立即完整重发</button></div>
               </div>
             </article>)}
             {visiblePlayers.length === 0 && <div className="flex min-h-56 flex-col items-center justify-center gap-2 p-8 text-center text-slate-400"><UserCheck size={30} /><strong className="text-sm text-slate-600">没有匹配玩家</strong><span className="text-xs">存档索引状态：{snapshot?.save_index_state || '未知'}</span></div>}
@@ -421,16 +422,8 @@ export const StarterGift: React.FC = () => {
         {activeTab === 'templates' && <div className="mt-5 min-w-0">
           {snapshot?.template_error && <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800"><AlertTriangle className="mt-0.5 shrink-0" size={15} />模板读取失败：{snapshot.template_error}</div>}
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="grid min-w-0 flex-1 gap-2 md:grid-cols-[minmax(0,1fr)_13rem_11rem]">
+            <div className="min-w-0 flex-1">
               <label className="relative block min-w-0"><span className="sr-only">搜索模板</span><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} /><input className="pp-input pp-input--icon w-full" value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="搜索分类、中文名、英文名、PalID 或文件名" /></label>
-              <select className="pp-input" aria-label="按模板索引筛选" value={templateIndex} onChange={(event) => setTemplateIndex(event.target.value)}>
-                <option value="all">全部索引</option>
-                {templateIndexes.map((index) => <option key={index.name} value={index.name}>{index.label}（{index.count}）</option>)}
-              </select>
-              <select className="pp-input" aria-label="按模板分类筛选" value={templateCategory} onChange={(event) => setTemplateCategory(event.target.value)}>
-                <option value="all">全部分类</option>
-                {templateCategories.map((category) => <option key={category} value={category}>{category}</option>)}
-              </select>
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" className={`pp-button ${onlySelectedTemplates ? 'accent' : ''}`} onClick={() => setOnlySelectedTemplates((value) => !value)}>{onlySelectedTemplates ? <CheckSquare size={14} /> : <Square size={14} />}只看已选</button>
@@ -439,6 +432,7 @@ export const StarterGift: React.FC = () => {
               <button type="button" className="pp-button" disabled={config.pal_templates.length === 0} onClick={() => setConfig({ ...config, pal_templates: [] })}><Trash2 size={14} />清空</button>
             </div>
           </div>
+          <div className="mt-3"><PalTemplateFilters templates={templates} indexes={templateIndexes} value={templateFilters} onChange={setTemplateFilters} /></div>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
             {templateIndexes.length > 0 ? <><span>已加载 {templateIndexes.length} 个模板索引</span><span className="text-slate-300">·</span><span>名称与分类优先读取索引；PalID 始终读取模板 JSON</span></> : <span>未检测到索引文件，模板名称按文件名显示。</span>}
           </div>

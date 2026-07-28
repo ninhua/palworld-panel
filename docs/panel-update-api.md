@@ -18,7 +18,7 @@ v<上游版本>-custom.<自定义版本>
 示例：
 
 ```text
-v1.3.0-custom.0.8.18
+v1.3.0-custom.0.8.19
 ```
 
 ## 鉴权与权限
@@ -70,13 +70,13 @@ curl -fsS \
 {
   "ok": true,
   "data": {
-    "current_version": "v1.3.0-custom.0.8.18",
+    "current_version": "v1.3.0-custom.0.8.19",
     "latest_version": "v1.3.0-custom.0.8.19",
     "release_tag": "v1.3.0-custom.0.8.19",
     "release_url": "https://github.com/ninhua/palworld-panel/releases/tag/v1.3.0-custom.0.8.19",
-    "update_available": true,
+    "update_available": false,
     "checked_at": "2026-07-29T04:00:00Z",
-    "message": "发现面板新版本 v1.3.0-custom.0.8.19"
+    "message": "当前面板已是最新版本 v1.3.0-custom.0.8.19"
   }
 }
 ```
@@ -237,8 +237,8 @@ Linux 归档中必须且只能包含一个以 `/bin/palpanel` 结尾的普通文
 当前正式发布示例：
 
 ```text
-palpanel_v1.3.0-custom.0.8.18_linux_amd64.tar.gz
-palpanel_v1.3.0-custom.0.8.18_windows_amd64.zip
+palpanel_v1.3.0-custom.0.8.19_linux_amd64.tar.gz
+palpanel_v1.3.0-custom.0.8.19_windows_amd64.zip
 ```
 
 ## GitHub 访问配置
@@ -283,4 +283,3 @@ sudo /opt/palpanel/current/palpanelctl status
 sudo /opt/palpanel/current/palpanelctl logs -f
 sudo journalctl -u palpanel.service --no-pager -n 200
 ```
-

@@ -568,3 +568,64 @@ func TestGrantTimelineRecordsResolutionBatchesAndCompletion(t *testing.T) {
 		}
 	}
 }
+
+func TestReconcilePlayerAliasesMergesLegacyDuplicateGrants(t *testing.T) {
+	store := openTestStore(t)
+	scope := testScope("world-identity-reconcile")
+	ctx := context.Background()
+	config := saveTestConfig(t, store, scope)
+	playerUID := "f23d556c-0000-0000-0000-000000000000"
+	steamID := "steam_76561199032061430"
+	state := EmptyState()
+	state.ScopeID = scope.ID
+	state.Initialized = true
+	uidPlayer := playerpresence.OnlinePlayer{PlayerUID: playerUID, SteamID: playerUID, Nickname: "tiantian"}
+	steamPlayer := playerpresence.OnlinePlayer{PlayerUID: playerUID, SteamID: steamID, Nickname: "tiantian"}
+	older := newGrantWithReason(uidPlayer, config, "2026-07-28T01:00:00Z", "manual", "older", true)
+	newer := newGrantWithReason(steamPlayer, config, "2026-07-28T02:00:00Z", "manual", "newer", true)
+	state.Grants[identity(playerUID)] = older
+	state.Grants[identity(steamID)] = newer
+	state.Seen[identity(playerUID)] = true
+	if err := saveState(ctx, store, scope, state); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ReconcilePlayerAliases(ctx, store, scope, []playerpresence.OnlinePlayer{steamPlayer}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := mustSnapshot(t, store, scope)
+	if len(snapshot.Grants) != 1 {
+		t.Fatalf("grants=%#v", snapshot.Grants)
+	}
+	grant := snapshot.Grants[0]
+	if grant.PlayerUID != playerUID || grant.SteamID != steamID || grant.DetectionReason != "newer" {
+		t.Fatalf("merged grant=%#v", grant)
+	}
+	decisions, err := InspectPlayers(ctx, store, scope, []playerpresence.OnlinePlayer{steamPlayer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decisions) != 1 || decisions[0].PlayerUID != playerUID || decisions[0].SteamID != steamID {
+		t.Fatalf("decisions=%#v", decisions)
+	}
+}
+
+func TestCancelNextLoginKeepsSeenAndClearsRearm(t *testing.T) {
+	store := openTestStore(t)
+	scope := testScope("world-cancel-next-login")
+	ctx := context.Background()
+	player := playerpresence.OnlinePlayer{PlayerUID: "uid-cancel", SteamID: "steam-cancel", Nickname: "Cancel"}
+	if err := ApplyAction(ctx, store, scope, player, "next_login"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyAction(ctx, store, scope, player, "cancel_next_login"); err != nil {
+		t.Fatal(err)
+	}
+	decisions, err := InspectPlayers(ctx, store, scope, []playerpresence.OnlinePlayer{player})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decisions) != 1 || decisions[0].Rearmed || decisions[0].Decision != "known_existing" || decisions[0].IsNew {
+		t.Fatalf("decision=%#v", decisions)
+	}
+}

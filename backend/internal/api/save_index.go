@@ -15,6 +15,7 @@ import (
 	"palpanel/internal/db"
 	"palpanel/internal/paldefender"
 	"palpanel/internal/pallocalize"
+	"palpanel/internal/playerpresence"
 	"palpanel/internal/saveindex"
 )
 
@@ -851,7 +852,38 @@ func (s Server) onlinePlayers(c *gin.Context) onlinePlayersResult {
 	if restErr != nil {
 		result.Error = restErr.Error()
 	}
+	s.overlayPersistedPlayerIdentities(c.Request.Context(), &result)
 	return result
+}
+
+func (s Server) overlayPersistedPlayerIdentities(ctx context.Context, result *onlinePlayersResult) {
+	if result == nil {
+		return
+	}
+	scope, err := playerpresence.ResolveServerScope(s.cfg.ServerDirectory())
+	if err != nil {
+		return
+	}
+	state, err := playerpresence.LoadScoped(ctx, s.store, scope)
+	if err != nil {
+		return
+	}
+	persisted := make(map[string]onlinePlayer, len(state.Players)*2)
+	for _, record := range playerpresence.Records(state) {
+		item := onlinePlayer{
+			PlayerUID:        record.PlayerUID,
+			SteamID:          record.SteamID,
+			Nickname:         record.Nickname,
+			OnlineStateKnown: true,
+			IsOnline:         false,
+		}
+		for _, alias := range []string{record.PlayerUID, record.SteamID} {
+			if key := identityKey(alias); key != "" {
+				persisted[key] = item
+			}
+		}
+	}
+	result.Players = mergeOnlinePlayers(persisted, result.Players)
 }
 
 func (s Server) palDefenderMapPlayers(c *gin.Context) (map[string]onlinePlayer, bool, bool) {

@@ -261,9 +261,16 @@ func InspectPlayers(ctx context.Context, store *db.Store, scope playerpresence.S
 		if key == "" {
 			return
 		}
-		covered[key] = true
+		for _, alias := range aliases {
+			covered[alias] = true
+		}
 		grantKey := findGrantKey(state, aliases)
 		grant, hasGrant := state.Grants[grantKey]
+		if hasGrant {
+			for _, alias := range grantAliases(grant) {
+				covered[alias] = true
+			}
+		}
 		seen := anyMarked(state.Seen, aliases)
 		online := anyMarked(state.Online, aliases)
 		rearmed := anyMarked(state.Rearm, aliases)
@@ -310,8 +317,15 @@ func InspectPlayers(ctx context.Context, store *db.Store, scope playerpresence.S
 		appendPlayer(player)
 	}
 	for key, grant := range state.Grants {
-		canonical := firstNonEmpty(identity(grant.SteamID), identity(grant.PlayerUID), key)
-		if covered[canonical] {
+		aliases := uniqueStrings(append([]string{identity(key)}, grantAliases(grant)...))
+		skip := false
+		for _, alias := range aliases {
+			if covered[alias] {
+				skip = true
+				break
+			}
+		}
+		if skip {
 			continue
 		}
 		appendPlayer(playerpresence.OnlinePlayer{PlayerUID: grant.PlayerUID, SteamID: grant.SteamID, Nickname: grant.Nickname})
@@ -438,10 +452,135 @@ func ApplyAction(ctx context.Context, store *db.Store, scope playerpresence.Scop
 		for _, alias := range aliases {
 			state.Rearm[alias] = true
 		}
+	case "cancel_next_login", "cancel_mark_new", "cancel_rearm":
+		if found {
+			aliases = uniqueStrings(append(aliases, grantAliases(grant)...))
+		}
+		markSeen(&state, aliases)
+		clearMarked(state.Rearm, aliases)
 	default:
 		return fmt.Errorf("unsupported starter gift action %q", action)
 	}
 	return saveState(ctx, store, scope, state)
+}
+
+func ReconcilePlayerAliases(ctx context.Context, store *db.Store, scope playerpresence.Scope, players []playerpresence.OnlinePlayer) error {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	state, err := loadState(ctx, store, scope)
+	if err != nil {
+		return err
+	}
+	changed := false
+	for _, player := range players {
+		aliases := playerAliases(player)
+		if len(aliases) < 2 {
+			continue
+		}
+		seen, online, rearmed := anyMarked(state.Seen, aliases), anyMarked(state.Online, aliases), anyMarked(state.Rearm, aliases)
+		for _, alias := range aliases {
+			if seen && !state.Seen[alias] {
+				state.Seen[alias] = true
+				changed = true
+			}
+			if online && !state.Online[alias] {
+				state.Online[alias] = true
+				changed = true
+			}
+			if rearmed && !state.Rearm[alias] {
+				state.Rearm[alias] = true
+				changed = true
+			}
+		}
+		keys := matchingGrantKeys(state, aliases)
+		if len(keys) < 2 {
+			if len(keys) == 1 {
+				record := state.Grants[keys[0]]
+				if enrichGrantIdentity(&record, player) {
+					state.Grants[keys[0]] = record
+					changed = true
+				}
+			}
+			continue
+		}
+		sort.SliceStable(keys, func(i, j int) bool {
+			return state.Grants[keys[i]].UpdatedAt > state.Grants[keys[j]].UpdatedAt
+		})
+		keepKey := keys[0]
+		merged := state.Grants[keepKey]
+		for _, duplicateKey := range keys[1:] {
+			duplicate := state.Grants[duplicateKey]
+			mergeGrantRecord(&merged, duplicate)
+			delete(state.Grants, duplicateKey)
+		}
+		enrichGrantIdentity(&merged, player)
+		canonical := canonicalPlayerKey(player)
+		if canonical == "" {
+			canonical = keepKey
+		}
+		delete(state.Grants, keepKey)
+		state.Grants[canonical] = merged
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	return saveState(ctx, store, scope, state)
+}
+
+func matchingGrantKeys(state State, aliases []string) []string {
+	keys := make([]string, 0)
+	for key, grant := range state.Grants {
+		if containsString(aliases, identity(key)) {
+			keys = append(keys, key)
+			continue
+		}
+		for _, alias := range grantAliases(grant) {
+			if containsString(aliases, alias) {
+				keys = append(keys, key)
+				break
+			}
+		}
+	}
+	return keys
+}
+
+func enrichGrantIdentity(record *grantRecord, player playerpresence.OnlinePlayer) bool {
+	changed := false
+	if player.PlayerUID != "" && record.PlayerUID != player.PlayerUID {
+		record.PlayerUID = player.PlayerUID
+		changed = true
+	}
+	if player.SteamID != "" && record.SteamID != player.SteamID {
+		record.SteamID = player.SteamID
+		record.PlayerID = player.SteamID
+		changed = true
+	}
+	if record.Nickname == "" && player.Nickname != "" {
+		record.Nickname = player.Nickname
+		changed = true
+	}
+	return changed
+}
+
+func mergeGrantRecord(target *grantRecord, source grantRecord) {
+	if target.PlayerUID == "" {
+		target.PlayerUID = source.PlayerUID
+	}
+	if target.SteamID == "" {
+		target.SteamID = source.SteamID
+	}
+	if target.Nickname == "" {
+		target.Nickname = source.Nickname
+	}
+	if target.FirstSeenAt == "" || source.FirstSeenAt != "" && source.FirstSeenAt < target.FirstSeenAt {
+		target.FirstSeenAt = source.FirstSeenAt
+	}
+	target.Events = append(target.Events, source.Events...)
+	sort.SliceStable(target.Events, func(i, j int) bool { return target.Events[i].At < target.Events[j].At })
+	if len(target.Events) > MaxGrantEvents {
+		target.Events = append([]GrantEvent(nil), target.Events[len(target.Events)-MaxGrantEvents:]...)
+	}
 }
 
 // Forget removes the existing result and rearms the player for the next real

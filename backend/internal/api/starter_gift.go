@@ -565,6 +565,23 @@ func (s Server) forgetStarterGift(c *gin.Context) {
 }
 
 func (s Server) starterGiftResponse(ctx context.Context, snapshot startergift.Snapshot) gin.H {
+	index, indexStatus, indexErr := s.serverSaveIndex.Current(ctx)
+	known := make([]playerpresence.OnlinePlayer, 0)
+	if indexErr == nil {
+		for _, player := range index.Players {
+			known = append(known, playerpresence.OnlinePlayer{PlayerUID: player.PlayerUID, SteamID: player.SteamID, Nickname: player.Nickname})
+		}
+	}
+	if presence, presenceErr := playerpresence.LoadScoped(ctx, s.store, snapshot.Scope); presenceErr == nil {
+		for _, record := range playerpresence.Records(presence) {
+			known = append(known, playerpresence.OnlinePlayer{PlayerUID: record.PlayerUID, SteamID: record.SteamID, Nickname: record.Nickname})
+		}
+	}
+	if err := startergift.ReconcilePlayerAliases(ctx, s.store, snapshot.Scope, known); err == nil {
+		if reconciled, loadErr := startergift.LoadSnapshot(ctx, s.store, snapshot.Scope); loadErr == nil {
+			snapshot = reconciled
+		}
+	}
 	templates, templateErr := s.defender.ListPalTemplates()
 	templateNames := make([]string, 0, len(templates))
 	for _, template := range templates {
@@ -580,18 +597,14 @@ func (s Server) starterGiftResponse(ctx context.Context, snapshot startergift.Sn
 		"template_indexes": templateIndexes,
 		"item_catalog":     pallocalize.SearchItems("", 5000),
 	}
-	if index, status, indexErr := s.serverSaveIndex.Current(ctx); indexErr == nil {
-		known := make([]playerpresence.OnlinePlayer, 0, len(index.Players))
-		for _, player := range index.Players {
-			known = append(known, playerpresence.OnlinePlayer{PlayerUID: player.PlayerUID, SteamID: player.SteamID, Nickname: player.Nickname})
-		}
+	if indexErr == nil {
 		decisions, decisionErr := startergift.InspectPlayers(ctx, s.store, snapshot.Scope, known)
 		if decisionErr == nil {
 			response["players"] = decisions
 		} else {
 			response["players_error"] = decisionErr.Error()
 		}
-		response["save_index_state"] = status.State
+		response["save_index_state"] = indexStatus.State
 	} else {
 		response["players"] = []startergift.PlayerDecision{}
 		response["players_error"] = indexErr.Error()

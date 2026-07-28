@@ -5,6 +5,8 @@ import { palDefenderGMApi } from '../../api/paldefenderGM';
 import { starterGiftApi, type PalTemplateInfo } from '../../api/starterGift';
 import type { Pal, PalDefenderPalCatalogEntry, PalDefenderPalTemplate } from '../../types';
 import { PalIcon } from './PalIcon';
+import { PalTemplateFilters } from './PalTemplateFilters';
+import { createEmptyPalTemplateFilters, palTemplateMatchesFilters } from './palTemplateFilterModel';
 
 type ActionRunner = (key: string, action: () => Promise<unknown>, success: string) => Promise<boolean>;
 
@@ -29,7 +31,7 @@ export const PalWorkspace: React.FC<{
   const [palCount, setPalCount] = useState('1');
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [templateSearch, setTemplateSearch] = useState('');
-  const [templateIndex, setTemplateIndex] = useState('all');
+  const [templateFilters, setTemplateFilters] = useState(createEmptyPalTemplateFilters);
   const [templateCount, setTemplateCount] = useState('1');
   const [selectedExport, setSelectedExport] = useState('');
   const [editor, setEditor] = useState<TemplateEditor>(() => emptyTemplateEditor());
@@ -95,11 +97,11 @@ export const PalWorkspace: React.FC<{
       const info = indexedTemplateByName.get(template.name.toLowerCase()) as PalTemplateInfo | undefined;
       return { template, info };
     }).filter(({ template, info }) => {
-      if (templateIndex !== 'all' && !info?.index_names.includes(templateIndex)) return false;
+      if (!palTemplateMatchesFilters(info, templateFilters)) return false;
       const text = `${template.name} ${info?.pal_id || ''} ${info?.pal_name || ''} ${info?.english_name || ''} ${info?.category || ''} ${info?.usage_category || ''} ${info?.overall_grade || ''} ${(info?.classification_tags ?? []).join(' ')}`.toLowerCase();
       return !needle || text.includes(needle);
     }).slice(0, 120);
-  }, [indexedTemplateByName, templateIndex, templateSearch, templatesQuery.data]);
+  }, [indexedTemplateByName, templateFilters, templateSearch, templatesQuery.data]);
 
   const directGrant = async () => {
     const level = Number(palLevel);
@@ -296,10 +298,10 @@ export const PalWorkspace: React.FC<{
             <label className="text-xs font-bold text-slate-600">导出文件<select aria-label="导出帕鲁模板" value={selectedExport} onChange={(event) => setSelectedExport(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700"><option value="">请选择</option>{(exportedQuery.data?.templates ?? []).map((template) => <option key={template.name} value={template.name}>{template.name}</option>)}</select></label>
 			<label className="text-xs font-bold text-slate-600">发放数量<input aria-label="模板发放数量" type="number" min={1} max={20} value={templateCount} onChange={(event) => setTemplateCount(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-700 focus:border-violet-500 focus:outline-none" /></label>
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem]">
+          <div className="mt-3">
             <label className="relative block"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input aria-label="搜索已保存帕鲁模板" value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="搜索中文名、PalID、用途或分类" className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-700" /></label>
-            <select aria-label="按帕鲁模板索引筛选" value={templateIndex} onChange={(event) => setTemplateIndex(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700"><option value="all">全部索引</option>{(indexedTemplateQuery.data?.template_indexes ?? []).map((index) => <option key={index.name} value={index.name}>{index.label}（{index.count}）</option>)}</select>
           </div>
+          <div className="mt-3"><PalTemplateFilters templates={indexedTemplateQuery.data?.templates ?? []} indexes={indexedTemplateQuery.data?.template_indexes ?? []} value={templateFilters} onChange={setTemplateFilters} /></div>
           <div className="mt-3 grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
             {visibleManagedTemplates.map(({ template, info }) => <button type="button" key={template.name} onClick={() => setSelectedTemplate(template.name)} aria-pressed={selectedTemplate === template.name} className={`flex min-w-0 items-center gap-2 rounded-xl border p-2 text-left ${selectedTemplate === template.name ? 'border-violet-300 bg-violet-50' : 'border-slate-100 bg-slate-50/70'}`}>
               <PalIcon characterID={info?.pal_id || ''} name={info?.pal_name || template.name} className="h-10 w-10 rounded-lg" />

@@ -98,7 +98,7 @@ export interface StarterGiftSnapshot {
   save_index_state?: string;
 }
 
-export type StarterGiftPlayerAction = 'retry' | 'supplement' | 'reissue' | 'next_login';
+export type StarterGiftPlayerAction = 'retry' | 'supplement' | 'reissue' | 'next_login' | 'cancel_next_login';
 
 const emptyConfig: StarterGiftConfig = {
   enabled: false,
