@@ -327,12 +327,12 @@ paths:
   /jobs/{id}:
     parameters: [*idParameter]
     get: {operationId: getJob, tags: [system], x-palpanel-permission: read, responses: *readResponses}
-  /patch/update/status:
-    get: {operationId: getPatchUpdateStatus, tags: [system], x-palpanel-permission: read, responses: {'200': *success, '401': *error, '502': *error}}
-  /patch/update/check:
-    post: {operationId: checkPatchUpdate, tags: [system], x-palpanel-permission: 'server:control', responses: {'202': *accepted, '401': *error, '403': *error, '500': *error}}
-  /patch/update:
-    post: {operationId: applyPatchUpdate, tags: [system], x-palpanel-permission: 'server:control', responses: {'202': *accepted, '401': *error, '403': *error, '500': *error}}
+  /panel/update/status:
+    get: {operationId: getPanelUpdateStatus, tags: [system], x-palpanel-permission: read, responses: {'200': *success, '401': *error, '502': *error}}
+  /panel/update/check:
+    post: {operationId: checkPanelUpdate, tags: [system], x-palpanel-permission: 'server:control', responses: {'202': *accepted, '401': *error, '403': *error, '500': *error}}
+  /panel/update:
+    post: {operationId: applyPanelUpdate, tags: [system], x-palpanel-permission: 'server:control', responses: {'202': *accepted, '401': *error, '403': *error, '500': *error}}
   /audit-logs:
     get: {operationId: listAuditLogs, tags: [system], x-palpanel-permission: 'audit:read', responses: *readResponses}
   /system/debug:

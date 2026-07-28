@@ -70,14 +70,14 @@ func TestPatchInfo(t *testing.T) {
 	if response.Data.Compatibility.TargetVersion != patchTargetVersion || !response.Data.Compatibility.Verified {
 		t.Fatalf("unexpected compatibility: %+v", response.Data.Compatibility)
 	}
-	if response.Data.Patch.Version != patchVersion || response.Data.Patch.Repository != patchRepository {
+	if response.Data.Patch.Version != patchVersion || response.Data.Patch.Repository != panelRepository {
 		t.Fatalf("unexpected patch metadata: %+v", response.Data.Patch)
 	}
 	features := make(map[string]bool, len(response.Data.Patch.Features))
 	for _, feature := range response.Data.Patch.Features {
 		features[feature] = true
 	}
-	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history", "host-save-migrator"} {
+	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-self-update", "audit-log-response-display", "player-presence-history", "host-save-migrator"} {
 		if !features[expected] {
 			t.Fatalf("missing feature %q in %#v", expected, response.Data.Patch.Features)
 		}

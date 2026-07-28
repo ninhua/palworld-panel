@@ -76,7 +76,7 @@ const recoverableSetupJobTypes = new Set([
   'update',
   'smart_update',
   'version_check',
-  'patch_hot_update',
+  'panel_update',
 ]);
 
 const isRecoverableSetupJob = (job: Job) => recoverableSetupJobTypes.has(job.type) && !isJobDone(job);
@@ -636,7 +636,7 @@ export const Setup: React.FC = () => {
         }}
         onCheckVersion={() => runJob(serverApi.checkVersion)}
         onUpdateIfNeeded={() => runJob(serverApi.updateIfNeeded)}
-        onPatchUpdate={() => runJob(tasksApi.createPatchUpdateJob)}
+        onPanelUpdate={() => runJob(tasksApi.createPanelUpdateJob)}
       />
 
       <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-[0_2px_12px_-3px_rgba(15,23,42,0.02)]">
@@ -1023,7 +1023,7 @@ const AdvancedSetupPanel: React.FC<{
   onToggleMirrorScript: () => void;
   onCheckVersion: () => void;
   onUpdateIfNeeded: () => void;
-  onPatchUpdate: () => void;
+  onPanelUpdate: () => void;
 }> = ({
   open,
   onToggle,
@@ -1052,7 +1052,7 @@ const AdvancedSetupPanel: React.FC<{
   onToggleMirrorScript,
   onCheckVersion,
   onUpdateIfNeeded,
-  onPatchUpdate,
+  onPanelUpdate,
 }) => {
   const canInstallDocker = Boolean(!dockerReady && !isJobRunning && dockerPlan?.supported && dockerPlan.can_auto_install);
   const canConfigureMirrors = Boolean(
@@ -1260,11 +1260,11 @@ const AdvancedSetupPanel: React.FC<{
               </button>
               <button
                 type="button"
-                onClick={onPatchUpdate}
+                onClick={onPanelUpdate}
                 disabled={isJobRunning}
                 className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-2 xl:col-span-1 2xl:col-span-2"
               >
-                <PackageCheck size={13} className="mr-1 inline" />补丁热更新
+                <PackageCheck size={13} className="mr-1 inline" />更新面板
               </button>
             </div>
 

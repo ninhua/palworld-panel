@@ -29,8 +29,8 @@ const jobTypeLabel = (type: string) => {
       return '检查后更新';
     case 'install':
       return '服务端安装';
-    case 'patch_hot_update':
-      return '补丁热更新';
+    case 'panel_update':
+      return '面板更新';
     case 'bootstrap':
       return '开服初始化';
     case 'docker_install':
@@ -138,7 +138,7 @@ export const TaskQueue: React.FC = () => {
   }, [jobs]);
 
   const openAlerts = useMemo(() => alerts.filter((alert) => alert.status !== 'acked'), [alerts]);
-  const patchUpdateRunning = jobs.some((job) => job.type === 'patch_hot_update' && (job.status === 'waiting' || job.status === 'running'));
+  const panelUpdateRunning = jobs.some((job) => job.type === 'panel_update' && (job.status === 'waiting' || job.status === 'running'));
 
   const createBackup = async () => {
     try {
@@ -160,11 +160,11 @@ export const TaskQueue: React.FC = () => {
     }
   };
 
-  const createPatchUpdate = async () => {
+  const createPanelUpdate = async () => {
     try {
-      await tasksApi.createPatchUpdateJob();
+      await tasksApi.createPanelUpdateJob();
       await fetchJobs();
-      setMessage('补丁热更新任务已提交');
+      setMessage('面板更新任务已提交');
     } catch (actionError) {
       setMessage(getErrorMessage(actionError));
     }
@@ -280,12 +280,12 @@ export const TaskQueue: React.FC = () => {
 
         <button
           type="button"
-          onClick={createPatchUpdate}
-          disabled={patchUpdateRunning}
+          onClick={createPanelUpdate}
+          disabled={panelUpdateRunning}
           className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-45"
         >
           <PackageCheck size={14} />
-          {patchUpdateRunning ? '补丁更新中' : '补丁热更新'}
+          {panelUpdateRunning ? '面板更新中' : '更新面板'}
         </button>
       </div>
 

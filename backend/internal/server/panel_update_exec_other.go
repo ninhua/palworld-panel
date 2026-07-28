@@ -9,7 +9,7 @@ import (
 )
 
 func replaceCurrentPanelProcess(string) error {
-	return fmt.Errorf("panel patch hot update requires Linux")
+	return fmt.Errorf("panel self-update requires Linux")
 }
 
-func recoverPatchUpdateIfNeeded(*db.Store) {}
+func recoverPanelUpdateIfNeeded(*db.Store) {}

@@ -665,8 +665,8 @@ func bootstrapHostMigrationHelper(ctx context.Context, destination string) error
 	packageURL := strings.TrimSpace(os.Getenv("PALPANEL_UID_REMAPPER_PACKAGE_URL"))
 	if packageURL == "" {
 		packageURL = fmt.Sprintf(
-			"https://github.com/%s/releases/download/uitok-stable-%s-p%s/uitok-palworld-panel_stable-%s_patch-%s_linux-amd64.tar.gz",
-			patchRepository, patchTargetVersion, patchVersion, patchTargetVersion, patchVersion,
+			"https://github.com/%s/releases/download/%s-custom.%s/palpanel_%s-custom.%s_linux_amd64.tar.gz",
+			panelRepository, patchTargetVersion, patchVersion, patchTargetVersion, patchVersion,
 		)
 	}
 	parsed, err := url.Parse(packageURL)

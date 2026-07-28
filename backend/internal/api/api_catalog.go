@@ -80,14 +80,14 @@ var apiCatalogExact = map[string]apiCatalogDescriptor{
 	"GET /api/pals": {
 		Category: "世界存档", Summary: "查询帕鲁仓库", Description: "补丁版支持等级、星级、平均 IV、性别、位置、被动词条和排序参数。", Permission: "authenticated", Request: "Query: min_level, min_stars, min_iv_average, gender, location, passive, sort。", Response: "帕鲁列表、分页摘要和索引状态。", Patched: true,
 	},
-	"GET /api/patch/update/status": {
-		Category: "补丁", Summary: "查询补丁热更新状态", Description: "返回当前补丁、可用稳定 Release 和最近更新任务状态。", Permission: "authenticated", Response: "补丁版本与更新可用性。", Patched: true,
+	"GET /api/panel/update/status": {
+		Category: "系统", Summary: "查询面板更新状态", Description: "返回当前版本和源码 Fork 中可用的正式 Release。", Permission: "authenticated", Response: "面板版本与更新可用性。", Patched: true,
 	},
-	"POST /api/patch/update/check": {
-		Category: "补丁", Summary: "检查稳定补丁更新", Description: "重新解析匹配当前 PalPanel 正式版本的 verified stable Release。", Permission: "server:control", Response: "检查结果和候选 Release。", Patched: true,
+	"POST /api/panel/update/check": {
+		Category: "系统", Summary: "检查面板更新", Description: "检查 ninhua/palworld-panel 的最新正式 Release。", Permission: "server:control", Response: "检查任务。", Patched: true,
 	},
-	"POST /api/patch/update": {
-		Category: "补丁", Summary: "执行补丁热更新", Description: "校验 Release 资产后通过任务队列原子替换当前二进制。", Permission: "server:control", Response: "已创建的 patch_hot_update 任务。", Patched: true,
+	"POST /api/panel/update": {
+		Category: "系统", Summary: "更新面板", Description: "下载完整 Release 包并校验 SHA256 后原子替换当前二进制。", Permission: "server:control", Response: "已创建的 panel_update 任务。", Patched: true,
 	},
 	"POST /api/save-sources/import/inspect": {
 		Category: "世界存档", Summary: "检查存档导入或房主档迁移", Description: "除标准存档检查外，可识别合作房主存档并准备 UID 重映射。", Permission: "server:control", Request: "multipart/form-data 或导入检查参数；房主迁移按页面生成参数。", Response: "候选世界、冲突和迁移计划。", Patched: true,

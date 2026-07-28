@@ -9,7 +9,7 @@ import (
 func TestEncodeKeepsDetailedResponseAndRedactsSecrets(t *testing.T) {
 	encoded := Encode(202, true, map[string]any{
 		"job": map[string]any{
-			"id": "job-1", "type": "patch_hot_update", "status": "waiting",
+			"id": "job-1", "type": "panel_update", "status": "waiting",
 			"message": "已进入任务队列", "token": "do-not-store",
 		},
 		"authorization": "Bearer abc.def.ghi",

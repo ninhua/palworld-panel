@@ -49,7 +49,7 @@ func TestAPICatalogCustomRouteDescriptions(t *testing.T) {
 		"GET /api/inventory",
 		"GET /api/pals",
 		"PUT /api/security/paldefender/starter-gift",
-		"POST /api/patch/update",
+		"POST /api/panel/update",
 	} {
 		descriptor, found := apiCatalogExact[key]
 		if !found || descriptor.Summary == "" || descriptor.Description == "" || descriptor.Permission == "" || !descriptor.Patched {

@@ -149,7 +149,7 @@ type RestartNotifier func(ctx context.Context, wait int, message string) error
 
 func NewManager(cfg appconfig.Config, store *db.Store, runner docker.Runner, executors ...*jobs.Executor) Manager {
 	cfg = cfg.WithServerDirectoryState()
-	recoverPatchUpdateIfNeeded(store)
+	recoverPanelUpdateIfNeeded(store)
 	executor := jobs.New(store, 4)
 	if len(executors) > 0 && executors[0] != nil {
 		executor = executors[0]
