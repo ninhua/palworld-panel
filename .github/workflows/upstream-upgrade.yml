@@ -1,0 +1,136 @@
+name: Upstream upgrade
+
+on:
+  schedule:
+    - cron: '20 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-upgrade
+  cancel-in-progress: false
+
+jobs:
+  detect-and-merge:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: custom-stable
+          fetch-depth: 0
+          submodules: recursive
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/uitok/palworld-panel.git
+          git fetch upstream --tags --prune
+          git fetch origin custom-stable upstream-stable --prune
+      - id: version
+        name: Detect latest stable upstream release
+        shell: bash
+        run: |
+          latest="$(
+            git tag --list 'v*' |
+              grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' |
+              sort -V |
+              tail -n 1
+          )"
+          current="$(
+            sed -nE \
+              's/^[[:space:]]*patchTargetVersion[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
+              backend/internal/api/patch_info.go
+          )"
+          [[ -n "$latest" && -n "$current" ]]
+          echo "Latest upstream release: $latest"
+          echo "Current custom base: $current"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [[ "$latest" == "$current" ]]; then
+            echo "update_available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "update_available=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Update pure upstream branch
+        if: steps.version.outputs.update_available == 'true'
+        env:
+          LATEST: ${{ steps.version.outputs.latest }}
+        run: |
+          git branch -f upstream-stable "$LATEST"
+          git push --force-with-lease origin upstream-stable
+      - id: merge
+        name: Create and merge upgrade branch
+        if: steps.version.outputs.update_available == 'true'
+        env:
+          LATEST: ${{ steps.version.outputs.latest }}
+        shell: bash
+        run: |
+          branch="upgrade/$LATEST"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Upgrade branch already exists: $branch"
+            echo "result=existing" >> "$GITHUB_OUTPUT"
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git switch -c "$branch" origin/custom-stable
+          if git merge --no-ff upstream-stable -m "merge: upgrade upstream to $LATEST"; then
+            git push -u origin "$branch"
+            echo "result=merged" >> "$GITHUB_OUTPUT"
+          else
+            conflicts="$(git diff --name-only --diff-filter=U)"
+            {
+              echo "conflicts<<EOF"
+              echo "$conflicts"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            git merge --abort
+            echo "result=conflict" >> "$GITHUB_OUTPUT"
+          fi
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+      - name: Create upgrade pull request
+        if: steps.merge.outputs.result == 'merged'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ steps.version.outputs.latest }}
+          CURRENT: ${{ steps.version.outputs.current }}
+          BRANCH: ${{ steps.merge.outputs.branch }}
+        run: |
+          existing="$(gh pr list --head "$BRANCH" --base custom-stable --state open --json url --jq '.[0].url // ""')"
+          if [[ -n "$existing" ]]; then
+            echo "Existing pull request: $existing"
+            exit 0
+          fi
+          gh pr create \
+            --base custom-stable \
+            --head "$BRANCH" \
+            --title "merge: upgrade upstream to $LATEST" \
+            --body "Automated upstream upgrade from **$CURRENT** to **$LATEST**.
+
+          Before merging:
+          - Review the three-way merge.
+          - Wait for CI.
+          - Update \`patchSourceRef\` and \`patchTargetVersion\` only after compatibility is verified.
+          - Bump \`patchVersion\` when preparing the custom release."
+      - name: Report merge conflicts
+        if: steps.merge.outputs.result == 'conflict'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ steps.version.outputs.latest }}
+          CURRENT: ${{ steps.version.outputs.current }}
+          CONFLICTS: ${{ steps.merge.outputs.conflicts }}
+        run: |
+          title="Upstream $LATEST requires manual conflict resolution"
+          existing="$(gh issue list --state open --search "$title in:title" --json url --jq '.[0].url // ""')"
+          if [[ -n "$existing" ]]; then
+            echo "Existing conflict issue: $existing"
+            exit 0
+          fi
+          body="$(printf '%s\n\n%s\n\n```text\n%s\n```\n' \
+            "Automatic merge from **$CURRENT** to **$LATEST** could not be completed." \
+            "Create \`upgrade/$LATEST\` locally from \`custom-stable\`, merge \`upstream-stable\`, and resolve these files:" \
+            "$CONFLICTS")"
+          gh issue create --title "$title" --body "$body"
