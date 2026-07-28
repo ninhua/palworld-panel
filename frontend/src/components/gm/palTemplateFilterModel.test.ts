@@ -25,7 +25,7 @@ describe('palTemplateMatchesFilters', () => {
       index: ['pal-template-index.json'],
       category: ['工作'],
       overallGrade: ['常用毕业'],
-      usageCategory: ['手工作业＋采矿＋搬运'],
+      usageCategory: ['手工作业'],
       classificationTag: ['毕业:工作'],
       graduationUse: ['工作'],
       status: ['current-graduation'],
@@ -40,12 +40,12 @@ describe('palTemplateMatchesFilters', () => {
   it('uses OR within one dimension and AND across dimensions', () => {
     expect(palTemplateMatchesFilters(template, {
       ...createEmptyPalTemplateFilters(),
-      usageCategory: ['播种', '手工作业＋采矿＋搬运'],
+      usageCategory: ['播种', '手工作业'],
       overallGrade: ['常用毕业'],
     })).toBe(true);
     expect(palTemplateMatchesFilters(template, {
       ...createEmptyPalTemplateFilters(),
-      usageCategory: ['播种', '手工作业＋采矿＋搬运'],
+      usageCategory: ['播种', '手工作业'],
       overallGrade: ['普通'],
     })).toBe(false);
   });
