@@ -45,7 +45,6 @@ jobs:
           (cd backend && go test -p=1 ./...)
           (cd sav-cli && CGO_ENABLED=1 go test -p=1 ./...)
           (cd backend && go test -p=1 -race ./...)
-          scripts/check-go-coverage.sh
       - name: Frontend checks
         run: |
           cd frontend
@@ -91,6 +90,8 @@ jobs:
             dist/packages/palpanel-sav-cli_${{ env.CI_PACKAGE_VERSION }}_source.tar.gz
             dist/packages/palpanel_${{ env.CI_PACKAGE_VERSION }}_source.tar.gz
             dist/packages/THIRD_PARTY_LICENSES.txt
+      - name: Go coverage threshold
+        run: scripts/check-go-coverage.sh
 
   windows:
     runs-on: windows-2025
