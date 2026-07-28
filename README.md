@@ -278,6 +278,8 @@ Linux amd64 可以直接在面板任务队列或设置页执行“更新面板�
 
 这是完整 Release 更新，不再使用补丁热更新、补丁清单或 `Palworld-Panel-Patches` 补丁链。Windows 版本目前通过下载新 Release ZIP 后运行升级程序更新。
 
+完整后端接口和机器人对接方法见 [`docs/backend-api-guide.md`](docs/backend-api-guide.md)；面板更新的任务、Release 资产和错误码详见 [`docs/panel-update-api.md`](docs/panel-update-api.md)。
+
 ## 安全与限制
 
 - 管理员会话和 QQ 配种会话使用不同的 Cookie 与权限检查
