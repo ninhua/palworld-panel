@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiClient, currentApiBaseUrl, handleRequest, unwrapApiData } from './client';
+import { ApiError, apiClient, currentApiBaseUrl, getErrorMessage, handleRequest, unwrapApiData } from './client';
 
 describe('api client response handling', () => {
   beforeEach(() => {
@@ -44,6 +44,11 @@ describe('api client response handling', () => {
     await expect(
       handleRequest(() => Promise.resolve({ data: { ok: false, error: { code: 'unsupported', message: '接口未实现' } }, status: 501 }), {}),
     ).rejects.toMatchObject({ message: '接口未实现', code: 'unsupported' });
+  });
+
+  it('uses a contextual fallback only when no structured error message exists', () => {
+    expect(getErrorMessage(undefined, '读取配置历史失败')).toBe('读取配置历史失败');
+    expect(getErrorMessage(new ApiError('后端拒绝请求'), '读取配置历史失败')).toBe('后端拒绝请求');
   });
 
   it('always uses the same-origin API and ignores old backend URL storage', async () => {

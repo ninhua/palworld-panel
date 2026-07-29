@@ -178,8 +178,8 @@ export const handleRequest = async <T, R = T>(
   }
 };
 
-export const getErrorMessage = (error: unknown) => {
+export const getErrorMessage = (error: unknown, fallback = '操作失败，请检查后端状态') => {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
-  return '操作失败，请检查后端状态';
+  return fallback;
 };
