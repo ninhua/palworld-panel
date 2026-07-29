@@ -7,6 +7,7 @@
   "scripts": {
     "generate:api-types": "cd ../backend && go run ./cmd/openapi-types --spec ../docs/openapi.yaml --output ../frontend/src/api/generated/contracts.ts",
     "check:api-types": "npm run generate:api-types && git diff --exit-code -- src/api/generated/contracts.ts",
+    "sync:palops-map": "python3 ../scripts/sync_palops_map_assets.py --destination public/map/palops --allow-network && python3 ../scripts/sync_maplibre_assets.py --destination public/vendor/maplibre-gl --allow-network",
     "dev": "vite",
     "typecheck": "tsc -b",
     "build": "tsc -b && vite build",

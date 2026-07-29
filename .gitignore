@@ -31,6 +31,7 @@
 /frontend/output/
 /frontend/playwright-report/
 /frontend/test-results/
+/frontend/public/map/palops/
 
 # Generated Python and .NET build output
 **/__pycache__/
@@ -53,3 +54,4 @@
 Thumbs.db
 .idea/
 .vscode/
+/frontend/public/vendor/maplibre-gl/

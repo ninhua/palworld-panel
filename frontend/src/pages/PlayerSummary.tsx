@@ -145,7 +145,7 @@ export const PlayerSummary: React.FC = () => {
         </div>
       </section>
 
-      <p className="text-[11px] font-semibold leading-5 text-slate-400">中文区域根据现有世界坐标投影后匹配最近的大区域，仅用于快速定位，不代表游戏内精确地标。科技、配方、图鉴和首领进度尚未由当前 sav-cli 索引输出，因此本页不伪造这些数据。</p>
+      <p className="text-[11px] font-semibold leading-5 text-slate-400">中文区域根据 PalOps 世界坐标投影后匹配最近的大区域，仅用于快速定位，不代表游戏内精确地标。科技、配方、图鉴和首领进度尚未由当前 sav-cli 索引输出，因此本页不伪造这些数据。</p>
     </div>
   );
 };

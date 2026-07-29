@@ -6,6 +6,8 @@ root_dir="$(cd -- "$script_dir/.." && pwd -P)"
 packages_dir="$root_dir/dist/packages"
 staging_dir="$packages_dir/staging"
 webui_embed_dir="$root_dir/backend/internal/webui/embedded"
+palops_map_stage_dir="$root_dir/frontend/public/map/palops"
+maplibre_stage_dir="$root_dir/frontend/public/vendor/maplibre-gl"
 
 version=""
 targets="linux-amd64"
@@ -21,7 +23,57 @@ esac
 cleanup_webui_stage() {
   find "$webui_embed_dir" -mindepth 1 ! -name .keep -exec rm -rf -- {} + 2>/dev/null || true
 }
-trap cleanup_webui_stage EXIT
+
+cleanup_palops_map_stage() {
+  rm -rf -- "$palops_map_stage_dir"
+}
+
+cleanup_maplibre_stage() {
+  rm -rf -- "$maplibre_stage_dir"
+}
+
+cleanup_staging_assets() {
+  cleanup_webui_stage
+  cleanup_palops_map_stage
+  cleanup_maplibre_stage
+}
+trap cleanup_staging_assets EXIT
+
+sync_palops_map_assets() {
+  local args=(
+    "$root_dir/scripts/sync_palops_map_assets.py"
+    --destination "$palops_map_stage_dir"
+  )
+  if [[ -n "${PALPANEL_PALOPS_MAP_SOURCE_DIR:-}" ]]; then
+    args+=(--source-dir "$PALPANEL_PALOPS_MAP_SOURCE_DIR")
+  elif [[ -n "${PALPANEL_PALOPS_MAP_ARCHIVE:-}" ]]; then
+    args+=(--archive "$PALPANEL_PALOPS_MAP_ARCHIVE")
+  else
+    args+=(--allow-network)
+  fi
+  if [[ -n "${PALPANEL_PALOPS_TILE_SOURCE_DIR:-}" ]]; then
+    args+=(--tiles-source-dir "$PALPANEL_PALOPS_TILE_SOURCE_DIR")
+  fi
+  if [[ "${PALPANEL_INCLUDE_PALOPS_REPOSITORY_TILES:-false}" == "true" ]]; then
+    args+=(--include-repository-tiles)
+  fi
+  printf '[palpanel] Synchronizing pinned PalOps map assets\n'
+  python3 "${args[@]}"
+}
+
+sync_maplibre_assets() {
+  local args=(
+    "$root_dir/scripts/sync_maplibre_assets.py"
+    --destination "$maplibre_stage_dir"
+  )
+  if [[ -n "${PALPANEL_MAPLIBRE_SOURCE_DIR:-}" ]]; then
+    args+=(--source-dir "$PALPANEL_MAPLIBRE_SOURCE_DIR")
+  else
+    args+=(--allow-network)
+  fi
+  printf '[palpanel] Synchronizing pinned MapLibre runtime\n'
+  python3 "${args[@]}"
+}
 
 usage() {
   printf 'Usage: scripts/package.sh [--version VERSION] [--targets linux-amd64] [--skip-tests] [--clean]\n'
@@ -59,6 +111,9 @@ if (( clean )); then
 fi
 mkdir -p "$packages_dir" "$staging_dir"
 
+sync_palops_map_assets
+sync_maplibre_assets
+
 if (( ! skip_tests )); then
   printf '[palpanel] Running backend tests\n'
   (cd "$root_dir/backend" && go test -p=1 ./...)
@@ -78,6 +133,8 @@ fi
 cleanup_webui_stage
 mkdir -p "$webui_embed_dir"
 cp -R "$root_dir/frontend/dist/." "$webui_embed_dir/"
+cleanup_palops_map_stage
+cleanup_maplibre_stage
 
 copy_common_files() {
   local package_dir="$1"

@@ -1,5 +1,16 @@
 # 功能移植已知问题
 
+## PalOps 世界地图
+
+- 地图源码适配固定到 `CoderYiXin/PalOpsWeb` 1.3.2 / `dc2ec173c77e759482e59d9b63d228c88132061c`；上游数据变化不会在运行时自动漂移。
+- 固定 POI、图标、许可证和元数据可由发布构建从固定提交同步；同步器会校验三种语言均为 1,251 条且稳定 ID、地图和坐标完全一致。
+- MapLibre GL JS 6.0.0 的 ESM、shared module、module worker、CSS 和 BSD 许可证由发布构建固定同步并自托管；运行时不访问 CDN。
+- MapLibre GL JS 6.0.0 需要 WebGL2；浏览器禁用 WebGL2 或显卡驱动不支持时，页面会显示运行时错误而不是回退到旧地图。
+- PalOps 当前瓦片元数据把 The Hidden Gaming Lair 栅格图标记为 `redistributionAllowed=false`。PalPanel 不默认打包这些瓦片；未导入时页面使用深色无底图模式，但固定 POI 和服务器动态图层仍可使用。
+- 完整离线底图只能从管理员有权使用的本地 PalOps 安装导入，并要求每个地图层严格包含 341 张 WebP 瓦片。
+- 探索记录存放在浏览器 `localStorage`，不会同步到其他浏览器或用户，也不会写入存档。
+- 页面最多在侧栏列出前 100 个筛选结果，地图画布仍渲染全部匹配标记。
+
 ## 房主存档 UID 重映射
 
 - `ItemContainerSaveData[n].Value.CustomVersionData` 是原样保留的版本元数据。合作房主固定源 UID 的 16 字节序列可能在该字段中作为哨兵模式出现，不代表玩家引用。

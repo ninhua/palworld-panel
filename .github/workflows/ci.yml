@@ -55,6 +55,8 @@ jobs:
       - name: Source and shell checks
         run: |
           shellcheck install.sh scripts/package.sh scripts/palpanelctl scripts/start.sh scripts/scan-secrets.sh scripts/verify-release-contents.sh scripts/smoke-linux.sh scripts/smoke-palcalc-no-icu.sh scripts/test-install.sh scripts/test-bootstrap-install.sh scripts/test-upgrade.sh scripts/check-go-coverage.sh
+          python3 scripts/test_sync_palops_map_assets.py
+          python3 scripts/test_sync_maplibre_assets.py
           scripts/scan-secrets.sh
           gitleaks dir . --config .gitleaks.toml --redact --no-banner
           git diff --check

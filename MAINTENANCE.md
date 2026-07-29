@@ -27,8 +27,8 @@
 
 ```text
 上游版本：v1.3.0
-自定义版本：0.8.38
-完整标签：v1.3.0-custom.0.8.38
+自定义版本：0.8.39
+完整标签：v1.3.0-custom.0.8.39
 ```
 
 版本源位于：
@@ -305,7 +305,32 @@ backend/internal/api/incidents.go
 frontend/src/pages/Incidents.tsx
 ```
 
-## 12. PalDefender 与 GM 命令
+## 12. PalOps 世界地图资源
+
+世界地图固定使用 `CoderYiXin/PalOpsWeb` 1.3.2 提交 `dc2ec173c77e759482e59d9b63d228c88132061c` 的数据模型。只迁移前端地图、固定 POI、坐标和资源清单，不引入 ASP.NET Core、SignalR 或 PalOps 账户系统。
+
+维护规则：
+
+- `scripts/sync_palops_map_assets.py` 必须固定仓库、提交和 POI 总数，禁止跟随 `main` 或下载任意 URL。
+- `scripts/sync_maplibre_assets.py` 必须固定 MapLibre GL JS 6.0.0，只同步 ESM、shared、worker、CSS 和 BSD 许可证；浏览器不得从 CDN 加载运行时代码。
+- 三种语言 POI 必须均为 1,251 条，ID、地图和四组坐标必须完全一致。
+- 归档提取必须拒绝路径穿越、符号链接、未知扩展名和超限文件。
+- PalOps 当前栅格瓦片元数据声明 `redistributionAllowed=false`，不得默认打包或在 CI 中静默复制。
+- 导入完整瓦片必须使用管理员提供的本地目录；每个地图层必须恰好包含 341 张 `.webp`。
+- 地图不允许 iframe、远程脚本或浏览器直连 PalOps 后端；服务器动态图层只能使用 PalPanel 自己的受认证 API。
+- PalOps 来源、提交、版本、数据集和每个 POI 的许可证必须在页面或随包说明中保留。
+
+关键文件：
+
+```text
+frontend/src/pages/LiveMap.tsx
+frontend/src/components/map/PalOpsMapViewport.tsx
+frontend/src/map/palopsMap.ts
+scripts/sync_palops_map_assets.py
+scripts/sync_maplibre_assets.py
+```
+
+## 13. PalDefender 与 GM 命令
 
 PalDefender 同时使用 REST 和 Source RCON：
 
@@ -352,7 +377,7 @@ frontend/src/pages/PlayerCenter.tsx
 - 审计结果
 - 是否存在危险的自动重试
 
-## 13. 玩家身份归并
+## 14. 玩家身份归并
 
 同一个玩家可能同时出现：
 
@@ -383,7 +408,7 @@ frontend/src/pages/PlayerCenter.tsx
 frontend/src/pages/StarterGift.tsx
 ```
 
-## 14. 新玩家礼包状态
+## 15. 新玩家礼包状态
 
 礼包状态至少区分：
 
@@ -413,7 +438,7 @@ frontend/src/pages/StarterGift.tsx
 - 选择“手工作业”必须能匹配“手工作业 + 播种”等复合用途。
 - 必须提供一键清空筛选。
 
-## 15. OpenAPI 与接口维护
+## 16. OpenAPI 与接口维护
 
 后端接口变更时必须同步：
 
@@ -439,7 +464,7 @@ frontend/src/pages/StarterGift.tsx
 
 不要用一个笼统的 `500` 覆盖所有失败。
 
-## 16. 安全边界
+## 17. 安全边界
 
 - 浏览器不能提交任意 RCON 命令。
 - 后端只能暴露有类型、有验证的管理动作。
@@ -450,9 +475,8 @@ frontend/src/pages/StarterGift.tsx
 - 不得把 Token、代理密码或 PalDefender REST Token 写入日志、Release 或前端响应。
 - 存档解析保持只读，不允许浏览器直接获得原始 `.sav`。
 - 更新替换必须保留备份和启动失败回滚能力。
-- 房主存档 UID 重映射只允许把 `worldSaveData.ItemContainerSaveData[n].Value.CustomVersionData` 中的固定房主 UID 哨兵视为版本元数据碰撞；必须保持原始字节不变并输出警告。其他 opaque UID 候选仍须阻止迁移。
 
-## 17. 提交建议
+## 18. 提交建议
 
 ### PalPanelBridge 技术预览
 
@@ -474,7 +498,7 @@ docs: add release notes for 0.8.24
 
 同一尚未发布功能可以在发布前整理提交。已经发布的提交不要改写 SHA。
 
-## 18. 发布完成检查表
+## 19. 发布完成检查表
 
 - [ ] 自定义版本已递增
 - [ ] OpenAPI 与前端契约已同步

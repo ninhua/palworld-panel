@@ -86,12 +86,6 @@ Runtime-downloaded PalDefender
   A digest-verified PalDefender.zip is used only when the direct DLL assets are
   not present in that Release.
 
-UE4SS bridge SDK
-----------------
-- UE4SS-RE/RE-UE4SS v3.0.1: MIT. PalPanelBridge is compiled against this exact
-  SDK version to match the pinned runtime ABI. The standalone bridge artifact
-  includes the upstream license as UE4SS-LICENSE.txt.
-
 Runtime community icon references
 ---------------------------------
 - The player center can request Pal icons from the public GitHub Raw paths in
@@ -101,14 +95,30 @@ Runtime community icon references
   Referencing a remote image does not relicense that artwork under PalPanel's
   GPL.
 
-Palworld map visualization
---------------------------
-- The 2048x2048 Palpagos map image under frontend/public/assets/maps is
-  derived from Kregap/palworld-map and distributed with its MIT notice.
-- The world-coordinate projection follows fa0311/palworld-map, licensed MIT.
+MapLibre map renderer
+----------------------
+- MapLibre GL JS 6.0.0: BSD-3-Clause. Release builds synchronize the exact
+  ESM module, shared module, module worker, CSS and LICENSE.txt from the pinned
+  npm version and serve them from PalPanel itself; browsers do not use a CDN.
+- The synchronized license is embedded at
+  `/vendor/maplibre-gl/LICENSE.txt` in the web UI release assets.
+
+PalOps world map data and implementation reference
+--------------------------------------------------
+- CoderYiXin/PalOpsWeb 1.3.2, pinned at commit
+  dc2ec173c77e759482e59d9b63d228c88132061c: GPL-3.0-or-later. PalPanel
+  reimplements the map adapter in React and retains source/version attribution.
+- PalOps fixed POI records declare per-record licenses. The pinned 1,251-record
+  baseline includes CC-BY-SA-4.0 curated data plus MIT/Apache-2.0 coordinate and
+  implementation references documented by PalOps. The synchronized map license
+  and source files are copied into the embedded web assets.
+- PalOps metadata identifies the current Palpagos and World Tree raster tiles as
+  sourced from The Hidden Gaming Lair and marks `redistributionAllowed=false`.
+  PalPanel therefore does not download or redistribute those tiles by default.
+  Operators may import a local tile set only after confirming they have the
+  necessary rights; otherwise the map uses a dark no-basemap background while preserving marker layers.
 - Palworld, its map imagery, names, and artwork remain property of Pocketpair,
-  Inc. They are used only as an in-panel visualization and are not relicensed
-  under PalPanel's GPL.
+  Inc. They are not relicensed under PalPanel's GPL.
 
 The release SBOM provides the exact package/version inventory. Corresponding
 license texts remain available from each dependency's source distribution and

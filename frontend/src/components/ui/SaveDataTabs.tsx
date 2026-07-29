@@ -10,7 +10,7 @@ const tabs = [
   { path: '/bases', label: '基地', icon: <Home size={15} /> },
   { path: '/pal-inventory', label: '帕鲁仓库', icon: <Sword size={15} /> },
   { path: '/breeding', label: '配种实验室', icon: <Sword size={15} /> },
-  { path: '/map', label: '实时地图', icon: <MapIcon size={15} /> },
+  { path: '/map', label: '世界地图', icon: <MapIcon size={15} /> },
 ];
 
 export const SaveDataTabs: React.FC = () => (

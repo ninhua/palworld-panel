@@ -29,7 +29,7 @@ PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更�
 </p>
 
 <p align="center">
-  <img src="docs/images/live-map-new.png" width="49%" alt="实时地图">
+  <img src="docs/images/live-map-new.png" width="49%" alt="世界地图（截图待更新）">
   <img src="docs/images/backups-webdav-new.png" width="49%" alt="备份与 WebDAV">
 </p>
 
@@ -54,11 +54,14 @@ PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更�
 - 使用保存世界、广播倒计时、正常退出和受控兜底组成的安全关服流程
 - 为 `PalWorldSettings.ini` 保留私密修订历史，支持脱敏字段差异、回滚草稿和健康失败自动恢复
 - 为当前存档源保留脱敏结构化索引快照，比较玩家、基地、帕鲁、容器和物品总量变化
+- 使用 PalOps 双地图数据替换旧版单图地图，固定 POI 与玩家/据点动态图层完全在本地加载
 - 使用崩溃守卫识别短周期异常退出、OOM 和 Docker 重启循环，自动暂停重启并提供确认恢复入口
 - 使用统一通知与事件中心归并监控告警、崩溃熔断和失败任务，支持确认、解决、重新打开及可选签名 Webhook
 - 在 Linux amd64 上从本仓库 Release 更新面板：systemd 安装走独立 root 完整包更新器，无 systemd 的可写便携环境走保持 PID 的 `syscall.Exec` 热更新；两种模式都执行版本与就绪检查并支持失败回滚
 
 ### 存档与地图
+
+- 世界地图使用自托管 MapLibre GL JS 6.0.0，迁移 PalOps Web 1.3.2 的双地图与固定 POI；浏览器运行时不访问 CDN。
 
 - 把当前服务器世界作为内置存档源
 - 导入带有 `Level.sav` 的标准 ZIP、TAR、TAR.GZ 或 TGZ 存档
@@ -66,7 +69,7 @@ PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更�
 - 使用 `sav-cli` 为服务器和导入存档建立索引；存档文件变化会标记索引过期，有可用缓存时会保留上一次成功的索引，并显示重建错误和警告
 - 查询玩家、公会、基地、容器和帕鲁
 - 读取帕鲁的性别、IV、星级、技能、被动词条、主人和所在容器
-- 在 Palpagos 游戏地图上显示玩家、基地和存档实体
+- 使用 PalOps Web 1.3.2 的 Palpagos / World Tree 双地图、固定 POI、搜索、探索进度和动态图层显示玩家、据点及存档实体
 
 导入流程是先上传归档，再在检查页确认结果。面板会检查路径穿越、软链接/硬链接、文件数量和解压大小，并验证 `Level.sav` 是否可读取、非空且能被索引器解析；归档里有多个世界时，需要选择具体世界后才能导入。导入后的存档可以激活，用于面板查看和分析，但激活不会直接覆盖正在运行的游戏存档。当前支持 Steam 与 Palworld Dedicated Server 存档，不支持 Xbox WGS。
 
