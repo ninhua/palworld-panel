@@ -59,6 +59,7 @@ type Config struct {
 	LogsDir                      string
 	DBPath                       string
 	RequireAuth                  bool
+	DiagnosticShellEnabled       bool
 	CORSOrigins                  []string
 	FrontendDist                 string
 	MaxUploadBytes               int64
@@ -299,6 +300,7 @@ func Load() (Config, error) {
 		LogsDir:                      logsDir,
 		DBPath:                       dbPath,
 		RequireAuth:                  envBool("PALPANEL_REQUIRE_AUTH", true),
+		DiagnosticShellEnabled:       envBool("PALPANEL_DIAGNOSTIC_SHELL_ENABLED", false),
 		CORSOrigins:                  envList("PALPANEL_CORS_ORIGINS", []string{"http://127.0.0.1:3000", "http://localhost:3000"}),
 		FrontendDist:                 frontendDist,
 		MaxUploadBytes:               int64(envInt("PALPANEL_MAX_UPLOAD_MB", 256)) * 1024 * 1024,
@@ -630,7 +632,7 @@ func validateProxyURL(name, raw string) error {
 }
 
 func validateScalarEnvironment() error {
-	for _, name := range []string{"PALPANEL_REQUIRE_AUTH", "PALPANEL_SAVE_INDEXER_ENABLED", "PALPANEL_COMMUNITY_SERVERS_ENABLED"} {
+	for _, name := range []string{"PALPANEL_REQUIRE_AUTH", "PALPANEL_DIAGNOSTIC_SHELL_ENABLED", "PALPANEL_SAVE_INDEXER_ENABLED", "PALPANEL_COMMUNITY_SERVERS_ENABLED"} {
 		raw := strings.TrimSpace(os.Getenv(name))
 		if raw == "" {
 			continue

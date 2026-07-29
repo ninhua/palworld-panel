@@ -165,6 +165,18 @@ New-NetFirewallRule `
 
 其他设备使用 `http://<Windows 局域网 IPv4>:8080` 访问；可通过 `ipconfig` 查询 IPv4 地址。`0.0.0.0` 只是监听地址，不能直接作为浏览器访问地址。请保持 `PALPANEL_REQUIRE_AUTH=true`，不要把未配置 HTTPS 的 8080 端口直接映射到公网。
 
+### 诊断控制台
+
+“运维与安全 → 诊断控制台”可以由已登录的管理员从 PalPanel 后端测试回环或私网 HTTP 接口。请求最多执行 15 秒，请求体和响应输出均限制为 64 KiB，公网目标会被拒绝。
+
+主机终端执行默认关闭。如确需临时调试，在 Windows 的 `config\palpanel.env` 或 Linux 的 `/etc/palpanel/palpanel.env` 中加入：
+
+```env
+PALPANEL_DIAGNOSTIC_SHELL_ENABLED=true
+```
+
+重启 PalPanel 后生效。命令使用 PalPanel 服务账号权限执行，单次最多 15 秒、输出最多 64 KiB，并记录到操作审计。调试结束后应删除该配置或改回 `false` 并重启；该接口不接受 API Key，也不能在关闭面板登录验证时使用。
+
 ### Linux amd64
 
 安装最新正式版。默认使用 `https://ghfast.top/` 加速获取 GitHub 上的安装脚本：

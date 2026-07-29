@@ -2,7 +2,7 @@ import React from 'react';
 import {
   Activity, Archive, ClipboardList, Database, Dna, FolderArchive, Globe2, LayoutDashboard,
   Gift, ListTodo, Map as MapIcon, PackageSearch, Puzzle, Settings as SettingsIcon, Shield, Sparkles,
-  UserCog, UserX, Users,
+  SquareTerminal, UserCog, UserX, Users,
 } from 'lucide-react';
 import type { TranslationKey } from './i18n';
 
@@ -15,6 +15,7 @@ const BanList = lazyPage(() => import('./pages/BanList'), 'BanList');
 const Bases = lazyPage(() => import('./pages/Bases'), 'Bases');
 const BreedingLab = lazyPage(() => import('./pages/BreedingLab'), 'BreedingLab');
 const Dashboard = lazyPage(() => import('./pages/Dashboard'), 'Dashboard');
+const Diagnostics = lazyPage(() => import('./pages/Diagnostics'), 'Diagnostics');
 const CommunityServers = lazyPage(() => import('./pages/CommunityServers'), 'CommunityServers');
 const Guilds = lazyPage(() => import('./pages/Guilds'), 'Guilds');
 const Mods = lazyPage(() => import('./pages/Mods'), 'Mods');
@@ -66,6 +67,7 @@ export const appRoutes: AppRoute[] = [
   { id: 'security', path: '/security', title: '安全防护', navLabel: '安全防护', titleKey: 'route.security', navGroup: 'system', icon: <Shield size={18} />, element: <Security /> },
   { id: 'banlist', path: '/banlist', title: '封禁列表', navLabel: '封禁列表', titleKey: 'route.banlist', navGroup: 'system', icon: <UserX size={18} />, element: <BanList /> },
   { id: 'audit', path: '/audit', title: '操作审计', navLabel: '操作审计', titleKey: 'route.audit', navGroup: 'system', icon: <ClipboardList size={18} />, element: <AuditLogs /> },
+  { id: 'diagnostics', path: '/diagnostics', title: '诊断控制台', navLabel: '诊断控制台', titleKey: 'route.diagnostics', navGroup: 'system', icon: <SquareTerminal size={18} />, element: <Diagnostics /> },
   { id: 'settings', path: '/settings', title: '系统设置', navLabel: '系统设置', titleKey: 'route.settings', navGroup: 'system', icon: <SettingsIcon size={18} />, element: <Settings /> },
 
   // Legacy routes remain directly addressable and are highlighted under their new parent entries.

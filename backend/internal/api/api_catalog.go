@@ -89,6 +89,15 @@ var apiCatalogExact = map[string]apiCatalogDescriptor{
 	"POST /api/panel/update": {
 		Category: "系统", Summary: "更新面板", Description: "下载完整 Release 包并校验 SHA256 后原子替换当前二进制。", Permission: "server:control", Response: "已创建的 panel_update 任务。", Patched: true,
 	},
+	"GET /api/system/diagnostics": {
+		Category: "诊断", Summary: "查询诊断能力", Description: "返回 HTTP 测试、终端执行、超时、输出上限和平台状态。", Permission: "interactive-admin", Response: "诊断能力与固定执行限制。", Patched: true,
+	},
+	"POST /api/system/diagnostics/http": {
+		Category: "诊断", Summary: "测试私网 HTTP 接口", Description: "从 PalPanel 主机向回环或私网地址发送受限 HTTP 请求。", Permission: "interactive-admin", Request: `JSON: {"method":"GET","url":"http://127.0.0.1:17993/","headers":{},"body":""}`, Response: "上游状态、响应头、受限响应体和耗时。", Patched: true,
+	},
+	"POST /api/system/diagnostics/shell": {
+		Category: "诊断", Summary: "执行受限主机命令", Description: "仅在服务端显式启用后执行单条主机命令，固定超时和输出上限。", Permission: "interactive-admin", Request: `JSON: {"command":"ss -lntp","confirm":true}`, Response: "退出码、输出、超时和截断状态。", Patched: true,
+	},
 	"POST /api/save-sources/import/inspect": {
 		Category: "世界存档", Summary: "检查存档导入或房主档迁移", Description: "除标准存档检查外，可识别合作房主存档并准备 UID 重映射。", Permission: "server:control", Request: "multipart/form-data 或导入检查参数；房主迁移按页面生成参数。", Response: "候选世界、冲突和迁移计划。", Patched: true,
 	},
@@ -218,6 +227,9 @@ func apiAuthentication(method, path string) string {
 	}
 	if strings.HasPrefix(path, "/api/integrations/astrbot/") {
 		return "astrbot-signature"
+	}
+	if path == "/api/system/diagnostics" || strings.HasPrefix(path, "/api/system/diagnostics/") {
+		return "interactive-admin-session"
 	}
 	return "session-or-development-key"
 }

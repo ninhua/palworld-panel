@@ -251,6 +251,55 @@ export interface components {
       "data": Array<components["schemas"]["DevelopmentKey"]>;
       "ok": true;
     };
+    "DiagnosticHTTPRequest": {
+      "body"?: string;
+      "headers"?: Record<string, string>;
+      "method": "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
+      "url": string;
+    };
+    "DiagnosticHTTPResult": {
+      "body": string;
+      "duration_ms": number;
+      "headers": Record<string, Array<string>>;
+      "method": string;
+      "status": string;
+      "status_code": number;
+      "truncated": boolean;
+      "url": string;
+    };
+    "DiagnosticHTTPResultEnvelope": {
+      "data": components["schemas"]["DiagnosticHTTPResult"];
+      "ok": true;
+    };
+    "DiagnosticShellRequest": {
+      "command": string;
+      "confirm": true;
+    };
+    "DiagnosticShellResult": {
+      "command": string;
+      "duration_ms": number;
+      "error": string;
+      "exit_code": number;
+      "output": string;
+      "success": boolean;
+      "timed_out": boolean;
+      "truncated": boolean;
+    };
+    "DiagnosticShellResultEnvelope": {
+      "data": components["schemas"]["DiagnosticShellResult"];
+      "ok": true;
+    };
+    "DiagnosticStatus": {
+      "http_enabled": boolean;
+      "max_output": number;
+      "platform": string;
+      "shell_enabled": boolean;
+      "timeout_ms": number;
+    };
+    "DiagnosticStatusEnvelope": {
+      "data": components["schemas"]["DiagnosticStatus"];
+      "ok": true;
+    };
     "ErrorEnvelope": {
       "error": {
         "code": string;
@@ -990,7 +1039,7 @@ export interface components {
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/palworld-panel";
-        "version": "0.8.29";
+        "version": "0.8.30";
       };
       "upstream": {
         "commit": string;

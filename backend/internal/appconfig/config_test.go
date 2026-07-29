@@ -8,12 +8,16 @@ import (
 
 func TestLoadRequiresAuthenticationByDefault(t *testing.T) {
 	t.Setenv("PALPANEL_REQUIRE_AUTH", "")
+	t.Setenv("PALPANEL_DIAGNOSTIC_SHELL_ENABLED", "")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
 	if !cfg.RequireAuth {
 		t.Fatal("expected authentication to be enabled by default")
+	}
+	if cfg.DiagnosticShellEnabled {
+		t.Fatal("expected diagnostic shell to be disabled by default")
 	}
 }
 

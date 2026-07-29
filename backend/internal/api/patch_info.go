@@ -10,11 +10,11 @@ const (
 	patchSourceRepository = "uitok/palworld-panel"
 	patchSourceRef        = "v1.3.0"
 	patchTargetVersion    = "v1.3.0"
-	patchVersion          = "0.8.29"
+	patchVersion          = "0.8.30"
 	panelRepository       = "ninhua/palworld-panel"
 )
 
-var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-self-update", "external-package-updater", "audit-log-response-display", "player-presence-history", "host-save-migrator"}
+var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-self-update", "external-package-updater", "audit-log-response-display", "player-presence-history", "host-save-migrator", "diagnostic-console"}
 
 func (s Server) patchInfo(c *gin.Context) {
 	info := buildinfo.Current()

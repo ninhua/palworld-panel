@@ -18,6 +18,7 @@ import (
 
 const (
 	auditResponseKey        = "patch.audit.response-detail"
+	auditSuccessKey         = "patch.audit.success"
 	maxAuditCaptureBodySize = 64 * 1024
 )
 
@@ -66,6 +67,11 @@ func DetailedAuditMiddleware(store *db.Store) gin.HandlerFunc {
 
 		statusCode := c.Writer.Status()
 		success := statusCode < http.StatusBadRequest
+		if override, exists := c.Get(auditSuccessKey); exists {
+			if value, valid := override.(bool); valid {
+				success = value
+			}
+		}
 		status := "success"
 		if !success {
 			status = "failed"
@@ -88,6 +94,10 @@ func DetailedAuditMiddleware(store *db.Store) gin.HandlerFunc {
 			IP:      c.ClientIP(),
 		})
 	}
+}
+
+func setAuditSuccess(c *gin.Context, success bool) {
+	c.Set(auditSuccessKey, success)
 }
 
 func capturedAuditResponse(status int, success bool, capture *auditCaptureWriter) string {

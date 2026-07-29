@@ -400,4 +400,50 @@ AstrBot 插件目前已经提供：
 - 对异步任务轮询设置超时，但不要在超时后自动重复提交写操作。
 - 先检查 `data.status` 中的存档索引状态；缓存过期时可以展示旧数据并提示用户。
 - 生产环境使用 HTTPS 或可信内网，不要通过公网明文 HTTP 传输 API Key。
+## 9. 诊断控制台接口
 
+诊断接口面向面板中的交互式管理员调试，不面向机器人或无人值守任务。它们只接受已登录管理员的同源浏览器会话；Bearer API Key、普通操作员、查看者和关闭登录验证的部署都会被拒绝。
+
+### 查询诊断能力
+
+```http
+GET /api/system/diagnostics
+```
+
+响应会说明 HTTP 测试和终端命令是否启用、执行超时、输出上限和后端平台。
+
+### 测试内网 HTTP 接口
+
+```http
+POST /api/system/diagnostics/http
+Content-Type: application/json
+
+{
+  "method": "GET",
+  "url": "http://127.0.0.1:17993/",
+  "headers": {
+    "Authorization": "Bearer <临时调试 Token>"
+  },
+  "body": ""
+}
+```
+
+仅允许 `http`、`https` 和回环/私网目标，禁止公网目标、URL 用户信息及代理相关请求头。最多跟随 3 次仍满足私网限制的重定向；单次最长 15 秒，请求体和响应体最多 64 KiB。
+
+### 执行主机终端命令
+
+先在 PalPanel 服务环境中设置 `PALPANEL_DIAGNOSTIC_SHELL_ENABLED=true` 并重启，再请求：
+
+```http
+POST /api/system/diagnostics/shell
+Content-Type: application/json
+
+{
+  "command": "ss -lntp",
+  "confirm": true
+}
+```
+
+Windows 使用 `cmd.exe /d /s /c`，Linux 使用 `/bin/sh -lc`。命令以 PalPanel 服务账号权限执行，最长 15 秒、合并输出最多 64 KiB。响应中的 `exit_code`、`success`、`timed_out` 和 `truncated` 用于判断结果；非零退出码仍会返回 HTTP 200，但操作审计会标记为失败。
+
+调试结束后应关闭环境变量并重启服务。请求和响应可能包含敏感信息，复制日志或审计记录前需要删除 Token、密码和内网地址。

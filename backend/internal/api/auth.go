@@ -127,6 +127,21 @@ func Require(permission Permission) gin.HandlerFunc {
 	}
 }
 
+// RequireInteractiveAdmin keeps host-level diagnostics behind an authenticated
+// browser session. API keys and authentication-disabled deployments cannot use
+// these endpoints because they would otherwise expose a remote execution path.
+func RequireInteractiveAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		principal := CurrentPrincipal(c)
+		if principal.Role == RoleAdmin && principal.Credential == panelauth.CredentialSession {
+			c.Next()
+			return
+		}
+		fail(c, http.StatusForbidden, "interactive_admin_required", "an authenticated administrator browser session is required")
+		c.Abort()
+	}
+}
+
 func CurrentPrincipal(c *gin.Context) Principal {
 	if value, ok := c.Get(principalKey); ok {
 		if principal, ok := value.(Principal); ok {

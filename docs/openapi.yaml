@@ -338,6 +338,62 @@ paths:
   /system/debug:
     get: {operationId: getDebugLogging, tags: [system], x-palpanel-permission: read, responses: *readResponses}
     put: {operationId: updateDebugLogging, tags: [system], x-palpanel-permission: 'config:write', requestBody: *jsonRequest, responses: *writeResponses}
+  /system/diagnostics:
+    get:
+      operationId: getDiagnosticStatus
+      tags: [system]
+      description: Requires an authenticated administrator browser session; API keys are rejected.
+      x-palpanel-permission: interactive-admin
+      responses:
+        '200':
+          description: Diagnostic capability and execution limits.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DiagnosticStatusEnvelope'}
+        '401': *error
+        '403': *error
+  /system/diagnostics/http:
+    post:
+      operationId: runDiagnosticHTTP
+      tags: [system]
+      description: Sends a bounded HTTP request to a loopback or private-network target from the PalPanel host.
+      x-palpanel-permission: interactive-admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DiagnosticHTTPRequest'}
+      responses:
+        '200':
+          description: Bounded upstream response.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DiagnosticHTTPResultEnvelope'}
+        '400': *error
+        '401': *error
+        '403': *error
+        '413': *error
+        '502': *error
+  /system/diagnostics/shell:
+    post:
+      operationId: runDiagnosticShell
+      tags: [system]
+      description: Runs one bounded host command when PALPANEL_DIAGNOSTIC_SHELL_ENABLED is true. Requires an authenticated administrator browser session and explicit confirmation.
+      x-palpanel-permission: interactive-admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DiagnosticShellRequest'}
+      responses:
+        '200':
+          description: Command result. A non-zero exit code is returned in data rather than as a transport error.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DiagnosticShellResultEnvelope'}
+        '400': *error
+        '401': *error
+        '403': *error
   /settings/network-proxy:
     get: {operationId: getNetworkProxyConfig, tags: [system], x-palpanel-permission: read, responses: {'200': *networkProxyConfig, '401': *error, '500': *error}}
     put:
@@ -1300,6 +1356,79 @@ components:
       bearerFormat: ppk_...
       description: 'Revocable development key supplied as Authorization: Bearer ppk_...'
   schemas:
+    DiagnosticStatus:
+      type: object
+      required: [http_enabled, shell_enabled, timeout_ms, max_output, platform]
+      properties:
+        http_enabled: {type: boolean}
+        shell_enabled: {type: boolean}
+        timeout_ms: {type: integer, minimum: 1}
+        max_output: {type: integer, minimum: 1}
+        platform: {type: string}
+    DiagnosticStatusEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/DiagnosticStatus'}
+    DiagnosticHTTPRequest:
+      type: object
+      required: [method, url]
+      additionalProperties: false
+      properties:
+        method: {type: string, enum: [GET, HEAD, POST, PUT, PATCH, DELETE]}
+        url: {type: string, format: uri}
+        headers:
+          type: object
+          additionalProperties: {type: string}
+        body: {type: string, maxLength: 65536}
+    DiagnosticHTTPResult:
+      type: object
+      required: [method, url, status, status_code, headers, body, truncated, duration_ms]
+      properties:
+        method: {type: string}
+        url: {type: string, format: uri}
+        status: {type: string}
+        status_code: {type: integer}
+        headers:
+          type: object
+          additionalProperties:
+            type: array
+            items: {type: string}
+        body: {type: string}
+        truncated: {type: boolean}
+        duration_ms: {type: integer, minimum: 0}
+    DiagnosticHTTPResultEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/DiagnosticHTTPResult'}
+    DiagnosticShellRequest:
+      type: object
+      required: [command, confirm]
+      additionalProperties: false
+      properties:
+        command: {type: string, minLength: 1, maxLength: 4096}
+        confirm: {type: boolean, const: true}
+    DiagnosticShellResult:
+      type: object
+      required: [command, output, exit_code, success, timed_out, truncated, duration_ms, error]
+      properties:
+        command: {type: string}
+        output: {type: string}
+        exit_code: {type: integer}
+        success: {type: boolean}
+        timed_out: {type: boolean}
+        truncated: {type: boolean}
+        duration_ms: {type: integer, minimum: 0}
+        error: {type: string}
+    DiagnosticShellResultEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/DiagnosticShellResult'}
     SaveIndexCounts:
       type: object
       required: [players, guilds, bases, pals, containers, map_entities]
@@ -3045,7 +3174,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.29}
+            version: {type: string, const: 0.8.30}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array
