@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   history: vi.fn(),
   debugStatus: vi.fn(),
   setDebug: vi.fn(),
+  crashGuardStatus: vi.fn(),
+  recoverCrashGuard: vi.fn(),
 }));
 
 vi.mock('../api/monitor', () => ({ monitorApi: mocks }));
@@ -33,6 +35,7 @@ describe('Monitor diagnostics', () => {
 	mocks.snapshot.mockResolvedValue({ sample });
 	mocks.history.mockResolvedValue([sample]);
 	mocks.debugStatus.mockResolvedValue({ enabled: false, path: '', size: 0, max_bytes: 1024, max_files: 2 });
+	mocks.crashGuardStatus.mockResolvedValue({ tripped: false, reason: '', threshold: 3, recent_crash_count: 0, window_seconds: 600, events: [] });
   });
 
   it('renders host, workload, swap, OOM and exit details separately', async () => {

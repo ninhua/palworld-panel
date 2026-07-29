@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -57,21 +58,21 @@ func TestHistoryCapturesPrivateSanitizedSnapshotsAndDiffs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("snapshot mode=%o", info.Mode().Perm())
 	}
 	manifestInfo, err := os.Stat(manager.historyManifestPath(worldKey))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifestInfo.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && manifestInfo.Mode().Perm() != 0o600 {
 		t.Fatalf("manifest mode=%o", manifestInfo.Mode().Perm())
 	}
 	directoryInfo, err := os.Stat(manager.historyWorldDirectory(worldKey))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if directoryInfo.Mode().Perm() != 0o700 {
+	if runtime.GOOS != "windows" && directoryInfo.Mode().Perm() != 0o700 {
 		t.Fatalf("history directory mode=%o", directoryInfo.Mode().Perm())
 	}
 	stored, err := manager.readHistorySnapshot(worldKey, state.Items[1])
