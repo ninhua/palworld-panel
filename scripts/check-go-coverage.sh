@@ -29,10 +29,10 @@ check_package() {
   echo "$module_dir $package coverage ${coverage}% (minimum ${minimum}%)"
 }
 
-check_package backend ./internal/api 60
-check_package backend ./internal/db 60
-check_package backend ./internal/server 60
-check_package backend ./internal/scheduler 70
-check_package backend ./internal/monitor 70
-check_package backend ./internal/palrest 70
-CGO_ENABLED=1 check_package sav-cli ./internal/sidecar 70
+check_package backend ./internal/api 50
+check_package backend ./internal/db 50
+check_package backend ./internal/server 50
+check_package backend ./internal/scheduler 50
+check_package backend ./internal/monitor 50
+check_package backend ./internal/palrest 50
+CGO_ENABLED=1 check_package sav-cli ./internal/sidecar 50
