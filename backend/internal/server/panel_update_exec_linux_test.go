@@ -24,7 +24,7 @@ func TestProbePanelExecHealthRequiresReadyAndTargetVersion(t *testing.T) {
 	if err := probePanelExecHealth(server.Client(), server.URL, "v1.3.0-custom.0.8.31"); err != nil {
 		t.Fatal(err)
 	}
-	if err := probePanelExecHealth(server.Client(), server.URL, "v1.3.0-custom.0.8.31"); err == nil {
+	if err := probePanelExecHealth(server.Client(), server.URL, "v1.3.0-custom.0.8.32"); err == nil {
 		t.Fatal("expected target version mismatch")
 	}
 }
