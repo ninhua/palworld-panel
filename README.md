@@ -176,6 +176,10 @@ New-NetFirewallRule `
 
 “运维与安全 → 诊断控制台”可以由已登录的管理员从 PalPanel 后端测试回环或私网 HTTP 接口。请求最多执行 15 秒，请求体和响应输出均限制为 64 KiB，公网目标会被拒绝。
 
+### 诊断与支持包
+
+`0.8.41` 在诊断页面新增固定白名单体检和脱敏 ZIP 支持包。支持包可包含版本、运行方式、服务器状态、前置条件、主机能力、近期任务、审计和事件摘要；可选附带最近日志尾部。环境变量、数据库、原始存档、密码、Token、完整路径、IP 和玩家标识不会写入 ZIP。默认最多保留 5 份，每份上限 50 MiB。详细边界见 [`docs/support-bundles.md`](docs/support-bundles.md)。
+
 主机终端执行默认关闭。如确需临时调试，在 Windows 的 `config\palpanel.env` 或 Linux 的 `/etc/palpanel/palpanel.env` 中加入：
 
 ```env

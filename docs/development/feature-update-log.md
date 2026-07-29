@@ -1,5 +1,43 @@
 # 功能移植更新记录
 
+## 2026-07-30：诊断与支持包
+
+目标版本：`v1.3.0-custom.0.8.41`
+
+已完成：
+
+- 诊断页面新增固定白名单体检、支持包生成、列表、下载和删除。
+- 支持包包含构建信息、运行方式、服务器状态、前置条件、主机能力、近期任务、审计和事件摘要。
+- 可选附带最近 3 个日志尾部；单文件 128 KiB、总计 384 KiB，写入前执行脱敏。
+- JSON 同时按敏感键名和文本模式脱敏，排除密码、Token、Cookie、API Key、绝对路径、IP、GUID、SteamID 和长标识。
+- 原始存档、数据库、环境变量和用户指定路径不进入 ZIP。
+- 目录与文件使用私有权限；ZIP 条目排序并执行路径安全检查。
+- 默认最多保留 5 份、14 天、单包 50 MiB。
+
+验证：
+
+- 新增文本/键名脱敏、日志白名单、ZIP 顺序和权限、路径穿越及 ID 校验测试。
+- OpenAPI、生成契约、路由契约、维护指南、计划、已知问题和中文 Release 说明已同步。
+- 完整 Go、前端和 Linux/Windows Release 验证由 GitHub Actions 执行。
+
+## 2026-07-30：PalPanelBridge UE4SS 只读链路实机验证
+
+已完成：
+
+- 按服务器实际 UE4SS 提交 `c838a8ac` 和 `Game__Shipping__Win64` 配置编译 `PalPanelBridge 0.1.4`。
+- 将 HTTP 初始化延迟到 `on_unreal_init`，避免阻塞 PalServer 启动。
+- 默认端口由与 `PalPanelSteamAPIProxy` 冲突的 `18082` 改为 `18083`。
+- 配置文件改为根据 `dlls/main.dll` 自身路径定位，不再依赖 Wine 工作目录。
+- 新增不泄露 Token 的 `PalPanelBridge.log`，记录配置路径、监听状态和 Winsock/bind 错误。
+- 新增 `docs/palpanel-bridge.md`，说明安装、鉴权、游戏线程探针及故障判断。
+
+实机验证：
+
+- PalServer 和 UE4SS 能正常完成启动。
+- `127.0.0.1:18083/v1/health` 已返回 PalPanelBridge JSON。
+- 未携带 Bearer Token 时按预期返回 `401 Unauthorized`，证明监听、路由和鉴权边界均已生效。
+- 下一步验证携带正确 Token 的 health 响应，以及任务从 `queued` 进入 `completed`。
+
 ## 2026-07-30：第三方镜像与完全离线构建
 
 目标版本：`v1.3.0-custom.0.8.40`

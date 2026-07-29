@@ -27,8 +27,8 @@
 
 ```text
 上游版本：v1.3.0
-自定义版本：0.8.40
-完整标签：v1.3.0-custom.0.8.40
+自定义版本：0.8.41
+完整标签：v1.3.0-custom.0.8.41
 ```
 
 版本源位于：
@@ -486,7 +486,29 @@ frontend/src/pages/StarterGift.tsx
 
 `vendorctl prepare` 只会创建带 `.palpanel-vendor-managed` 标记的 `third_party/palcalc` 和 `third_party/uesave`。清理时不得删除没有该标记的人工工作目录。
 
-## 17. 安全边界
+## 17. 诊断与支持包
+
+支持包存放在 `DataDir/support-bundles`，目录权限必须为 `0700`，ZIP 与元数据文件必须为 `0600`。接口只允许交互式管理员会话调用。
+
+维护规则：
+
+- 内容来源使用固定白名单，不接受浏览器提交文件路径、命令或目录。
+- 原始存档、数据库、环境变量、密码、Token、Cookie、API Key 和完整绝对路径不得进入 ZIP。
+- JSON 在序列化后同时执行键名脱敏与文本脱敏；可选日志只读取 `LogsDir` 顶层最近的 `.log` / `.txt` 普通文件尾部。
+- 默认最多保留 5 份，每份不超过 50 MiB，超过 14 天或数量限制的旧包在成功生成后清理。
+- ZIP 条目必须排序、固定权限并拒绝绝对路径、`..` 和 NUL；下载只接受 32 位小写十六进制 ID。
+- 支持包用于排障，不是备份，不能用于恢复 PalServer、配置或数据库。
+
+关键文件：
+
+```text
+backend/internal/api/support_bundles.go
+frontend/src/api/supportBundles.ts
+frontend/src/pages/Diagnostics.tsx
+docs/support-bundles.md
+```
+
+## 18. 安全边界
 
 - 浏览器不能提交任意 RCON 命令。
 - 后端只能暴露有类型、有验证的管理动作。
@@ -498,7 +520,7 @@ frontend/src/pages/StarterGift.tsx
 - 存档解析保持只读，不允许浏览器直接获得原始 `.sav`。
 - 更新替换必须保留备份和启动失败回滚能力。
 
-## 18. 提交建议
+## 19. 提交建议
 
 ### PalPanelBridge 技术预览
 
@@ -520,7 +542,7 @@ docs: add release notes for 0.8.24
 
 同一尚未发布功能可以在发布前整理提交。已经发布的提交不要改写 SHA。
 
-## 19. 发布完成检查表
+## 20. 发布完成检查表
 
 - [ ] 自定义版本已递增
 - [ ] OpenAPI 与前端契约已同步

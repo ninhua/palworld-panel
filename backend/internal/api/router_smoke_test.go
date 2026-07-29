@@ -1,6 +1,10 @@
 package api
 
 import (
+	"archive/zip"
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -34,6 +38,8 @@ func TestAuthenticatedReadRoutesReturnStructuredResponses(t *testing.T) {
 		"/api/jobs/missing",
 		"/api/audit-logs",
 		"/api/system/debug",
+		"/api/system/diagnostics/support-bundles/status",
+		"/api/system/diagnostics/support-bundles",
 		"/api/settings/network-proxy",
 		"/api/alerts",
 		"/api/schedules",
@@ -122,6 +128,9 @@ func TestWriteRoutesValidateBadInput(t *testing.T) {
 		{http.MethodDelete, "/api/schedules/missing", ""},
 		{http.MethodPost, "/api/schedules/missing/run", ""},
 		{http.MethodPut, "/api/system/debug", "{"},
+		{http.MethodPost, "/api/system/diagnostics/support-bundles", "{}"},
+		{http.MethodGet, "/api/system/diagnostics/support-bundles/invalid/download", ""},
+		{http.MethodDelete, "/api/system/diagnostics/support-bundles/invalid", ""},
 		{http.MethodPut, "/api/settings/network-proxy", "{"},
 		{http.MethodPost, "/api/settings/network-proxy/test", "{"},
 		{http.MethodPut, "/api/server/runtime", `{"mode":"invalid"}`},
@@ -292,6 +301,60 @@ func TestManagementWriteWorkflows(t *testing.T) {
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("DELETE %s = %d: %s", path, recorder.Code, recorder.Body.String())
 		}
+	}
+}
+
+func TestSupportBundleWorkflow(t *testing.T) {
+	router := newSmokeRouter(t)
+	createdRecorder := performJSONRequest(t, router, http.MethodPost, "/api/system/diagnostics/support-bundles", `{"include_logs":false,"confirm":true}`)
+	if createdRecorder.Code != http.StatusCreated {
+		t.Fatalf("create support bundle = %d: %s", createdRecorder.Code, createdRecorder.Body.String())
+	}
+	var created struct {
+		Data supportBundleMetadata `json:"data"`
+	}
+	if err := json.Unmarshal(createdRecorder.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode support bundle: %v", err)
+	}
+	if !supportBundleIDPattern.MatchString(created.Data.ID) || created.Data.SizeBytes <= 0 || len(created.Data.Entries) == 0 {
+		t.Fatalf("unexpected support bundle metadata: %#v", created.Data)
+	}
+
+	listRecorder := performJSONRequest(t, router, http.MethodGet, "/api/system/diagnostics/support-bundles", "")
+	if listRecorder.Code != http.StatusOK || !strings.Contains(listRecorder.Body.String(), created.Data.ID) {
+		t.Fatalf("list support bundles = %d: %s", listRecorder.Code, listRecorder.Body.String())
+	}
+
+	downloadRecorder := performJSONRequest(t, router, http.MethodGet, "/api/system/diagnostics/support-bundles/"+created.Data.ID+"/download", "")
+	if downloadRecorder.Code != http.StatusOK {
+		t.Fatalf("download support bundle = %d: %s", downloadRecorder.Code, downloadRecorder.Body.String())
+	}
+	body := downloadRecorder.Body.Bytes()
+	digest := sha256.Sum256(body)
+	if hex.EncodeToString(digest[:]) != created.Data.SHA256 {
+		t.Fatalf("download SHA-256 mismatch")
+	}
+	archive, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("open support ZIP: %v", err)
+	}
+	foundManifest := false
+	for _, file := range archive.File {
+		if file.Name == "manifest.json" {
+			foundManifest = true
+		}
+	}
+	if !foundManifest {
+		t.Fatal("support ZIP is missing manifest.json")
+	}
+
+	deleteRecorder := performJSONRequest(t, router, http.MethodDelete, "/api/system/diagnostics/support-bundles/"+created.Data.ID, "")
+	if deleteRecorder.Code != http.StatusOK {
+		t.Fatalf("delete support bundle = %d: %s", deleteRecorder.Code, deleteRecorder.Body.String())
+	}
+	missingRecorder := performJSONRequest(t, router, http.MethodGet, "/api/system/diagnostics/support-bundles/"+created.Data.ID+"/download", "")
+	if missingRecorder.Code != http.StatusNotFound {
+		t.Fatalf("download deleted support bundle = %d: %s", missingRecorder.Code, missingRecorder.Body.String())
 	}
 }
 

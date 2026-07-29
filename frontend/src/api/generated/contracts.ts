@@ -1206,7 +1206,7 @@ export interface components {
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/palworld-panel";
-        "version": "0.8.38";
+        "version": "0.8.41";
       };
       "upstream": {
         "commit": string;
@@ -1594,6 +1594,47 @@ export interface components {
     };
     "SuccessEnvelope": {
       "data": unknown;
+      "ok": true;
+    };
+    "SupportBundleCheck": {
+      "id": string;
+      "message": string;
+      "ok": boolean;
+      "required": boolean;
+    };
+    "SupportBundleCreateRequest": {
+      "confirm": true;
+      "include_logs"?: boolean;
+    };
+    "SupportBundleEnvelope": {
+      "data": components["schemas"]["SupportBundleMetadata"];
+      "ok": true;
+    };
+    "SupportBundleListEnvelope": {
+      "data": Array<components["schemas"]["SupportBundleMetadata"]>;
+      "ok": true;
+    };
+    "SupportBundleMetadata": {
+      "created_at": string;
+      "entries": Array<string>;
+      "file_name": string;
+      "id": string;
+      "include_logs": boolean;
+      "sha256": string;
+      "size_bytes": number;
+    };
+    "SupportBundleStatus": {
+      "checks": Array<components["schemas"]["SupportBundleCheck"]>;
+      "directory_ready": boolean;
+      "max_bundle_bytes": number;
+      "max_bundles": number;
+      "max_log_bytes_per_file": number;
+      "max_log_files": number;
+      "retention_days": number;
+      "schema_version": 1;
+    };
+    "SupportBundleStatusEnvelope": {
+      "data": components["schemas"]["SupportBundleStatus"];
       "ok": true;
     };
     "WebDAVConfig": {

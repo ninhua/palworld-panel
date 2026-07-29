@@ -394,6 +394,74 @@ paths:
         '400': *error
         '401': *error
         '403': *error
+  /system/diagnostics/support-bundles/status:
+    get:
+      operationId: getSupportBundleStatus
+      tags: [system]
+      description: Returns fixed support-bundle limits and health checks. Requires an authenticated administrator browser session; API keys are rejected.
+      x-palpanel-permission: interactive-admin
+      responses:
+        '200':
+          description: Support bundle capability and health status.
+          content: {application/json: {schema: {$ref: '#/components/schemas/SupportBundleStatusEnvelope'}}}
+        '401': *error
+        '403': *error
+        '500': *error
+  /system/diagnostics/support-bundles:
+    get:
+      operationId: listSupportBundles
+      tags: [system]
+      x-palpanel-permission: interactive-admin
+      responses:
+        '200':
+          description: Existing private support bundles.
+          content: {application/json: {schema: {$ref: '#/components/schemas/SupportBundleListEnvelope'}}}
+        '401': *error
+        '403': *error
+        '500': *error
+    post:
+      operationId: createSupportBundle
+      tags: [system]
+      description: Generates a bounded ZIP from a fixed allowlist. Environment variables, databases, save files, secrets, complete paths, addresses, and player identifiers are excluded or redacted.
+      x-palpanel-permission: interactive-admin
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/SupportBundleCreateRequest'}}}
+      responses:
+        '201':
+          description: Generated support bundle metadata.
+          content: {application/json: {schema: {$ref: '#/components/schemas/SupportBundleEnvelope'}}}
+        '400': *error
+        '401': *error
+        '403': *error
+        '500': *error
+        '504': *error
+  /system/diagnostics/support-bundles/{id}:
+    parameters: [*idParameter]
+    delete:
+      operationId: deleteSupportBundle
+      tags: [system]
+      x-palpanel-permission: interactive-admin
+      responses: {'200': *success, '400': *error, '401': *error, '403': *error, '404': *error, '500': *error}
+  /system/diagnostics/support-bundles/{id}/download:
+    parameters: [*idParameter]
+    get:
+      operationId: downloadSupportBundle
+      tags: [system]
+      x-palpanel-permission: interactive-admin
+      responses:
+        '200':
+          description: Private ZIP support bundle.
+          headers:
+            Content-Disposition: {schema: {type: string}}
+          content:
+            application/zip: {schema: {type: string, format: binary}}
+        '400': *error
+        '401': *error
+        '403': *error
+        '404': *error
+        '409': *error
+        '500': *error
   /settings/network-proxy:
     get: {operationId: getNetworkProxyConfig, tags: [system], x-palpanel-permission: read, responses: {'200': *networkProxyConfig, '401': *error, '500': *error}}
     put:
@@ -1637,6 +1705,62 @@ components:
       properties:
         ok: {type: boolean, const: true}
         data: {$ref: '#/components/schemas/DiagnosticShellResult'}
+    SupportBundleCheck:
+      type: object
+      required: [id, ok, required, message]
+      properties:
+        id: {type: string}
+        ok: {type: boolean}
+        required: {type: boolean}
+        message: {type: string}
+    SupportBundleStatus:
+      type: object
+      required: [schema_version, directory_ready, max_bundles, max_bundle_bytes, max_log_files, max_log_bytes_per_file, retention_days, checks]
+      properties:
+        schema_version: {type: integer, const: 1}
+        directory_ready: {type: boolean}
+        max_bundles: {type: integer, minimum: 1}
+        max_bundle_bytes: {type: integer, minimum: 1}
+        max_log_files: {type: integer, minimum: 0}
+        max_log_bytes_per_file: {type: integer, minimum: 0}
+        retention_days: {type: integer, minimum: 1}
+        checks: {type: array, items: {$ref: '#/components/schemas/SupportBundleCheck'}}
+    SupportBundleStatusEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/SupportBundleStatus'}
+    SupportBundleCreateRequest:
+      type: object
+      required: [confirm]
+      additionalProperties: false
+      properties:
+        include_logs: {type: boolean, default: false}
+        confirm: {type: boolean, const: true}
+    SupportBundleMetadata:
+      type: object
+      required: [id, file_name, created_at, size_bytes, sha256, include_logs, entries]
+      properties:
+        id: {type: string, pattern: '^[a-f0-9]{32}$'}
+        file_name: {type: string}
+        created_at: {type: string, format: date-time}
+        size_bytes: {type: integer, minimum: 0}
+        sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        include_logs: {type: boolean}
+        entries: {type: array, items: {type: string}}
+    SupportBundleEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/SupportBundleMetadata'}
+    SupportBundleListEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {type: array, items: {$ref: '#/components/schemas/SupportBundleMetadata'}}
     SaveIndexCounts:
       type: object
       required: [players, guilds, bases, pals, containers, map_entities]
@@ -3708,7 +3832,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.38}
+            version: {type: string, const: 0.8.41}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array
