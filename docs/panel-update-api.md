@@ -38,7 +38,7 @@ v<上游版本>-custom.<自定义版本>
 示例：
 
 ```text
-v1.3.0-custom.0.8.32
+v1.3.0-custom.0.8.34
 ```
 
 ## 鉴权与权限
@@ -78,14 +78,14 @@ curl -fsS \
   "ok": true,
   "data": {
     "current_version": "v1.3.0-custom.0.8.30",
-    "latest_version": "v1.3.0-custom.0.8.32",
-    "release_tag": "v1.3.0-custom.0.8.32",
-    "release_url": "https://github.com/ninhua/palworld-panel/releases/tag/v1.3.0-custom.0.8.32",
+    "latest_version": "v1.3.0-custom.0.8.34",
+    "release_tag": "v1.3.0-custom.0.8.34",
+    "release_url": "https://github.com/ninhua/palworld-panel/releases/tag/v1.3.0-custom.0.8.34",
     "update_available": true,
     "update_mode": "exec",
     "update_mode_note": "主进程通过 syscall.Exec 原地热更新，PID 保持不变并执行启动健康回滚",
     "checked_at": "2026-07-29T09:00:00Z",
-    "message": "发现面板新版本 v1.3.0-custom.0.8.32"
+    "message": "发现面板新版本 v1.3.0-custom.0.8.34"
   }
 }
 ```
@@ -212,7 +212,7 @@ systemd/palpanel-update.path
 ```json
 {
   "schema_version": 1,
-  "version": "v1.3.0-custom.0.8.32",
+  "version": "v1.3.0-custom.0.8.34",
   "exec_hot_update": {
     "supported": true,
     "required_files": ["bin/palpanel"],

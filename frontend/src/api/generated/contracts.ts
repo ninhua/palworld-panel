@@ -1078,7 +1078,7 @@ export interface components {
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/palworld-panel";
-        "version": "0.8.32";
+        "version": "0.8.34";
       };
       "upstream": {
         "commit": string;
@@ -1172,6 +1172,76 @@ export interface components {
     "SafeLifecycleRequest": {
       "message"?: string;
       "waittime"?: number;
+    };
+    "SaveHistoryChange": {
+      "category": "players" | "guilds" | "bases" | "pals" | "containers" | "items";
+      "delta"?: number;
+      "fields": Array<components["schemas"]["SaveHistoryFieldChange"]>;
+      "id": string;
+      "kind": "added" | "removed" | "changed" | "increased" | "decreased";
+      "label": string;
+    };
+    "SaveHistoryDiff": {
+      "from": components["schemas"]["SaveHistorySnapshot"];
+      "items": Array<components["schemas"]["SaveHistoryChange"]>;
+      "limit": number;
+      "offset": number;
+      "summary": components["schemas"]["SaveHistoryDiffSummary"];
+      "to": components["schemas"]["SaveHistorySnapshot"];
+      "total": number;
+    };
+    "SaveHistoryDiffEnvelope": {
+      "data": components["schemas"]["SaveHistoryDiff"];
+      "ok": true;
+    };
+    "SaveHistoryDiffSummary": {
+      "bases_added": number;
+      "bases_changed": number;
+      "bases_removed": number;
+      "containers_added": number;
+      "containers_changed": number;
+      "containers_removed": number;
+      "guilds_added": number;
+      "guilds_changed": number;
+      "guilds_removed": number;
+      "items_decreased": number;
+      "items_increased": number;
+      "pals_added": number;
+      "pals_changed": number;
+      "pals_removed": number;
+      "players_added": number;
+      "players_changed": number;
+      "players_removed": number;
+    };
+    "SaveHistoryFieldChange": {
+      "after": string;
+      "before": string;
+      "field": string;
+    };
+    "SaveHistorySnapshot": {
+      "captured_at": string;
+      "counts": components["schemas"]["SaveIndexCounts"];
+      "fingerprint": string;
+      "generated_at": string;
+      "id": string;
+      "parser": string;
+      "size_bytes": number;
+    };
+    "SaveHistorySource": {
+      "id": string;
+      "kind": "server" | "import";
+      "name": string;
+    };
+    "SaveHistoryState": {
+      "items": Array<components["schemas"]["SaveHistorySnapshot"]>;
+      "max_total_bytes": number;
+      "retention": number;
+      "source": components["schemas"]["SaveHistorySource"];
+      "total_bytes": number;
+    };
+    "SaveHistoryStateEnvelope": {
+      "data": components["schemas"]["SaveHistoryState"];
+      "ok": true;
     };
     "SaveImportCandidate": {
       "errors": Array<string>;

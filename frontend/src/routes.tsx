@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Activity, Archive, ClipboardList, Database, Dna, FolderArchive, Globe2, LayoutDashboard,
+  Activity, Archive, ClipboardList, Database, Dna, FileDiff, FolderArchive, Globe2, LayoutDashboard,
   Gift, ListTodo, Map as MapIcon, PackageSearch, Puzzle, Settings as SettingsIcon, Shield, Sparkles,
   SquareTerminal, UserCog, UserX, Users,
 } from 'lucide-react';
@@ -25,6 +25,7 @@ const Pals = lazyPage(() => import('./pages/Pals'), 'Pals');
 const PalDefenderGM = lazyPage(() => import('./pages/PalDefenderGM'), 'PalDefenderGM');
 const Players = lazyPage(() => import('./pages/Players'), 'Players');
 const SaveSources = lazyPage(() => import('./pages/SaveSources'), 'SaveSources');
+const SaveHistory = lazyPage(() => import('./pages/SaveHistory'), 'SaveHistory');
 const Inventory = lazyPage(() => import('./pages/Inventory'), 'Inventory');
 const StarterGift = lazyPage(() => import('./pages/StarterGift'), 'StarterGift');
 const PlayerSummary = lazyPage(() => import('./pages/PlayerSummary'), 'PlayerSummary');
@@ -56,6 +57,7 @@ export const appRoutes: AppRoute[] = [
   { id: 'player-center', path: '/player-center', title: '玩家中心', navLabel: '玩家中心', titleKey: 'route.playerCenter', navGroup: 'world', activePaths: ['/gm'], icon: <UserCog size={18} />, element: <PalDefenderGM /> },
   { id: 'starter-gift', path: '/starter-gift', title: '新玩家礼包', navLabel: '新玩家礼包', titleKey: 'route.starterGift', navGroup: 'world', icon: <Gift size={18} />, element: <StarterGift /> },
   { id: 'save-sources', path: '/save-sources', title: '存档中心', navLabel: '存档中心', titleKey: 'route.saveSources', navGroup: 'world', icon: <FolderArchive size={18} />, element: <SaveSources /> },
+  { id: 'save-history', path: '/save-history', title: '存档差异', navLabel: '存档差异', titleKey: 'route.saveHistory', navGroup: 'world', icon: <FileDiff size={18} />, element: <SaveHistory /> },
   { id: 'global-inventory', path: '/inventory', title: '库存管理', navLabel: '库存管理', titleKey: 'route.inventory', navGroup: 'world', icon: <PackageSearch size={18} />, element: <Inventory /> },
   { id: 'world-archive', path: '/world', title: '世界档案', navLabel: '世界档案', titleKey: 'route.worldArchive', navGroup: 'world', activePaths: ['/players', '/guilds', '/bases', '/player-summary'], icon: <Database size={18} />, element: <Players /> },
   { id: 'pal-inventory', path: '/pal-inventory', title: '帕鲁仓库', navLabel: '帕鲁仓库', titleKey: 'route.palInventory', navGroup: 'world', activePaths: ['/pals'], icon: <Dna size={18} />, element: <Pals /> },

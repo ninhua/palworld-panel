@@ -62,6 +62,8 @@ func TestAuthenticatedReadRoutesReturnStructuredResponses(t *testing.T) {
 		"/api/server/metrics",
 		"/api/server/game-data",
 		"/api/save/index/status",
+		"/api/save/history",
+		"/api/save/history/diff?from=missing-a&to=missing-b",
 		"/api/save-sources",
 		"/api/breeding/history",
 		"/api/breeding/presets",

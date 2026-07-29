@@ -147,6 +147,7 @@ func (s Server) deleteSaveSource(c *gin.Context) {
 		return
 	}
 	if source.Kind == "import" && pathWithin(s.cfg.SaveSourcesDir, source.Path) {
+		_ = s.saveIndex.RemoveHistoryForWorld(source.Path)
 		_ = os.RemoveAll(filepath.Join(s.cfg.SaveSourcesDir, source.ID))
 	}
 	ok(c, gin.H{"deleted": true})

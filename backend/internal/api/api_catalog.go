@@ -107,6 +107,12 @@ var apiCatalogExact = map[string]apiCatalogDescriptor{
 	"POST /api/config/palworld/revisions/:id/restore": {
 		Category: "配置", Summary: "生成配置回滚草稿", Description: "从历史修订生成可审查草稿，实际应用继续使用原有停服、健康检查和失败自动恢复事务。", Permission: "config:write + server:control", Request: `JSON: {"confirm":true}`, Response: "目标配置的脱敏预览和待应用草稿。", Patched: true,
 	},
+	"GET /api/save/history": {
+		Category: "世界存档", Summary: "查询索引快照历史", Description: "返回当前激活存档源的成功索引快照，不返回存档路径、玩家 IP 或内部归档校验信息。", Permission: "authenticated", Response: "存档源、保留上限、空间占用和快照列表。", Patched: true,
+	},
+	"GET /api/save/history/diff": {
+		Category: "世界存档", Summary: "比较索引快照", Description: "比较同一存档源的两份索引快照，并按玩家、公会、基地、帕鲁、容器和物品变化筛选。", Permission: "authenticated", Request: "Query: from, to, category, q, limit, offset。", Response: "变化汇总、分页变化明细及双方快照元数据。", Patched: true,
+	},
 	"POST /api/save-sources/import/inspect": {
 		Category: "世界存档", Summary: "检查存档导入或房主档迁移", Description: "除标准存档检查外，可识别合作房主存档并准备 UID 重映射。", Permission: "server:control", Request: "multipart/form-data 或导入检查参数；房主迁移按页面生成参数。", Response: "候选世界、冲突和迁移计划。", Patched: true,
 	},

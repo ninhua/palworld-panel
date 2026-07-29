@@ -27,8 +27,8 @@
 
 ```text
 上游版本：v1.3.0
-自定义版本：0.8.32
-完整标签：v1.3.0-custom.0.8.32
+自定义版本：0.8.34
+完整标签：v1.3.0-custom.0.8.34
 ```
 
 版本源位于：
@@ -234,7 +234,30 @@ backend/internal/api/palworld_config_revisions.go
 frontend/src/components/ConfigRevisionHistory.tsx
 ```
 
-## 9. PalDefender 与 GM 命令
+## 9. 存档索引快照与差异
+
+存档差异只比较 `sav-cli` 已生成的结构化索引，不复制、修改或下载原始 `.sav`。快照按当前世界目录的不可逆哈希隔离。
+
+维护规则：
+
+- 每次成功索引可记录一份 gzip JSON；相同指纹不得重复保存。
+- 快照目录权限必须为 `0700`，文件和清单权限必须为 `0600`。
+- 保存前必须清除 `source_path`、玩家 IP、Ping 和原始解析载荷；API 不得返回私密目录或内部归档 SHA-256。
+- 快照 ID 必须匹配固定时间戳和 32 位指纹格式；读取不得接受任意路径。
+- 读取快照前必须校验压缩文件 SHA-256、schema、世界键、快照 ID 和指纹。
+- 每个世界默认保留 24 份，总压缩体积最多 512 MiB，单份最多 128 MiB。
+- 差异只比较同一当前存档源下的两份快照；切换存档源后不得跨世界读取。
+- 差异接口必须分页并限制最大 500 项，不能直接返回整个索引。
+
+关键文件：
+
+```text
+backend/internal/saveindex/history.go
+backend/internal/api/save_history.go
+frontend/src/pages/SaveHistory.tsx
+```
+
+## 10. PalDefender 与 GM 命令
 
 PalDefender 同时使用 REST 和 Source RCON：
 
@@ -281,7 +304,7 @@ frontend/src/pages/PlayerCenter.tsx
 - 审计结果
 - 是否存在危险的自动重试
 
-## 10. 玩家身份归并
+## 11. 玩家身份归并
 
 同一个玩家可能同时出现：
 
@@ -312,7 +335,7 @@ frontend/src/pages/PlayerCenter.tsx
 frontend/src/pages/StarterGift.tsx
 ```
 
-## 11. 新玩家礼包状态
+## 12. 新玩家礼包状态
 
 礼包状态至少区分：
 
@@ -342,7 +365,7 @@ frontend/src/pages/StarterGift.tsx
 - 选择“手工作业”必须能匹配“手工作业 + 播种”等复合用途。
 - 必须提供一键清空筛选。
 
-## 12. OpenAPI 与接口维护
+## 13. OpenAPI 与接口维护
 
 后端接口变更时必须同步：
 
@@ -368,7 +391,7 @@ frontend/src/pages/StarterGift.tsx
 
 不要用一个笼统的 `500` 覆盖所有失败。
 
-## 13. 安全边界
+## 14. 安全边界
 
 - 浏览器不能提交任意 RCON 命令。
 - 后端只能暴露有类型、有验证的管理动作。
@@ -380,7 +403,7 @@ frontend/src/pages/StarterGift.tsx
 - 存档解析保持只读，不允许浏览器直接获得原始 `.sav`。
 - 更新替换必须保留备份和启动失败回滚能力。
 
-## 14. 提交建议
+## 15. 提交建议
 
 按功能拆分提交，例如：
 
@@ -394,7 +417,7 @@ docs: add release notes for 0.8.24
 
 同一尚未发布功能可以在发布前整理提交。已经发布的提交不要改写 SHA。
 
-## 15. 发布完成检查表
+## 16. 发布完成检查表
 
 - [ ] 自定义版本已递增
 - [ ] OpenAPI 与前端契约已同步

@@ -163,6 +163,8 @@ func TestNewContractRoutes(t *testing.T) {
 		"POST /api/backups/:name/verify",
 		"GET /api/save/index/status",
 		"POST /api/save/index/rebuild",
+		"GET /api/save/history",
+		"GET /api/save/history/diff",
 		"GET /api/players",
 		"GET /api/players/:id",
 		"GET /api/players/:id/inventory",

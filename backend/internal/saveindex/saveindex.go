@@ -49,6 +49,7 @@ type Manager struct {
 	oodleMu     sync.Mutex
 	oodleAt     time.Time
 	oodle       *bool
+	historyMu   sync.Mutex
 
 	autoMu          sync.Mutex
 	rebuildInFlight bool
@@ -512,6 +513,10 @@ func (m *Manager) Rebuild(ctx context.Context) (Index, Status, error) {
 	if unsettled {
 		status.State = "stale"
 		status.Stale = true
+	}
+	if historyErr := m.captureHistorySnapshot(worldDir, fp, index); historyErr != nil {
+		index.Warnings = appendUnique(index.Warnings, "save index history snapshot could not be stored")
+		status.Warnings = appendUnique(status.Warnings, "save index history snapshot could not be stored")
 	}
 	if err := m.saveCache(fp, index, status); err != nil {
 		status.State = "error"

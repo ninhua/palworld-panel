@@ -248,6 +248,8 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
 	api.DELETE("/save-sources/:id", Require(PermServerControl), s.deleteSaveSource)
 	api.GET("/save/index/status", s.saveIndexStatus)
 	api.POST("/save/index/rebuild", Require(PermServerControl), s.saveIndexRebuild)
+	api.GET("/save/history", s.listSaveHistory)
+	api.GET("/save/history/diff", s.diffSaveHistory)
 	api.GET("/players", s.listSavePlayers)
 	api.GET("/guilds", s.listSaveGuilds)
 	api.GET("/guilds/:id", s.getSaveGuild)

@@ -39,7 +39,7 @@ const sidebarGroups: Array<{ id: string; titleKey: TranslationKey; entries: Side
     titleKey: 'nav.worldGroup',
     entries: [
       { id: 'players-world', labelKey: 'nav.playersWorld', routeIDs: ['player-center', 'starter-gift', 'world-archive'] },
-      { id: 'saves-breeding', labelKey: 'nav.saveTools', routeIDs: ['save-sources', 'global-inventory', 'pal-inventory', 'breeding', 'live-map'] },
+      { id: 'saves-breeding', labelKey: 'nav.saveTools', routeIDs: ['save-sources', 'save-history', 'global-inventory', 'pal-inventory', 'breeding', 'live-map'] },
       { id: 'mods', labelKey: 'nav.mods', routeIDs: ['mods'] },
     ],
   },

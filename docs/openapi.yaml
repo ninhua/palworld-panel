@@ -1107,6 +1107,43 @@ paths:
     get: {operationId: getSaveIndexStatus, tags: [world], x-palpanel-permission: read, responses: {'200': *saveIndexStatus, '401': *error}}
   /save/index/rebuild:
     post: {operationId: rebuildSaveIndex, tags: [world], x-palpanel-permission: 'server:control', responses: *writeResponses}
+  /save/history:
+    get:
+      operationId: listSaveHistory
+      tags: [world]
+      x-palpanel-permission: read
+      responses:
+        '200':
+          description: Successful index snapshots for the active save source. Private paths, player IP addresses, raw parser payloads, and archive checksums are omitted.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SaveHistoryStateEnvelope'}
+        '401': *error
+        '409': *error
+        '500': *error
+  /save/history/diff:
+    get:
+      operationId: diffSaveHistory
+      tags: [world]
+      x-palpanel-permission: read
+      parameters:
+        - {name: from, in: query, required: true, schema: {type: string, pattern: '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{32}$'}}
+        - {name: to, in: query, required: true, schema: {type: string, pattern: '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{32}$'}}
+        - {name: category, in: query, schema: {type: string, enum: [all, players, guilds, bases, pals, containers, items], default: all}}
+        - {name: q, in: query, schema: {type: string, maxLength: 128}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      responses:
+        '200':
+          description: Entity and inventory changes between two snapshots of the active save source.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SaveHistoryDiffEnvelope'}
+        '400': *error
+        '401': *error
+        '404': *error
+        '409': *error
+        '500': *error
   /save-sources:
     get: {operationId: listSaveSources, tags: [world], x-palpanel-permission: read, responses: *readResponses}
   /save-sources/import/inspect:
@@ -1497,6 +1534,101 @@ components:
         counts: {$ref: '#/components/schemas/SaveIndexCounts'}
         parser: {type: string}
         cache_path: {type: string}
+    SaveHistorySource:
+      type: object
+      additionalProperties: false
+      required: [id, name, kind]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        kind: {type: string, enum: [server, import]}
+    SaveHistorySnapshot:
+      type: object
+      additionalProperties: false
+      required: [id, fingerprint, generated_at, captured_at, parser, counts, size_bytes]
+      properties:
+        id: {type: string, pattern: '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{32}$'}
+        fingerprint: {type: string, pattern: '^[0-9a-f]{32}$'}
+        generated_at: {type: string, format: date-time}
+        captured_at: {type: string, format: date-time}
+        parser: {type: string}
+        counts: {$ref: '#/components/schemas/SaveIndexCounts'}
+        size_bytes: {type: integer, format: int64, minimum: 0}
+    SaveHistoryState:
+      type: object
+      additionalProperties: false
+      required: [source, retention, max_total_bytes, total_bytes, items]
+      properties:
+        source: {$ref: '#/components/schemas/SaveHistorySource'}
+        retention: {type: integer, minimum: 1}
+        max_total_bytes: {type: integer, format: int64, minimum: 1}
+        total_bytes: {type: integer, format: int64, minimum: 0}
+        items: {type: array, items: {$ref: '#/components/schemas/SaveHistorySnapshot'}}
+    SaveHistoryStateEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/SaveHistoryState'}
+    SaveHistoryFieldChange:
+      type: object
+      additionalProperties: false
+      required: [field, before, after]
+      properties:
+        field: {type: string}
+        before: {type: string}
+        after: {type: string}
+    SaveHistoryChange:
+      type: object
+      additionalProperties: false
+      required: [category, kind, id, label, fields]
+      properties:
+        category: {type: string, enum: [players, guilds, bases, pals, containers, items]}
+        kind: {type: string, enum: [added, removed, changed, increased, decreased]}
+        id: {type: string}
+        label: {type: string}
+        delta: {type: integer}
+        fields: {type: array, items: {$ref: '#/components/schemas/SaveHistoryFieldChange'}}
+    SaveHistoryDiffSummary:
+      type: object
+      additionalProperties: false
+      required: [players_added, players_removed, players_changed, guilds_added, guilds_removed, guilds_changed, bases_added, bases_removed, bases_changed, pals_added, pals_removed, pals_changed, containers_added, containers_removed, containers_changed, items_increased, items_decreased]
+      properties:
+        players_added: {type: integer, minimum: 0}
+        players_removed: {type: integer, minimum: 0}
+        players_changed: {type: integer, minimum: 0}
+        guilds_added: {type: integer, minimum: 0}
+        guilds_removed: {type: integer, minimum: 0}
+        guilds_changed: {type: integer, minimum: 0}
+        bases_added: {type: integer, minimum: 0}
+        bases_removed: {type: integer, minimum: 0}
+        bases_changed: {type: integer, minimum: 0}
+        pals_added: {type: integer, minimum: 0}
+        pals_removed: {type: integer, minimum: 0}
+        pals_changed: {type: integer, minimum: 0}
+        containers_added: {type: integer, minimum: 0}
+        containers_removed: {type: integer, minimum: 0}
+        containers_changed: {type: integer, minimum: 0}
+        items_increased: {type: integer, minimum: 0}
+        items_decreased: {type: integer, minimum: 0}
+    SaveHistoryDiff:
+      type: object
+      additionalProperties: false
+      required: [from, to, summary, total, limit, offset, items]
+      properties:
+        from: {$ref: '#/components/schemas/SaveHistorySnapshot'}
+        to: {$ref: '#/components/schemas/SaveHistorySnapshot'}
+        summary: {$ref: '#/components/schemas/SaveHistoryDiffSummary'}
+        total: {type: integer, minimum: 0}
+        limit: {type: integer, minimum: 1, maximum: 500}
+        offset: {type: integer, minimum: 0}
+        items: {type: array, items: {$ref: '#/components/schemas/SaveHistoryChange'}}
+    SaveHistoryDiffEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/SaveHistoryDiff'}
     Player:
       type: object
       required: [id, player_uid, steam_id, nickname, level, guild_id, guild_name, is_online, online_source, online_stale, last_online_time, location_x, location_y, location_z]
@@ -3270,7 +3402,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.32}
+            version: {type: string, const: 0.8.34}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array
