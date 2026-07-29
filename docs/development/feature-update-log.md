@@ -1,5 +1,23 @@
 # 功能移植更新记录
 
+## 2026-07-30：PalPanelBridge UE4SS 只读链路实机验证
+
+已完成：
+
+- 按服务器实际 UE4SS 提交 `c838a8ac` 和 `Game__Shipping__Win64` 配置编译 `PalPanelBridge 0.1.4`。
+- 将 HTTP 初始化延迟到 `on_unreal_init`，避免阻塞 PalServer 启动。
+- 默认端口由与 `PalPanelSteamAPIProxy` 冲突的 `18082` 改为 `18083`。
+- 配置文件改为根据 `dlls/main.dll` 自身路径定位，不再依赖 Wine 工作目录。
+- 新增不泄露 Token 的 `PalPanelBridge.log`，记录配置路径、监听状态和 Winsock/bind 错误。
+- 新增 `docs/palpanel-bridge.md`，说明安装、鉴权、游戏线程探针及故障判断。
+
+实机验证：
+
+- PalServer 和 UE4SS 能正常完成启动。
+- `127.0.0.1:18083/v1/health` 已返回 PalPanelBridge JSON。
+- 未携带 Bearer Token 时按预期返回 `401 Unauthorized`，证明监听、路由和鉴权边界均已生效。
+- 下一步验证携带正确 Token 的 health 响应，以及任务从 `queued` 进入 `completed`。
+
 ## 2026-07-29：PalOps 世界地图迁移
 
 目标版本：`v1.3.0-custom.0.8.39`

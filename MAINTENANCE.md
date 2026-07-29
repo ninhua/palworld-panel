@@ -85,6 +85,14 @@ docs/releases/<自定义版本>.md
 
 本项目默认使用云端 Actions 完成编译和测试，不要求在维护机器本地运行完整测试或构建。不要因为未执行本地构建而跳过云端完整验证。
 
+PalPanelBridge 的固定 UE4SS 提交、安装目录、鉴权请求和故障判断见：
+
+```text
+docs/palpanel-bridge.md
+```
+
+Bridge 是只读技术探针。扩展任何游戏数据修改接口前，必须先完成 health、游戏线程任务队列和鉴权边界验证。
+
 完整 CI 应覆盖：
 
 - Go 测试和竞态检查

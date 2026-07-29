@@ -8,6 +8,9 @@ localhost HTTP -> bounded job queue -> UE4SS on_update game-thread callback
 
 It does not expose arbitrary UObject calls and cannot modify players, inventory, pals, or saves.
 
+For the Chinese installation, diagnostic-console examples, and troubleshooting
+matrix, see [`docs/palpanel-bridge.md`](../../docs/palpanel-bridge.md).
+
 ## Build with GitHub Actions
 
 The Palworld experimental UE4SS build used by the panel reports Git SHA
