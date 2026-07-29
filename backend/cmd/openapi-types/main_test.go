@@ -98,10 +98,14 @@ func TestOpenAPIGeneratesIncidentContracts(t *testing.T) {
 		`"IncidentEvent":`,
 		`"IncidentDelivery":`,
 		`"IncidentWebhookStatus":`,
+		`"IncidentStatus":`,
+		`"IncidentSeverity":`,
 		`"IncidentListEnvelope":`,
 		`"IncidentDetailEnvelope":`,
-		`"status": "open" | "acknowledged" | "resolved"`,
-		`"severity": "info" | "warning" | "error" | "critical"`,
+		`"status": components["schemas"]["IncidentStatus"]`,
+		`"severity": components["schemas"]["IncidentSeverity"]`,
+		`"IncidentStatus": "open" | "acknowledged" | "resolved"`,
+		`"IncidentSeverity": "info" | "warning" | "error" | "critical"`,
 	} {
 		if !strings.Contains(contract, want) {
 			t.Fatalf("generated incident contract does not contain %q", want)

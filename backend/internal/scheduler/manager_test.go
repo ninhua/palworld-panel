@@ -198,6 +198,10 @@ func TestManagerValidationDueRunsAndSaveFailure(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	alerts, err := store.ListAlerts(t.Context(), 10)
+	for len(alerts) == 0 && err == nil && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+		alerts, err = store.ListAlerts(t.Context(), 10)
+	}
 	if err != nil || len(alerts) == 0 {
 		t.Fatalf("expected save failure alert: %#v, %v", alerts, err)
 	}
