@@ -220,6 +220,9 @@ func (s Server) applyPalworldConfig(c *gin.Context) {
 		return s.verifyPalworldConfigReadiness(ctx, settings, modifiedFields)
 	})
 	if err != nil {
+		if crashGuardOperationFailure(c, err) {
+			return
+		}
 		fail(c, http.StatusBadRequest, "config_apply_failed", err.Error())
 		return
 	}

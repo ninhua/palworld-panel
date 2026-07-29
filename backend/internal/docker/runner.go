@@ -1047,3 +1047,25 @@ func palServerPort(serverArgs []string, fallback int) int {
 	}
 	return fallback
 }
+
+// PauseForCrashLoop disables Docker's restart policy before stopping the
+// container. The ordering is critical: stopping first can race with
+// unless-stopped and immediately spawn another PalServer process.
+func (r Runner) PauseForCrashLoop(ctx context.Context) error {
+	status, err := r.Status(ctx)
+	if err != nil {
+		return err
+	}
+	if !status.Exists {
+		return nil
+	}
+	if _, err := r.run(ctx, "update", "--restart=no", r.cfg.DockerContainer); err != nil {
+		return fmt.Errorf("disable Docker restart policy: %w", err)
+	}
+	if status.Status == "running" || status.Status == "restarting" || status.Status == "starting" {
+		if _, err := r.run(ctx, "stop", "--time", "15", r.cfg.DockerContainer); err != nil {
+			return fmt.Errorf("stop crash-looping container: %w", err)
+		}
+	}
+	return nil
+}

@@ -43,6 +43,9 @@ func (s Server) serverWorldReset(c *gin.Context) {
 		},
 	})
 	if err != nil {
+		if crashGuardOperationFailure(c, err) {
+			return
+		}
 		fail(c, http.StatusBadRequest, "world_reset_rejected", err.Error())
 		return
 	}

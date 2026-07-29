@@ -94,6 +94,7 @@ func TestNewContractRoutes(t *testing.T) {
 	for _, path := range []string{
 		"/api/server/startup",
 		"/api/server/runtime",
+		"/api/server/crash-guard",
 		"/api/security/paldefender/status",
 	} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -114,6 +115,8 @@ func TestNewContractRoutes(t *testing.T) {
 		"POST /api/players/:id/ban",
 		"POST /api/players/:id/unban",
 		"POST /api/server/force-stop",
+		"GET /api/server/crash-guard",
+		"POST /api/server/crash-guard/recover",
 		"GET /api/server/version",
 		"GET /api/server/game-data",
 		"GET /api/panel/update/status",

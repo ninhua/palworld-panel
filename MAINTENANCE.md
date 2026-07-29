@@ -27,8 +27,8 @@
 
 ```text
 上游版本：v1.3.0
-自定义版本：0.8.34
-完整标签：v1.3.0-custom.0.8.34
+自定义版本：0.8.36
+完整标签：v1.3.0-custom.0.8.36
 ```
 
 版本源位于：
@@ -257,7 +257,31 @@ backend/internal/api/save_history.go
 frontend/src/pages/SaveHistory.tsx
 ```
 
-## 10. PalDefender 与 GM 命令
+## 10. PalServer 崩溃守卫
+
+崩溃守卫由 PalPanel 进程自身运行，不依赖 systemd。默认每 5 秒观察一次，10 分钟内累计 3 次异常退出、OOM 或容器重启时熔断。
+
+维护规则：
+
+- PalPanel 发起停止、重启和配置应用前必须写入短时“预期退出”标记，避免正常操作被计为崩溃。
+- 观察线程与生命周期线程对守卫状态的读改写必须串行化，不能用旧状态覆盖预期停服或恢复时间。
+- Docker 熔断必须先执行 `docker update --restart=no`，再停止容器；顺序不可颠倒。
+- 熔断状态必须持久化，普通启动和重启入口必须返回 `crash_guard_tripped`，不能因重启面板而绕过。
+- 恢复必须由具有 `server:control` 权限的管理员显式确认，可选择仅解除熔断或同时启动；恢复后以确认时间重置统计窗口并关闭对应告警，恢复启动失败时重新熔断。
+- 配置应用和世界重置在熔断期间必须拒绝，避免已停止服务后因启动阻断留下半完成事务；服务端更新可以继续执行，但不得自动重新启动。
+- 事件只保存运行模式、退出码、OOM、restart count 和时间，不保存日志正文、文件路径、命令参数或玩家数据。
+- 默认保留最近 50 条事件。阈值和窗口修改必须同步 API、前端说明和测试。
+
+关键文件：
+
+```text
+backend/internal/db/crash_guard.go
+backend/internal/server/crash_guard.go
+backend/internal/api/crash_guard.go
+frontend/src/pages/Monitor.tsx
+```
+
+## 11. PalDefender 与 GM 命令
 
 PalDefender 同时使用 REST 和 Source RCON：
 
@@ -304,7 +328,7 @@ frontend/src/pages/PlayerCenter.tsx
 - 审计结果
 - 是否存在危险的自动重试
 
-## 11. 玩家身份归并
+## 12. 玩家身份归并
 
 同一个玩家可能同时出现：
 
@@ -335,7 +359,7 @@ frontend/src/pages/PlayerCenter.tsx
 frontend/src/pages/StarterGift.tsx
 ```
 
-## 12. 新玩家礼包状态
+## 13. 新玩家礼包状态
 
 礼包状态至少区分：
 
@@ -365,7 +389,7 @@ frontend/src/pages/StarterGift.tsx
 - 选择“手工作业”必须能匹配“手工作业 + 播种”等复合用途。
 - 必须提供一键清空筛选。
 
-## 13. OpenAPI 与接口维护
+## 14. OpenAPI 与接口维护
 
 后端接口变更时必须同步：
 
@@ -391,7 +415,7 @@ frontend/src/pages/StarterGift.tsx
 
 不要用一个笼统的 `500` 覆盖所有失败。
 
-## 14. 安全边界
+## 15. 安全边界
 
 - 浏览器不能提交任意 RCON 命令。
 - 后端只能暴露有类型、有验证的管理动作。
@@ -403,7 +427,7 @@ frontend/src/pages/StarterGift.tsx
 - 存档解析保持只读，不允许浏览器直接获得原始 `.sav`。
 - 更新替换必须保留备份和启动失败回滚能力。
 
-## 15. 提交建议
+## 16. 提交建议
 
 ### PalPanelBridge 技术预览
 
@@ -425,7 +449,7 @@ docs: add release notes for 0.8.24
 
 同一尚未发布功能可以在发布前整理提交。已经发布的提交不要改写 SHA。
 
-## 16. 发布完成检查表
+## 17. 发布完成检查表
 
 - [ ] 自定义版本已递增
 - [ ] OpenAPI 与前端契约已同步

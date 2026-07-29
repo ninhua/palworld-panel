@@ -92,6 +92,8 @@ func (s Server) registerServerRoutes(api *gin.RouterGroup) {
 	api.GET("/community-servers/source-status", s.communityServersSourceStatus)
 	api.POST("/community-servers/refresh", Require(PermRead), s.refreshCommunityServers)
 	api.GET("/server/status", s.serverStatus)
+	api.GET("/server/crash-guard", s.crashGuardStatus)
+	api.POST("/server/crash-guard/recover", Require(PermServerControl), s.recoverCrashGuard)
 	api.GET("/server/prerequisites", s.serverPrerequisites)
 	api.GET("/server/host", s.serverHost)
 	api.GET("/server/runtime", s.getRuntime)

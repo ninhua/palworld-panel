@@ -548,6 +548,9 @@ func (s Server) serverVersionCheck(c *gin.Context) {
 
 func (s Server) serverStart(c *gin.Context) {
 	if err := s.server.Start(c.Request.Context()); err != nil {
+		if crashGuardOperationFailure(c, err) {
+			return
+		}
 		fail(c, http.StatusInternalServerError, "start_failed", err.Error())
 		return
 	}
@@ -566,6 +569,9 @@ func (s Server) serverStop(c *gin.Context) {
 
 func (s Server) serverRestart(c *gin.Context) {
 	if err := s.server.Restart(c.Request.Context()); err != nil {
+		if crashGuardOperationFailure(c, err) {
+			return
+		}
 		fail(c, http.StatusInternalServerError, "restart_failed", err.Error())
 		return
 	}
@@ -592,6 +598,9 @@ func (s Server) serverSafeRestart(c *gin.Context) {
 		return err
 	})
 	if err != nil {
+		if crashGuardOperationFailure(c, err) {
+			return
+		}
 		fail(c, http.StatusBadRequest, "safe_restart_failed", err.Error())
 		return
 	}
