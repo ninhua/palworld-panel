@@ -81,9 +81,9 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "cc"
-version = "1.2.66"
+version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5d6cac793997bd970000024b2934968efe83b382de4fdcf4fcb46b6ee4ad996"
+checksum = "5add81bb678e6cb321aff7fa0dc7689ad82b112dbc032cea19f91d6b8e3582b9"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -317,7 +317,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "ooz-rs"
 version = "0.1.0"
-source = "git+https://github.com/palworld-save-pal/ooz-rs#c197be7a4b49b2f37f339888da1c10ab87780c19"
+source = "git+https://github.com/palworld-save-pal/ooz-rs?rev=c197be7a4b49b2f37f339888da1c10ab87780c19#c197be7a4b49b2f37f339888da1c10ab87780c19"
 dependencies = [
  "cc",
  "thiserror 1.0.69",
