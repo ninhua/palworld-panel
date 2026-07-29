@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from './client';
 import { palDefenderGMApi } from './paldefenderGM';
+import { RCON_COMMAND_INSPECTION_TIMEOUT_MS } from './requestTimeouts';
 
 describe('PalDefender GM API', () => {
   beforeEach(() => {
@@ -245,5 +246,21 @@ describe('PalDefender GM API', () => {
     expect(post).toHaveBeenNthCalledWith(1, '/security/paldefender/whitelist/steam%2Fuser', {}, { headers: { 'Idempotency-Key': 'gm-whitelist-add' } });
     expect(del).toHaveBeenCalledWith('/security/paldefender/whitelist/steam%2Fuser', { headers: { 'Idempotency-Key': 'gm-whitelist-remove' } });
     expect(post).toHaveBeenNthCalledWith(2, '/security/paldefender/admins/steam%2Fuser/toggle', {}, { headers: { 'Idempotency-Key': 'gm-admin' } });
+  });
+
+  it('runs runtime RCON inspection as an audited operation with an extended timeout', async () => {
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({
+      status: 200,
+      data: { ok: true, data: { command: '/getrconcmds', output: 'tp\ndelitems', entries: [] } },
+    });
+
+    const result = await palDefenderGMApi.runtimeCommands();
+
+    expect(result).toMatchObject({ command: '/getrconcmds', output: 'tp\ndelitems' });
+    expect(post).toHaveBeenCalledWith(
+      '/security/paldefender/gm/commands/runtime',
+      {},
+      { timeout: RCON_COMMAND_INSPECTION_TIMEOUT_MS },
+    );
   });
 });

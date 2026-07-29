@@ -1,4 +1,5 @@
 import { apiClient, handleRequest } from './client';
+import { RCON_COMMAND_INSPECTION_TIMEOUT_MS } from './requestTimeouts';
 import type {
   PalDefenderAccessSettings,
   PalDefenderAccessSettingsUpdate,
@@ -531,7 +532,7 @@ export const palDefenderGMApi = {
 
   runtimeCommands: () =>
     handleRequest<unknown, PalDefenderRCONResult>(
-      () => apiClient.get('/security/paldefender/gm/commands/runtime'),
+      () => apiClient.post('/security/paldefender/gm/commands/runtime', {}, { timeout: RCON_COMMAND_INSPECTION_TIMEOUT_MS }),
       { command: '', output: '', entries: [] },
       { map: mapRCONResult, quiet: true, fallbackOnError: false },
     ),

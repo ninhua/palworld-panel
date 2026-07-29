@@ -208,7 +208,7 @@ func (s Server) registerSecurityRoutes(api *gin.RouterGroup) {
 	api.POST("/security/paldefender/gm/players/:id/unban", Require(PermPlayersWrite), s.palDefenderGMUnban)
 	api.POST("/security/paldefender/gm/broadcast", Require(PermPlayersWrite), s.palDefenderGMBroadcast)
 	api.GET("/security/paldefender/gm/commands", s.palDefenderGMCommandCatalog)
-	api.GET("/security/paldefender/gm/commands/runtime", Require(PermSecurityWrite), s.palDefenderGMRCONCommands)
+	api.POST("/security/paldefender/gm/commands/runtime", Require(PermSecurityWrite), s.palDefenderGMRCONCommands)
 	api.GET("/security/paldefender/gm/catalog/technology", s.palDefenderGMTechnologyCatalog)
 	api.GET("/security/paldefender/gm/catalog/technologies", s.palDefenderGMLocalTechnologyCatalog)
 	api.GET("/security/paldefender/gm/catalog/pals", s.palDefenderGMPalCatalog)

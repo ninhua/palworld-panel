@@ -953,7 +953,7 @@ paths:
   /security/paldefender/gm/commands:
     get: {operationId: listPalDefenderGMCommands, tags: [security], x-palpanel-permission: read, responses: *readResponses}
   /security/paldefender/gm/commands/runtime:
-    get: {operationId: listRuntimePalDefenderGMCommands, tags: [security], x-palpanel-permission: 'security:write', responses: *readResponses}
+    post: {operationId: inspectRuntimePalDefenderGMCommands, tags: [security], x-palpanel-permission: 'security:write', responses: *writeResponses}
   /security/paldefender/gm/catalog/technology:
     get: {operationId: listPalDefenderTechnologyCatalog, tags: [security], x-palpanel-permission: read, responses: *readResponses}
   /security/paldefender/gm/catalog/technologies:
@@ -3032,7 +3032,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.25}
+            version: {type: string, const: 0.8.26}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array
