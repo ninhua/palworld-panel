@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Gamepad2, KeyRound, RefreshCw, RotateCcw, Save, ShieldCheck, Sparkles, Wand2 } from 'lucide-react';
+import { Gamepad2, KeyRound, RefreshCw, RotateCcw, Save, ShieldCheck, Sparkles, TerminalSquare, Wand2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getErrorMessage } from '../api/client';
+import { palDefenderGMApi } from '../api/paldefenderGM';
 import { palDefenderPanelPermissions, securityApi } from '../api/security';
 import { tasksApi } from '../api/tasks';
-import type { Job, PalDefenderRelease, PalDefenderStatus, TokenResult } from '../types';
+import type { Job, PalDefenderRCONResult, PalDefenderRelease, PalDefenderStatus, TokenResult } from '../types';
 import { StatusBadge } from '../components/ui/StatusBadge';
 
 export const Security: React.FC = () => {
@@ -16,6 +17,9 @@ export const Security: React.FC = () => {
   const [activeJob, setActiveJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
+  const [runtimeCommands, setRuntimeCommands] = useState<PalDefenderRCONResult | null>(null);
+  const [runtimeCommandsError, setRuntimeCommandsError] = useState('');
+  const [runtimeCommandsLoading, setRuntimeCommandsLoading] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -102,6 +106,19 @@ export const Security: React.FC = () => {
     }
   };
 
+  const inspectRuntimeCommands = async () => {
+    setRuntimeCommandsLoading(true);
+    setRuntimeCommandsError('');
+    try {
+      setRuntimeCommands(await palDefenderGMApi.runtimeCommands());
+    } catch (error) {
+      setRuntimeCommands(null);
+      setRuntimeCommandsError(getErrorMessage(error));
+    } finally {
+      setRuntimeCommandsLoading(false);
+    }
+  };
+
   const latest = releases[0];
 
   return (
@@ -141,6 +158,25 @@ export const Security: React.FC = () => {
                   {status.warnings.join(' / ')}
                 </div>
               )}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700"><TerminalSquare size={13} />实际 RCON 命令</p>
+                    <p className="mt-1 text-[10px] font-semibold leading-4 text-slate-500">手动执行 /getrconcmds，原样检查当前游戏进程实际暴露的命令；不会改变 GM 操作。</p>
+                  </div>
+                  <button type="button" onClick={() => void inspectRuntimeCommands()} disabled={runtimeCommandsLoading || !status.load_verified} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[10px] font-bold text-slate-600 disabled:opacity-40">
+                    <RefreshCw size={12} className={runtimeCommandsLoading ? 'animate-spin' : ''} />
+                    {runtimeCommandsLoading ? '检查中' : '检查'}
+                  </button>
+                </div>
+                {runtimeCommandsError && <p role="alert" className="mt-3 break-words rounded-lg border border-rose-200 bg-rose-50 p-2 text-[10px] font-semibold text-rose-700">{runtimeCommandsError}</p>}
+                {runtimeCommands && (
+                  <div className="mt-3">
+                    <p className="mb-1 font-mono text-[9px] font-semibold text-slate-400">已执行：{runtimeCommands.command || '/getrconcmds'}</p>
+                    <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-3 font-mono text-[10px] leading-5 text-slate-100">{runtimeCommands.output || '命令执行成功，但没有返回内容。'}</pre>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </section>
