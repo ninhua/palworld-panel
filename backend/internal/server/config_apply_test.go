@@ -323,7 +323,7 @@ func TestConfigPrivateCleanupRetriesDeletionFailure(t *testing.T) {
 func TestConfigDraftMaintenanceExpiresAtStartupAndOnTicker(t *testing.T) {
 	manager, cleanup := newOperationsManager(t)
 	defer cleanup()
-	manager.configDraftTTL = 0
+	manager.configDraftTTL = time.Millisecond
 	create := func(id string) db.ConfigDraft {
 		path := filepath.Join(manager.cfg.DataDir, "config-drafts", id+".ini")
 		if err := atomicWritePrivate(path, []byte("private")); err != nil {
@@ -336,6 +336,7 @@ func TestConfigDraftMaintenanceExpiresAtStartupAndOnTicker(t *testing.T) {
 		return draft
 	}
 	startup := create("startup")
+	time.Sleep(10 * time.Millisecond)
 	if err := manager.MaintainConfigDrafts(t.Context()); err != nil {
 		t.Fatal(err)
 	}
