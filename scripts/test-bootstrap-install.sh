@@ -23,6 +23,7 @@ export PALPANEL_INSTALL_ROOT="$tmp/opt/palpanel"
 export PALPANEL_ETC_DIR="$tmp/etc/palpanel"
 export PALPANEL_SYSTEM_DATA_DIR="$tmp/var/lib/palpanel"
 export PALPANEL_SYSTEMD_DIR="$tmp/systemd"
+export PALPANEL_LIBEXEC_DIR="$tmp/libexec"
 PALPANEL_SERVICE_USER="$(id -un)"
 export PALPANEL_SERVICE_USER
 export PALPANEL_SKIP_SYSTEMD=1
@@ -33,6 +34,8 @@ grep -qx 'PALPANEL_LISTEN_ADDR=127.0.0.1:18080' "$PALPANEL_ETC_DIR/palpanel.env"
 [[ -x "$PALPANEL_INSTALL_ROOT/current/bin/palpanel" ]]
 [[ -x "$PALPANEL_INSTALL_ROOT/current/bin/sav-cli" ]]
 [[ -x "$PALPANEL_INSTALL_ROOT/current/bin/palcalc-bridge" ]]
+[[ -x "$PALPANEL_INSTALL_ROOT/current/bin/palpanel-updater" ]]
+[[ -x "$PALPANEL_LIBEXEC_DIR/palpanel-updater" ]]
 grep -q '^Panel URL: http://127.0.0.1:18080/$' "$tmp/install.out"
 grep -q '^Open the panel URL to register the first administrator\.$' "$tmp/install.out"
 
@@ -94,6 +97,7 @@ export PALPANEL_INSTALL_ROOT="$tmp/migrate/opt/palpanel"
 export PALPANEL_ETC_DIR="$tmp/migrate/etc/palpanel"
 export PALPANEL_SYSTEM_DATA_DIR="$tmp/migrate/unused-default"
 export PALPANEL_SYSTEMD_DIR="$tmp/migrate/systemd"
+export PALPANEL_LIBEXEC_DIR="$tmp/migrate/libexec"
 "$root_dir/install.sh" --version "$version" --migrate-container legacy-palpanel --no-docker >"$tmp/migrate.out"
 grep -qx "PALPANEL_DATA_DIR=$tmp/legacy-data" "$PALPANEL_ETC_DIR/palpanel.env"
 grep -qx "PALPANEL_SERVER_DIR=$tmp/legacy-data/server" "$PALPANEL_ETC_DIR/palpanel.env"

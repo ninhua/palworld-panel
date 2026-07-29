@@ -94,6 +94,8 @@ copy_common_files() {
   cp "$root_dir/scripts/systemd/palpanel.service" "$package_dir/systemd/palpanel.service"
   cp "$root_dir/scripts/systemd/palpanel-sav-cli.service" "$package_dir/systemd/palpanel-sav-cli.service"
   cp "$root_dir/scripts/systemd/palpanel-palcalc.service" "$package_dir/systemd/palpanel-palcalc.service"
+  cp "$root_dir/scripts/systemd/palpanel-update.service" "$package_dir/systemd/palpanel-update.service"
+  cp "$root_dir/scripts/systemd/palpanel-update.path" "$package_dir/systemd/palpanel-update.path"
   cp "$root_dir/LICENSE" "$package_dir/LICENSE"
   cp "$root_dir/THIRD_PARTY_LICENSES.txt" "$package_dir/THIRD_PARTY_LICENSES.txt"
   cp "$root_dir/sav-cli/LICENSE" "$package_dir/licenses/sav-cli-LICENSE.txt"
@@ -122,6 +124,8 @@ build_linux() {
   local sav_ldflags="-s -w -X palpanel/sav-cli/internal/buildinfo.Version=$version -X palpanel/sav-cli/internal/buildinfo.Commit=$commit -X palpanel/sav-cli/internal/buildinfo.BuildTime=$build_time"
   printf '[palpanel] Building backend linux-%s\n' "$arch"
   (cd "$root_dir/backend" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -tags embed_webui -trimpath -ldflags "$backend_ldflags" -o "$package_dir/bin/palpanel" ./cmd/palpanel)
+  printf '[palpanel] Building external updater linux-%s\n' "$arch"
+  (cd "$root_dir/backend" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "$backend_ldflags" -o "$package_dir/bin/palpanel-updater" ./cmd/palpanel-updater)
   printf '[palpanel] Building cgo sav-cli linux-%s\n' "$arch"
   (cd "$root_dir/sav-cli" && CGO_ENABLED=1 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "$sav_ldflags" -o "$package_dir/bin/sav-cli" ./cmd/sav_cli)
   printf '[palpanel] Publishing self-contained PalCalc bridge linux-%s\n' "$arch"
@@ -129,7 +133,7 @@ build_linux() {
   # endpoint is unavailable. GitHub CI explicitly enables the online audit.
   DOTNET_CLI_UI_LANGUAGE=en dotnet publish "$root_dir/palcalc-bridge/PalCalc.Bridge.csproj" -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:InvariantGlobalization=true "-p:NuGetAudit=$nuget_audit" -o "$staging_dir/palcalc-linux"
   cp "$staging_dir/palcalc-linux/palcalc-bridge" "$package_dir/bin/palcalc-bridge"
-  chmod 755 "$package_dir/bin/palpanel" "$package_dir/bin/sav-cli" "$package_dir/bin/palcalc-bridge"
+  chmod 755 "$package_dir/bin/palpanel" "$package_dir/bin/palpanel-updater" "$package_dir/bin/sav-cli" "$package_dir/bin/palcalc-bridge"
 
   (cd "$package_dir" && find . -type f ! -name checksums.txt -print0 | sort -z | xargs -0 sha256sum) >"$checksum_tmp"
   mv "$checksum_tmp" "$package_dir/checksums.txt"

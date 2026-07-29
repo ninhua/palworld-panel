@@ -14,6 +14,7 @@ fi
 
 required=(
   '/bin/palpanel'
+  '/bin/palpanel-updater'
   '/bin/sav-cli'
   '/bin/palcalc-bridge'
   '/palpanelctl'
@@ -21,6 +22,8 @@ required=(
   '/systemd/palpanel.service'
   '/systemd/palpanel-sav-cli.service'
   '/systemd/palpanel-palcalc.service'
+  '/systemd/palpanel-update.service'
+  '/systemd/palpanel-update.path'
   '/LICENSE'
   '/THIRD_PARTY_LICENSES.txt'
   '/licenses/GPL-3.0.txt'

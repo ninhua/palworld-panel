@@ -279,6 +279,8 @@ mkdir -p "$temporary_dir/extracted"
 tar -xzf "$temporary_dir/$archive_name" -C "$temporary_dir/extracted"
 package_dir="$temporary_dir/extracted/palpanel_${version}_linux_amd64"
 [[ -x "$package_dir/palpanelctl" ]] || fail "release package does not contain palpanelctl"
+[[ -x "$package_dir/bin/palpanel-updater" ]] || fail "release package does not contain palpanel-updater"
+[[ -f "$package_dir/systemd/palpanel-update.service" && -f "$package_dir/systemd/palpanel-update.path" ]] || fail "release package does not contain external updater systemd units"
 
 docker_access=0
 case "$docker_mode" in

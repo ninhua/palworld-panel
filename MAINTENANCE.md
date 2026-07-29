@@ -176,11 +176,12 @@ ninhua/palworld-panel
 
 1. 查询稳定 Release。
 2. 选择版本最高且包含 Linux amd64 包与 `SHA256SUMS` 的版本。
-3. 下载并验证 SHA256。
-4. 探测候选二进制版本。
-5. 备份当前二进制。
-6. 原子替换并重启。
-7. 启动失败时恢复旧二进制。
+3. Web 进程下载并验证归档，再写入受限更新请求。
+4. `palpanel-update.path` 启动 root 级 `palpanel-updater`。
+5. 更新器重新从官方 Release 获取 `SHA256SUMS`，验证完整包和包内 `checksums.txt`。
+6. 安装新的版本目录，更新 systemd 单元和更新器，再原子切换 `current`。
+7. 重启全部服务并验证 `/api/ready` 与 `/api/health` 中的目标版本。
+8. 健康检查失败时恢复旧版本目录、旧 systemd 单元和旧更新器。
 
 注意事项：
 
@@ -190,13 +191,18 @@ ninhua/palworld-panel
 - 从 `0.8.22` 开始，面板更新会使用“系统设置 → 网络代理 → 安装与下载代理”。
 - 未启用托管代理时保持直连；设置了 `HTTPS_PROXY` 时，默认 HTTP Transport 可使用环境代理。
 - 代理不是强制配置，不能在未启用时偷偷切换到第三方公共镜像。
-- Release 下载必须继续校验 `SHA256SUMS`。
+- Release 下载必须继续校验 `SHA256SUMS`；root 更新器必须独立进行第二次官方校验。
+- 从旧版首次升级到 `0.8.29` 时，需要通过安装脚本或手动运行新版 `palpanelctl install` 安装更新器和 systemd 路径单元。
 
 关键文件：
 
 ```text
 backend/internal/server/panel_update.go
 backend/internal/server/panel_update_test.go
+backend/internal/panelupdater/
+backend/cmd/palpanel-updater/
+scripts/systemd/palpanel-update.service
+scripts/systemd/palpanel-update.path
 .github/workflows/custom-release.yml
 docs/panel-update-api.md
 ```

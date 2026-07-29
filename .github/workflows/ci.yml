@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, custom-stable]
   pull_request:
   workflow_dispatch:
 
@@ -64,7 +64,14 @@ jobs:
           sed 's|ExecStart=/opt/palpanel/current/bin/palpanel.*|ExecStart=/bin/true|' scripts/systemd/palpanel.service > "$tmp/palpanel.service"
           sed 's|ExecStart=/opt/palpanel/current/bin/sav-cli.*|ExecStart=/bin/true|' scripts/systemd/palpanel-sav-cli.service > "$tmp/palpanel-sav-cli.service"
           sed 's|ExecStart=/opt/palpanel/current/bin/palcalc-bridge.*|ExecStart=/bin/true|' scripts/systemd/palpanel-palcalc.service > "$tmp/palpanel-palcalc.service"
-          systemd-analyze verify "$tmp/palpanel.service" "$tmp/palpanel-sav-cli.service" "$tmp/palpanel-palcalc.service"
+          sed 's|ExecStart=/usr/libexec/palpanel-updater.*|ExecStart=/bin/true|' scripts/systemd/palpanel-update.service > "$tmp/palpanel-update.service"
+          cp scripts/systemd/palpanel-update.path "$tmp/palpanel-update.path"
+          systemd-analyze verify \
+            "$tmp/palpanel.service" \
+            "$tmp/palpanel-sav-cli.service" \
+            "$tmp/palpanel-palcalc.service" \
+            "$tmp/palpanel-update.service" \
+            "$tmp/palpanel-update.path"
       - name: Build and smoke Linux package
         env:
           PALPANEL_NUGET_AUDIT: "true"

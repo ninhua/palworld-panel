@@ -32,6 +32,7 @@ export PALPANEL_SAVE_INDEXER_PORT="$sav_port"
 export PALPANEL_PALCALC_PORT="$palcalc_port"
 
 "$package_dir/bin/palpanel" --version | grep -F "$version"
+"$package_dir/bin/palpanel-updater" --version | grep -F "$version"
 "$package_dir/bin/sav-cli" --version | grep -F "$version"
 "$package_dir/palpanelctl" init >"$tmp/init.txt"
 [[ "$(stat -c '%a' "$package_dir/config/palpanel.env")" == "600" ]]
