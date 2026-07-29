@@ -55,6 +55,7 @@ PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更�
 - 为 `PalWorldSettings.ini` 保留私密修订历史，支持脱敏字段差异、回滚草稿和健康失败自动恢复
 - 为当前存档源保留脱敏结构化索引快照，比较玩家、基地、帕鲁、容器和物品总量变化
 - 使用崩溃守卫识别短周期异常退出、OOM 和 Docker 重启循环，自动暂停重启并提供确认恢复入口
+- 使用统一通知与事件中心归并监控告警、崩溃熔断和失败任务，支持确认、解决、重新打开及可选签名 Webhook
 - 在 Linux amd64 上从本仓库 Release 更新面板：systemd 安装走独立 root 完整包更新器，无 systemd 的可写便携环境走保持 PID 的 `syscall.Exec` 热更新；两种模式都执行版本与就绪检查并支持失败回滚
 
 ### 存档与地图
@@ -179,6 +180,20 @@ PALPANEL_DIAGNOSTIC_SHELL_ENABLED=true
 ```
 
 重启 PalPanel 后生效。命令使用 PalPanel 服务账号权限执行，单次最多 15 秒、输出最多 64 KiB，并记录到操作审计。调试结束后应删除该配置或改回 `false` 并重启；该接口不接受 API Key，也不能在关闭面板登录验证时使用。
+
+### 通知与事件中心
+
+“运维与安全 → 通知与事件”会归并监控告警、崩溃守卫和失败后台任务。相同根因只增加发生次数，不会重复刷屏；管理员可以确认、解决或重新打开事件。
+
+可选 Webhook 通过环境变量启用：
+
+```env
+PALPANEL_INCIDENT_WEBHOOK_URL=https://ops.example.com/hooks/palpanel
+PALPANEL_INCIDENT_WEBHOOK_SECRET=replace-with-at-least-16-random-characters
+PALPANEL_INCIDENT_WEBHOOK_TIMEOUT_SECONDS=10
+```
+
+远程目标必须使用 HTTPS；HTTP 只允许 `127.0.0.1`、`localhost` 或其他回环地址。请求包含 `X-PalPanel-Delivery`、时间戳和 HMAC-SHA256 签名。接收方应按 Delivery ID 去重。面板 API 不返回完整 URL 或签名密钥。
 
 ### Linux amd64
 

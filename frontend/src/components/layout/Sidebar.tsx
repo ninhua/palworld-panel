@@ -48,7 +48,7 @@ const sidebarGroups: Array<{ id: string; titleKey: TranslationKey; entries: Side
     titleKey: 'nav.systemGroup',
     entries: [
       { id: 'backup-tasks', labelKey: 'nav.backupTasks', routeIDs: ['backups', 'tasks'] },
-      { id: 'security-audit', labelKey: 'nav.securityAudit', routeIDs: ['security', 'banlist', 'audit'] },
+      { id: 'security-audit', labelKey: 'nav.securityAudit', routeIDs: ['security', 'banlist', 'audit', 'incidents'] },
       { id: 'diagnostics', labelKey: 'route.diagnostics', routeIDs: ['diagnostics'] },
       { id: 'settings', labelKey: 'nav.settings', routeIDs: ['settings'] },
     ],

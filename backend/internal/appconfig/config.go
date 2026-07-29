@@ -44,77 +44,79 @@ var DefaultDockerRunnerBaseImageMirrorPrefixes = []string{
 }
 
 type Config struct {
-	RuntimeRoot                  string
-	RepositoryRoot               string
-	DevelopmentMode              bool
-	ListenAddr                   string
-	DataDir                      string
-	ServerDir                    string
-	WinePrefixDir                string
-	ToolsDir                     string
-	SteamCMDDir                  string
-	UE4SSDir                     string
-	UploadsDir                   string
-	BackupsDir                   string
-	LogsDir                      string
-	DBPath                       string
-	RequireAuth                  bool
-	DiagnosticShellEnabled       bool
-	CORSOrigins                  []string
-	FrontendDist                 string
-	MaxUploadBytes               int64
-	DockerBinary                 string
-	DockerImage                  string
-	DockerContainer              string
-	DockerRunnerBaseImage        string
-	DockerRunnerBaseImageMirrors []string
-	SteamWebAPIKey               string
-	SteamWebAPIKeySource         string
-	SteamAPIBaseURL              string
-	SteamAPITimeoutSeconds       int
-	CommunityServersEnabled      bool
-	CommunityServersAPIBaseURL   string
-	CommunityServersProxyURL     string
-	CommunityServersCacheTTL     int
-	CommunityServersStaleTTL     int
-	CommunityServersRateLimit    int
-	SteamCMDDownloadURL          string
-	SteamCMDDownloadMaxBytes     int64
-	UE4SSVersion                 string
-	UE4SSDownloadURL             string
-	UE4SSArchiveSHA256           string
-	UE4SSDownloadMaxBytes        int64
-	WorkshopAppID                string
-	GamePort                     int
-	QueryPort                    int
-	RCONHost                     string
-	RCONPort                     int
-	RESTPort                     int
-	PalworldRESTBaseURL          string
-	PalworldRESTUser             string
-	PalworldRESTPass             string
-	PalworldRESTReadTimeoutMS    int
-	PalworldGameDataTimeoutMS    int
-	PalworldGameDataMaxBytes     int64
-	PalDefenderRESTBaseURL       string
-	PalDefenderRESTPort          int
-	SaveIndexerEnabled           bool
-	SaveIndexerURL               string
-	SaveIndexCacheDir            string
-	SaveIndexTimeoutSeconds      int
-	SaveSourcesDir               string
-	PalCalcBridgeURL             string
-	PalCalcTimeoutSeconds        int
-	AstrBotPluginURL             string
-	AstrBotPanelID               string
-	AstrBotSharedSecret          string
-	PerfSlowRequestMS            int
-	MonitorRetentionDays         int
-	AITranslationTimeoutSeconds  int
-	LogLevel                     string
-	DebugLogger                  *debuglog.Logger
-	RunnerDir                    string
-	serverDirectoryState         *ServerDirectoryState
+	RuntimeRoot                   string
+	RepositoryRoot                string
+	DevelopmentMode               bool
+	ListenAddr                    string
+	DataDir                       string
+	ServerDir                     string
+	WinePrefixDir                 string
+	ToolsDir                      string
+	SteamCMDDir                   string
+	UE4SSDir                      string
+	UploadsDir                    string
+	BackupsDir                    string
+	LogsDir                       string
+	DBPath                        string
+	RequireAuth                   bool
+	CORSOrigins                   []string
+	FrontendDist                  string
+	MaxUploadBytes                int64
+	DockerBinary                  string
+	DockerImage                   string
+	DockerContainer               string
+	DockerRunnerBaseImage         string
+	DockerRunnerBaseImageMirrors  []string
+	SteamWebAPIKey                string
+	SteamWebAPIKeySource          string
+	SteamAPIBaseURL               string
+	SteamAPITimeoutSeconds        int
+	CommunityServersEnabled       bool
+	CommunityServersAPIBaseURL    string
+	CommunityServersProxyURL      string
+	CommunityServersCacheTTL      int
+	CommunityServersStaleTTL      int
+	CommunityServersRateLimit     int
+	SteamCMDDownloadURL           string
+	SteamCMDDownloadMaxBytes      int64
+	UE4SSVersion                  string
+	UE4SSDownloadURL              string
+	UE4SSArchiveSHA256            string
+	UE4SSDownloadMaxBytes         int64
+	WorkshopAppID                 string
+	GamePort                      int
+	QueryPort                     int
+	RCONHost                      string
+	RCONPort                      int
+	RESTPort                      int
+	PalworldRESTBaseURL           string
+	PalworldRESTUser              string
+	PalworldRESTPass              string
+	PalworldRESTReadTimeoutMS     int
+	PalworldGameDataTimeoutMS     int
+	PalworldGameDataMaxBytes      int64
+	PalDefenderRESTBaseURL        string
+	PalDefenderRESTPort           int
+	SaveIndexerEnabled            bool
+	SaveIndexerURL                string
+	SaveIndexCacheDir             string
+	SaveIndexTimeoutSeconds       int
+	SaveSourcesDir                string
+	PalCalcBridgeURL              string
+	PalCalcTimeoutSeconds         int
+	AstrBotPluginURL              string
+	AstrBotPanelID                string
+	AstrBotSharedSecret           string
+	PerfSlowRequestMS             int
+	MonitorRetentionDays          int
+	AITranslationTimeoutSeconds   int
+	IncidentWebhookURL            string
+	IncidentWebhookSecret         string
+	IncidentWebhookTimeoutSeconds int
+	LogLevel                      string
+	DebugLogger                   *debuglog.Logger
+	RunnerDir                     string
+	serverDirectoryState          *ServerDirectoryState
 }
 
 // ServerDirectoryState is shared by the backend managers so a validated
@@ -285,75 +287,77 @@ func Load() (Config, error) {
 	restPort := envInt("PALPANEL_REST_PORT", 8212)
 	palDefenderRESTPort := envInt("PALPANEL_PALDEFENDER_REST_PORT", DefaultPalDefenderRESTPort)
 	cfg := Config{
-		RuntimeRoot:                  layout.RuntimeRoot,
-		RepositoryRoot:               layout.RepositoryRoot,
-		DevelopmentMode:              layout.Development,
-		ListenAddr:                   env("PALPANEL_LISTEN_ADDR", "127.0.0.1:8080"),
-		DataDir:                      dataDir,
-		ServerDir:                    serverDir,
-		WinePrefixDir:                winePrefixDir,
-		ToolsDir:                     toolsDir,
-		SteamCMDDir:                  steamCMDDir,
-		UE4SSDir:                     ue4ssDir,
-		UploadsDir:                   uploadsDir,
-		BackupsDir:                   backupsDir,
-		LogsDir:                      logsDir,
-		DBPath:                       dbPath,
-		RequireAuth:                  envBool("PALPANEL_REQUIRE_AUTH", true),
-		DiagnosticShellEnabled:       envBool("PALPANEL_DIAGNOSTIC_SHELL_ENABLED", false),
-		CORSOrigins:                  envList("PALPANEL_CORS_ORIGINS", []string{"http://127.0.0.1:3000", "http://localhost:3000"}),
-		FrontendDist:                 frontendDist,
-		MaxUploadBytes:               int64(envInt("PALPANEL_MAX_UPLOAD_MB", 256)) * 1024 * 1024,
-		DockerBinary:                 env("PALPANEL_DOCKER_BIN", "docker"),
-		DockerImage:                  env("PALPANEL_DOCKER_IMAGE", "palworld-wine-runner:local"),
-		DockerContainer:              env("PALPANEL_DOCKER_CONTAINER", "palworld-wine-server"),
-		DockerRunnerBaseImage:        env("PALPANEL_DOCKER_RUNNER_BASE_IMAGE", DefaultDockerRunnerBaseImage),
-		DockerRunnerBaseImageMirrors: envList("PALPANEL_DOCKER_RUNNER_BASE_IMAGE_MIRRORS", DefaultDockerRunnerBaseImageMirrorPrefixes),
-		SteamWebAPIKey:               steamWebAPIKey,
-		SteamWebAPIKeySource:         steamWebAPIKeySource,
-		SteamAPIBaseURL:              strings.TrimRight(env("PALPANEL_STEAM_API_BASE_URL", DefaultSteamAPIBaseURL), "/"),
-		SteamAPITimeoutSeconds:       envInt("PALPANEL_STEAM_API_TIMEOUT_SECONDS", DefaultSteamAPITimeoutSeconds),
-		CommunityServersEnabled:      envBool("PALPANEL_COMMUNITY_SERVERS_ENABLED", true),
-		CommunityServersAPIBaseURL:   strings.TrimRight(env("PALPANEL_COMMUNITY_SERVERS_API_BASE_URL", DefaultCommunityServersAPIBaseURL), "/"),
-		CommunityServersProxyURL:     strings.TrimSpace(os.Getenv("PALPANEL_COMMUNITY_SERVERS_PROXY_URL")),
-		CommunityServersCacheTTL:     envInt("PALPANEL_COMMUNITY_SERVERS_CACHE_TTL_SECONDS", DefaultCommunityServersCacheTTLSeconds),
-		CommunityServersStaleTTL:     envInt("PALPANEL_COMMUNITY_SERVERS_STALE_TTL_SECONDS", DefaultCommunityServersStaleTTLSeconds),
-		CommunityServersRateLimit:    envInt("PALPANEL_COMMUNITY_SERVERS_RATE_LIMIT", DefaultCommunityServersRateLimit),
-		SteamCMDDownloadURL:          strings.TrimSpace(env("PALPANEL_STEAMCMD_DOWNLOAD_URL", DefaultSteamCMDDownloadURL)),
-		SteamCMDDownloadMaxBytes:     int64(envInt("PALPANEL_STEAMCMD_DOWNLOAD_MAX_MB", DefaultSteamCMDDownloadMaxMB)) * 1024 * 1024,
-		UE4SSVersion:                 strings.TrimSpace(env("PALPANEL_UE4SS_VERSION", DefaultUE4SSVersion)),
-		UE4SSDownloadURL:             strings.TrimSpace(env("PALPANEL_UE4SS_DOWNLOAD_URL", DefaultUE4SSDownloadURL)),
-		UE4SSArchiveSHA256:           strings.ToLower(strings.TrimSpace(env("PALPANEL_UE4SS_ARCHIVE_SHA256", DefaultUE4SSArchiveSHA256))),
-		UE4SSDownloadMaxBytes:        int64(envInt("PALPANEL_UE4SS_DOWNLOAD_MAX_MB", DefaultUE4SSDownloadMaxMB)) * 1024 * 1024,
-		WorkshopAppID:                env("PALPANEL_WORKSHOP_APP_ID", "1623730"),
-		GamePort:                     envInt("PALPANEL_GAME_PORT", 8211),
-		QueryPort:                    envInt("PALPANEL_QUERY_PORT", 27015),
-		RCONHost:                     strings.TrimSpace(env("PALPANEL_RCON_HOST", "127.0.0.1")),
-		RCONPort:                     envInt("PALPANEL_RCON_PORT", DefaultRCONPort),
-		RESTPort:                     restPort,
-		PalworldRESTBaseURL:          env("PALWORLD_REST_BASE_URL", fmt.Sprintf("http://127.0.0.1:%d/v1/api", restPort)),
-		PalworldRESTUser:             env("PALWORLD_REST_USER", "admin"),
-		PalworldRESTPass:             env("PALWORLD_ADMIN_PASSWORD", ""),
-		PalworldRESTReadTimeoutMS:    envInt("PALPANEL_PALWORLD_REST_READ_TIMEOUT_MS", 1200),
-		PalworldGameDataTimeoutMS:    envInt("PALPANEL_GAME_DATA_TIMEOUT_MS", 3000),
-		PalworldGameDataMaxBytes:     int64(envInt("PALPANEL_GAME_DATA_MAX_MB", 16)) * 1024 * 1024,
-		PalDefenderRESTBaseURL:       env("PALPANEL_PALDEFENDER_REST_BASE_URL", fmt.Sprintf("http://127.0.0.1:%d", palDefenderRESTPort)),
-		PalDefenderRESTPort:          palDefenderRESTPort,
-		SaveIndexerEnabled:           envBool("PALPANEL_SAVE_INDEXER_ENABLED", false),
-		SaveIndexerURL:               env("PALPANEL_SAVE_INDEXER_URL", "http://127.0.0.1:8090"),
-		SaveIndexCacheDir:            saveIndexCacheDir,
-		SaveIndexTimeoutSeconds:      envInt("PALPANEL_SAVE_INDEX_TIMEOUT_SECONDS", 120),
-		SaveSourcesDir:               filepath.Join(dataDir, "save-sources"),
-		PalCalcBridgeURL:             strings.TrimRight(env("PALPANEL_PALCALC_URL", "http://127.0.0.1:8091"), "/"),
-		PalCalcTimeoutSeconds:        envInt("PALPANEL_PALCALC_TIMEOUT_SECONDS", 300),
-		AstrBotPluginURL:             strings.TrimRight(env("PALPANEL_ASTRBOT_PLUGIN_URL", "http://127.0.0.1:8092"), "/"),
-		AstrBotPanelID:               env("PALPANEL_ASTRBOT_PANEL_ID", "palpanel"),
-		AstrBotSharedSecret:          strings.TrimSpace(os.Getenv("PALPANEL_ASTRBOT_SHARED_SECRET")),
-		PerfSlowRequestMS:            envInt("PALPANEL_PERF_SLOW_REQUEST_MS", 500),
-		MonitorRetentionDays:         envInt("PALPANEL_MONITOR_RETENTION_DAYS", DefaultMonitorRetentionDays),
-		AITranslationTimeoutSeconds:  envInt("PALPANEL_AI_TRANSLATION_TIMEOUT_SECONDS", DefaultAITranslationTimeoutSeconds),
-		LogLevel:                     strings.ToLower(env("PALPANEL_LOG_LEVEL", "info")),
-		RunnerDir:                    runnerDir,
+		RuntimeRoot:                   layout.RuntimeRoot,
+		RepositoryRoot:                layout.RepositoryRoot,
+		DevelopmentMode:               layout.Development,
+		ListenAddr:                    env("PALPANEL_LISTEN_ADDR", "127.0.0.1:8080"),
+		DataDir:                       dataDir,
+		ServerDir:                     serverDir,
+		WinePrefixDir:                 winePrefixDir,
+		ToolsDir:                      toolsDir,
+		SteamCMDDir:                   steamCMDDir,
+		UE4SSDir:                      ue4ssDir,
+		UploadsDir:                    uploadsDir,
+		BackupsDir:                    backupsDir,
+		LogsDir:                       logsDir,
+		DBPath:                        dbPath,
+		RequireAuth:                   envBool("PALPANEL_REQUIRE_AUTH", true),
+		CORSOrigins:                   envList("PALPANEL_CORS_ORIGINS", []string{"http://127.0.0.1:3000", "http://localhost:3000"}),
+		FrontendDist:                  frontendDist,
+		MaxUploadBytes:                int64(envInt("PALPANEL_MAX_UPLOAD_MB", 256)) * 1024 * 1024,
+		DockerBinary:                  env("PALPANEL_DOCKER_BIN", "docker"),
+		DockerImage:                   env("PALPANEL_DOCKER_IMAGE", "palworld-wine-runner:local"),
+		DockerContainer:               env("PALPANEL_DOCKER_CONTAINER", "palworld-wine-server"),
+		DockerRunnerBaseImage:         env("PALPANEL_DOCKER_RUNNER_BASE_IMAGE", DefaultDockerRunnerBaseImage),
+		DockerRunnerBaseImageMirrors:  envList("PALPANEL_DOCKER_RUNNER_BASE_IMAGE_MIRRORS", DefaultDockerRunnerBaseImageMirrorPrefixes),
+		SteamWebAPIKey:                steamWebAPIKey,
+		SteamWebAPIKeySource:          steamWebAPIKeySource,
+		SteamAPIBaseURL:               strings.TrimRight(env("PALPANEL_STEAM_API_BASE_URL", DefaultSteamAPIBaseURL), "/"),
+		SteamAPITimeoutSeconds:        envInt("PALPANEL_STEAM_API_TIMEOUT_SECONDS", DefaultSteamAPITimeoutSeconds),
+		CommunityServersEnabled:       envBool("PALPANEL_COMMUNITY_SERVERS_ENABLED", true),
+		CommunityServersAPIBaseURL:    strings.TrimRight(env("PALPANEL_COMMUNITY_SERVERS_API_BASE_URL", DefaultCommunityServersAPIBaseURL), "/"),
+		CommunityServersProxyURL:      strings.TrimSpace(os.Getenv("PALPANEL_COMMUNITY_SERVERS_PROXY_URL")),
+		CommunityServersCacheTTL:      envInt("PALPANEL_COMMUNITY_SERVERS_CACHE_TTL_SECONDS", DefaultCommunityServersCacheTTLSeconds),
+		CommunityServersStaleTTL:      envInt("PALPANEL_COMMUNITY_SERVERS_STALE_TTL_SECONDS", DefaultCommunityServersStaleTTLSeconds),
+		CommunityServersRateLimit:     envInt("PALPANEL_COMMUNITY_SERVERS_RATE_LIMIT", DefaultCommunityServersRateLimit),
+		SteamCMDDownloadURL:           strings.TrimSpace(env("PALPANEL_STEAMCMD_DOWNLOAD_URL", DefaultSteamCMDDownloadURL)),
+		SteamCMDDownloadMaxBytes:      int64(envInt("PALPANEL_STEAMCMD_DOWNLOAD_MAX_MB", DefaultSteamCMDDownloadMaxMB)) * 1024 * 1024,
+		UE4SSVersion:                  strings.TrimSpace(env("PALPANEL_UE4SS_VERSION", DefaultUE4SSVersion)),
+		UE4SSDownloadURL:              strings.TrimSpace(env("PALPANEL_UE4SS_DOWNLOAD_URL", DefaultUE4SSDownloadURL)),
+		UE4SSArchiveSHA256:            strings.ToLower(strings.TrimSpace(env("PALPANEL_UE4SS_ARCHIVE_SHA256", DefaultUE4SSArchiveSHA256))),
+		UE4SSDownloadMaxBytes:         int64(envInt("PALPANEL_UE4SS_DOWNLOAD_MAX_MB", DefaultUE4SSDownloadMaxMB)) * 1024 * 1024,
+		WorkshopAppID:                 env("PALPANEL_WORKSHOP_APP_ID", "1623730"),
+		GamePort:                      envInt("PALPANEL_GAME_PORT", 8211),
+		QueryPort:                     envInt("PALPANEL_QUERY_PORT", 27015),
+		RCONHost:                      strings.TrimSpace(env("PALPANEL_RCON_HOST", "127.0.0.1")),
+		RCONPort:                      envInt("PALPANEL_RCON_PORT", DefaultRCONPort),
+		RESTPort:                      restPort,
+		PalworldRESTBaseURL:           env("PALWORLD_REST_BASE_URL", fmt.Sprintf("http://127.0.0.1:%d/v1/api", restPort)),
+		PalworldRESTUser:              env("PALWORLD_REST_USER", "admin"),
+		PalworldRESTPass:              env("PALWORLD_ADMIN_PASSWORD", ""),
+		PalworldRESTReadTimeoutMS:     envInt("PALPANEL_PALWORLD_REST_READ_TIMEOUT_MS", 1200),
+		PalworldGameDataTimeoutMS:     envInt("PALPANEL_GAME_DATA_TIMEOUT_MS", 3000),
+		PalworldGameDataMaxBytes:      int64(envInt("PALPANEL_GAME_DATA_MAX_MB", 16)) * 1024 * 1024,
+		PalDefenderRESTBaseURL:        env("PALPANEL_PALDEFENDER_REST_BASE_URL", fmt.Sprintf("http://127.0.0.1:%d", palDefenderRESTPort)),
+		PalDefenderRESTPort:           palDefenderRESTPort,
+		SaveIndexerEnabled:            envBool("PALPANEL_SAVE_INDEXER_ENABLED", false),
+		SaveIndexerURL:                env("PALPANEL_SAVE_INDEXER_URL", "http://127.0.0.1:8090"),
+		SaveIndexCacheDir:             saveIndexCacheDir,
+		SaveIndexTimeoutSeconds:       envInt("PALPANEL_SAVE_INDEX_TIMEOUT_SECONDS", 120),
+		SaveSourcesDir:                filepath.Join(dataDir, "save-sources"),
+		PalCalcBridgeURL:              strings.TrimRight(env("PALPANEL_PALCALC_URL", "http://127.0.0.1:8091"), "/"),
+		PalCalcTimeoutSeconds:         envInt("PALPANEL_PALCALC_TIMEOUT_SECONDS", 300),
+		AstrBotPluginURL:              strings.TrimRight(env("PALPANEL_ASTRBOT_PLUGIN_URL", "http://127.0.0.1:8092"), "/"),
+		AstrBotPanelID:                env("PALPANEL_ASTRBOT_PANEL_ID", "palpanel"),
+		AstrBotSharedSecret:           strings.TrimSpace(os.Getenv("PALPANEL_ASTRBOT_SHARED_SECRET")),
+		PerfSlowRequestMS:             envInt("PALPANEL_PERF_SLOW_REQUEST_MS", 500),
+		MonitorRetentionDays:          envInt("PALPANEL_MONITOR_RETENTION_DAYS", DefaultMonitorRetentionDays),
+		AITranslationTimeoutSeconds:   envInt("PALPANEL_AI_TRANSLATION_TIMEOUT_SECONDS", DefaultAITranslationTimeoutSeconds),
+		IncidentWebhookURL:            strings.TrimSpace(os.Getenv("PALPANEL_INCIDENT_WEBHOOK_URL")),
+		IncidentWebhookSecret:         strings.TrimSpace(os.Getenv("PALPANEL_INCIDENT_WEBHOOK_SECRET")),
+		IncidentWebhookTimeoutSeconds: envInt("PALPANEL_INCIDENT_WEBHOOK_TIMEOUT_SECONDS", 10),
+		LogLevel:                      strings.ToLower(env("PALPANEL_LOG_LEVEL", "info")),
+		RunnerDir:                     runnerDir,
 	}
 	cfg.serverDirectoryState = newServerDirectoryState(serverDir, false)
 	if err := validateListenAddress(cfg.ListenAddr); err != nil {
@@ -406,6 +410,26 @@ func Load() (Config, error) {
 	}
 	if cfg.MonitorRetentionDays < 0 || cfg.MonitorRetentionDays > 3650 {
 		return Config{}, fmt.Errorf("PALPANEL_MONITOR_RETENTION_DAYS must be between 0 and 3650")
+	}
+	if cfg.IncidentWebhookTimeoutSeconds < 1 || cfg.IncidentWebhookTimeoutSeconds > 30 {
+		return Config{}, fmt.Errorf("PALPANEL_INCIDENT_WEBHOOK_TIMEOUT_SECONDS must be between 1 and 30")
+	}
+	if cfg.IncidentWebhookURL != "" {
+		webhookURL, err := url.Parse(cfg.IncidentWebhookURL)
+		if err != nil || webhookURL.Hostname() == "" || webhookURL.User != nil || webhookURL.Fragment != "" || webhookURL.RawQuery != "" || (webhookURL.Scheme != "https" && webhookURL.Scheme != "http") {
+			return Config{}, fmt.Errorf("PALPANEL_INCIDENT_WEBHOOK_URL must be an absolute HTTP(S) URL without credentials, query strings, or fragments")
+		}
+		host := strings.Trim(strings.ToLower(webhookURL.Hostname()), "[]")
+		loopback := host == "localhost"
+		if address := net.ParseIP(host); address != nil {
+			loopback = address.IsLoopback()
+		}
+		if webhookURL.Scheme == "http" && !loopback {
+			return Config{}, fmt.Errorf("PALPANEL_INCIDENT_WEBHOOK_URL must use HTTPS unless the target is loopback")
+		}
+		if len(cfg.IncidentWebhookSecret) < 16 {
+			return Config{}, fmt.Errorf("PALPANEL_INCIDENT_WEBHOOK_SECRET must contain at least 16 characters when webhook delivery is enabled")
+		}
 	}
 	if !validRCONHost(cfg.RCONHost) {
 		return Config{}, fmt.Errorf("PALPANEL_RCON_HOST must be a hostname or IP address without a port")
@@ -632,7 +656,7 @@ func validateProxyURL(name, raw string) error {
 }
 
 func validateScalarEnvironment() error {
-	for _, name := range []string{"PALPANEL_REQUIRE_AUTH", "PALPANEL_DIAGNOSTIC_SHELL_ENABLED", "PALPANEL_SAVE_INDEXER_ENABLED", "PALPANEL_COMMUNITY_SERVERS_ENABLED"} {
+	for _, name := range []string{"PALPANEL_REQUIRE_AUTH", "PALPANEL_SAVE_INDEXER_ENABLED", "PALPANEL_COMMUNITY_SERVERS_ENABLED"} {
 		raw := strings.TrimSpace(os.Getenv(name))
 		if raw == "" {
 			continue

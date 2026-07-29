@@ -25,6 +25,7 @@ import (
 	"palpanel/internal/db"
 	"palpanel/internal/debuglog"
 	"palpanel/internal/docker"
+	"palpanel/internal/incidents"
 	"palpanel/internal/jobs"
 	"palpanel/internal/mods"
 	"palpanel/internal/monitor"
@@ -187,8 +188,10 @@ func runWithIO(args []string, input io.Reader, output, errorOutput io.Writer) er
 	restClient := palrest.New(cfg.PalworldRESTBaseURL, cfg.PalworldRESTUser, cfg.PalworldRESTPass)
 	monitorManager := monitor.New(cfg, store, serverManager, restClient)
 	schedulerManager := scheduler.New(store, serverManager, restClient, jobExecutor)
+	incidentService := incidents.New(cfg, store)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	incidentDone := incidentService.Start(ctx)
 	configCleanupDone := serverManager.StartConfigDraftCleanup(ctx, 15*time.Minute)
 	crashGuardDone := serverManager.StartCrashGuard(ctx)
 	monitorDone := monitorManager.Start(ctx)
@@ -197,11 +200,11 @@ func runWithIO(args []string, input io.Reader, output, errorOutput io.Writer) er
 		stop()
 		workerCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		_ = waitForBackground(workerCtx, monitorDone, schedulerDone, configCleanupDone, crashGuardDone)
+		_ = waitForBackground(workerCtx, monitorDone, schedulerDone, configCleanupDone, crashGuardDone, incidentDone)
 		_ = jobExecutor.Shutdown(workerCtx)
 	}()
 
-	router := api.NewRouter(cfg, store, serverManager, modsManager, palDefenderManager, restClient, monitorManager, schedulerManager)
+	router := api.NewRouter(cfg, store, serverManager, modsManager, palDefenderManager, restClient, monitorManager, schedulerManager, incidentService)
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           router,
@@ -235,7 +238,7 @@ func runWithIO(args []string, input io.Reader, output, errorOutput io.Writer) er
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("graceful shutdown: %w", err)
 	}
-	if err := waitForBackground(shutdownCtx, monitorDone, schedulerDone, configCleanupDone, crashGuardDone); err != nil {
+	if err := waitForBackground(shutdownCtx, monitorDone, schedulerDone, configCleanupDone, crashGuardDone, incidentDone); err != nil {
 		return err
 	}
 	if err := jobExecutor.Shutdown(shutdownCtx); err != nil {

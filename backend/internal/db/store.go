@@ -7,13 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
 type Store struct {
-	db *sql.DB
+	db            *sql.DB
+	incidentMu    sync.Mutex
+	incidentJobMu sync.Mutex
 }
 
 type Job struct {
@@ -339,6 +342,7 @@ func migrations() []schemaMigration {
 		{version: 10, apply: migrateMonitorLifecycleAvailability},
 		{version: 11, apply: migrateConfigRevisions},
 		{version: 12, apply: migrateCrashGuard},
+		{version: 13, apply: migrateIncidents},
 	}
 }
 
@@ -1113,6 +1117,9 @@ func (s *Store) CreateAlert(ctx context.Context, item Alert) error {
 	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO alerts (id,severity,title,message,source,status,created_at,ack_at) VALUES (?,?,?,?,?,?,?,?)`,
 		item.ID, item.Severity, item.Title, item.Message, item.Source, item.Status, item.CreatedAt, item.AckAt)
+	if err == nil {
+		_ = s.RecordAlertIncident(ctx, item)
+	}
 	return err
 }
 
@@ -1144,6 +1151,7 @@ func (s *Store) ResolveAlert(ctx context.Context, id string) error {
 	if count == 0 {
 		return sql.ErrNoRows
 	}
+	_ = s.SyncAlertIncidentStatus(ctx, id, "resolved")
 	return nil
 }
 
@@ -1179,6 +1187,7 @@ func (s *Store) AckAlert(ctx context.Context, id string) error {
 	if n == 0 {
 		return sql.ErrNoRows
 	}
+	_ = s.SyncAlertIncidentStatus(ctx, id, "acknowledged")
 	return nil
 }
 
@@ -1207,6 +1216,12 @@ func (s *Store) UpdateJobWithCode(ctx context.Context, id, status string, progre
 	}
 	if rows == 0 {
 		return sql.ErrNoRows
+	}
+	if status == "failed" {
+		job, readErr := s.GetJob(ctx, id)
+		if readErr == nil {
+			_ = s.RecordFailedJobIncident(ctx, job)
+		}
 	}
 	return err
 }

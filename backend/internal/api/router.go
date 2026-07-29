@@ -29,6 +29,7 @@ import (
 	"palpanel/internal/communityservers"
 	"palpanel/internal/db"
 	"palpanel/internal/id"
+	"palpanel/internal/incidents"
 	"palpanel/internal/mods"
 	"palpanel/internal/monitor"
 	"palpanel/internal/networkproxy"
@@ -62,12 +63,17 @@ type Server struct {
 	authLimiter     *authRateLimiter
 	cache           *ttlCache
 	gmIdempotency   *gmIdempotencyStore
+	incidents       *incidents.Service
 	saveImports     *saveImportInspectionStore
 	webUI           fs.FS
 }
 
-func NewRouter(cfg appconfig.Config, store *db.Store, serverManager server.Manager, modsManager mods.Manager, defenderManager paldefender.Manager, restClient palrest.Client, monitorManager monitor.Manager, schedulerManager scheduler.Manager) *gin.Engine {
+func NewRouter(cfg appconfig.Config, store *db.Store, serverManager server.Manager, modsManager mods.Manager, defenderManager paldefender.Manager, restClient palrest.Client, monitorManager monitor.Manager, schedulerManager scheduler.Manager, incidentServices ...*incidents.Service) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
+	var incidentService *incidents.Service
+	if len(incidentServices) > 0 {
+		incidentService = incidentServices[0]
+	}
 	webFiles, _ := webui.Load(cfg.FrontendDist)
 	saveManager := saveindex.NewManager(cfg)
 	initializeSaveSources(cfg, store, saveManager)
@@ -97,7 +103,7 @@ func NewRouter(cfg appconfig.Config, store *db.Store, serverManager server.Manag
 			communityAPI = NewCommunityServersHandler(service)
 		}
 	}
-	s := Server{cfg: cfg, store: store, server: serverManager, mods: modsManager, defender: defenderManager, palrest: restClient, monitor: monitorManager, scheduler: schedulerManager, saveIndex: saveManager, serverSaveIndex: serverSaveManager, breeding: breeding.New(cfg, store, saveManager), community: communityService, communityAPI: communityAPI, astrbot: astrbotclient.New(cfg), ai: aitranslation.New(cfg, store), networkProxy: networkProxyService, auth: panelauth.New(store), authLimiter: newAuthRateLimiter(), cache: newTTLCache(), gmIdempotency: newGMIdempotencyStore(), saveImports: newSaveImportInspectionStore(defaultSaveImportInspectionTTL), webUI: webFiles}
+	s := Server{cfg: cfg, store: store, server: serverManager, mods: modsManager, defender: defenderManager, palrest: restClient, monitor: monitorManager, scheduler: schedulerManager, saveIndex: saveManager, serverSaveIndex: serverSaveManager, breeding: breeding.New(cfg, store, saveManager), community: communityService, communityAPI: communityAPI, astrbot: astrbotclient.New(cfg), ai: aitranslation.New(cfg, store), networkProxy: networkProxyService, auth: panelauth.New(store), authLimiter: newAuthRateLimiter(), cache: newTTLCache(), gmIdempotency: newGMIdempotencyStore(), incidents: incidentService, saveImports: newSaveImportInspectionStore(defaultSaveImportInspectionTTL), webUI: webFiles}
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(PerformanceMiddleware(cfg))

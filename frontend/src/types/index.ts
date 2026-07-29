@@ -1364,3 +1364,65 @@ export type UnsupportedActionResult = {
   unsupported: true;
   message: string;
 };
+
+export type IncidentSeverity = 'info' | 'warning' | 'error' | 'critical';
+export type IncidentStatus = 'open' | 'acknowledged' | 'resolved';
+
+export interface Incident {
+  id: string;
+  kind: string;
+  severity: IncidentSeverity;
+  source: string;
+  title: string;
+  summary: string;
+  status: IncidentStatus;
+  occurrences: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  acknowledged_at?: string;
+  resolved_at?: string;
+  details?: Record<string, unknown>;
+  updated_at: string;
+}
+
+export interface IncidentEvent {
+  id: string;
+  incident_id: string;
+  type: 'opened' | 'occurred' | 'reopened' | 'acknowledged' | 'resolved' | 'delivery_failed';
+  actor?: string;
+  message?: string;
+  created_at: string;
+}
+
+export interface IncidentDelivery {
+  id: string;
+  incident_id: string;
+  event_id: string;
+  status: 'pending' | 'delivered' | 'failed';
+  attempts: number;
+  next_attempt_at?: string;
+  delivered_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IncidentListResponse {
+  items: Incident[];
+  total: number;
+  limit: number;
+  offset: number;
+  summary: Record<IncidentStatus, number>;
+  webhook: {
+    enabled: boolean;
+    target_host?: string;
+    signed: boolean;
+    timeout_seconds: number;
+    max_attempts: number;
+  };
+}
+
+export interface IncidentDetail {
+  incident: Incident;
+  events: IncidentEvent[];
+  deliveries: IncidentDelivery[];
+}
