@@ -17,4 +17,5 @@ set_target_properties(PalPanelBridge PROPERTIES
   OUTPUT_NAME "main"
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifact/PalPanelBridge/dlls"
   RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/artifact/PalPanelBridge/dlls"
+  RUNTIME_OUTPUT_DIRECTORY_GAME__SHIPPING__WIN64 "${CMAKE_BINARY_DIR}/artifact/PalPanelBridge/dlls"
 )

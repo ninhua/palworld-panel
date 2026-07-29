@@ -2,7 +2,8 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$UE4SSRoot,
   [string]$OutputDir = (Join-Path $PSScriptRoot "build"),
-  [string]$RustCompiler = ""
+  [string]$RustCompiler = "",
+  [string]$BuildConfiguration = "Game__Shipping__Win64"
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,7 +26,7 @@ if ($RustCompiler) {
 cmake @cmakeArgs
 if ($LASTEXITCODE -ne 0) { throw "PalPanelBridge CMake configure failed" }
 
-cmake --build $OutputDir --config Release --target PalPanelBridge
+cmake --build $OutputDir --config $BuildConfiguration --target PalPanelBridge
 if ($LASTEXITCODE -ne 0) { throw "PalPanelBridge build failed" }
 
 $artifact = Join-Path $OutputDir "artifact\PalPanelBridge"
