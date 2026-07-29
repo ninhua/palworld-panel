@@ -21,6 +21,10 @@ $virtualFunctionHeader = Join-Path $resolvedSDK "deps\first\Unreal\include\Unrea
 if (-not (Test-Path -LiteralPath $virtualFunctionHeader -PathType Leaf)) {
   throw "UE4SSRoot is missing the pinned UEPseudo headers"
 }
+$localPlayerHeader = Join-Path $resolvedSDK "deps\first\Unreal\include\Unreal\ULocalPlayer.hpp"
+if (-not (Test-Path -LiteralPath $localPlayerHeader -PathType Leaf)) {
+  throw "UE4SSRoot is missing the pinned ULocalPlayer header"
+}
 
 $resolvedOutput = [System.IO.Path]::GetFullPath($OutputDir)
 $bridgeSource = $PSScriptRoot.Replace("\", "/")
@@ -29,6 +33,7 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)
 $originalSDKCMake = [System.IO.File]::ReadAllText($sdkCMake, $utf8)
 $originalThirdPartyCMake = [System.IO.File]::ReadAllText($thirdPartyCMake, $utf8)
 $originalVirtualFunctionHeader = [System.IO.File]::ReadAllText($virtualFunctionHeader, $utf8)
+$originalLocalPlayerHeader = [System.IO.File]::ReadAllText($localPlayerHeader, $utf8)
 $injectedSDKCMake = $originalSDKCMake.TrimEnd() +
   "`n`nadd_subdirectory(`"$bridgeSource`" `"$bridgeBuild`")`n"
 $oldCorrosionCommit = "123be1e3d8170c86e121392e8bffa4def7dc3447"
@@ -49,6 +54,26 @@ $patchedVirtualFunctionHeader = $originalVirtualFunctionHeader.Replace(
   $oldFindCall,
   $fixedFindCall
 )
+$localPlayerNamespace = "namespace RC::Unreal`r`n{"
+if (-not $originalLocalPlayerHeader.Contains($localPlayerNamespace)) {
+  $localPlayerNamespace = "namespace RC::Unreal`n{"
+}
+if (-not $originalLocalPlayerHeader.Contains($localPlayerNamespace)) {
+  throw "Unexpected ULocalPlayer header; refusing to patch an unknown SDK revision"
+}
+$lineEnding = if ($localPlayerNamespace.Contains("`r`n")) { "`r`n" } else { "`n" }
+$aspectRatioEnum = $localPlayerNamespace + $lineEnding +
+  "    enum EAspectRatioAxisConstraint" + $lineEnding +
+  "    {" + $lineEnding +
+  "        AspectRatio_MaintainYFOV," + $lineEnding +
+  "        AspectRatio_MaintainXFOV," + $lineEnding +
+  "        AspectRatio_MajorAxisFOV," + $lineEnding +
+  "        AspectRatio_MAX," + $lineEnding +
+  "    };"
+$patchedLocalPlayerHeader = $originalLocalPlayerHeader.Replace(
+  $localPlayerNamespace,
+  $aspectRatioEnum
+)
 
 $cmakeArgs = @(
   "-S", $resolvedSDK,
@@ -65,6 +90,7 @@ try {
   [System.IO.File]::WriteAllText($sdkCMake, $injectedSDKCMake, $utf8)
   [System.IO.File]::WriteAllText($thirdPartyCMake, $patchedThirdPartyCMake, $utf8)
   [System.IO.File]::WriteAllText($virtualFunctionHeader, $patchedVirtualFunctionHeader, $utf8)
+  [System.IO.File]::WriteAllText($localPlayerHeader, $patchedLocalPlayerHeader, $utf8)
   cmake @cmakeArgs
   if ($LASTEXITCODE -ne 0) { throw "PalPanelBridge CMake configure failed" }
 
@@ -74,6 +100,7 @@ try {
   [System.IO.File]::WriteAllText($sdkCMake, $originalSDKCMake, $utf8)
   [System.IO.File]::WriteAllText($thirdPartyCMake, $originalThirdPartyCMake, $utf8)
   [System.IO.File]::WriteAllText($virtualFunctionHeader, $originalVirtualFunctionHeader, $utf8)
+  [System.IO.File]::WriteAllText($localPlayerHeader, $originalLocalPlayerHeader, $utf8)
 }
 
 $artifact = Join-Path $resolvedOutput "artifact\PalPanelBridge"
