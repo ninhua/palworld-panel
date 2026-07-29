@@ -41,9 +41,14 @@ jobs:
       - name: Build bridge DLL
         shell: pwsh
         run: |
+          $rustc = Join-Path $env:CARGO_HOME "bin\rustc.exe"
+          if (-not (Test-Path -LiteralPath $rustc -PathType Leaf)) {
+            throw "Rust compiler not found after toolchain setup: $rustc"
+          }
           ./tools/palpanel-bridge/build-local.ps1 `
             -UE4SSRoot "$env:RUNNER_TEMP\RE-UE4SS" `
-            -OutputDir "$env:RUNNER_TEMP\palpanel-bridge-build"
+            -OutputDir "$env:RUNNER_TEMP\palpanel-bridge-build" `
+            -RustCompiler $rustc
 
       - name: Complete artifact metadata
         shell: pwsh

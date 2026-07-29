@@ -1,7 +1,8 @@
 param(
   [Parameter(Mandatory = $true)]
   [string]$UE4SSRoot,
-  [string]$OutputDir = (Join-Path $PSScriptRoot "build")
+  [string]$OutputDir = (Join-Path $PSScriptRoot "build"),
+  [string]$RustCompiler = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,7 +11,18 @@ if (-not (Test-Path -LiteralPath (Join-Path $resolvedSDK "CMakeLists.txt") -Path
   throw "UE4SSRoot must point to a complete RE-UE4SS v3.0.1 source checkout"
 }
 
-cmake -S $PSScriptRoot -B $OutputDir -A x64 "-DPALPANEL_UE4SS_ROOT=$resolvedSDK"
+$cmakeArgs = @(
+  "-S", $PSScriptRoot,
+  "-B", $OutputDir,
+  "-A", "x64",
+  "-DPALPANEL_UE4SS_ROOT=$resolvedSDK"
+)
+if ($RustCompiler) {
+  $resolvedRust = (Resolve-Path -LiteralPath $RustCompiler).Path
+  $cmakeArgs += "-DRust_COMPILER=$resolvedRust"
+}
+
+cmake @cmakeArgs
 if ($LASTEXITCODE -ne 0) { throw "PalPanelBridge CMake configure failed" }
 
 cmake --build $OutputDir --config Release --target PalPanelBridge
