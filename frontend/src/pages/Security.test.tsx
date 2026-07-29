@@ -53,6 +53,10 @@ describe('Security', () => {
 
     expect(await screen.findByText('1.8.3')).toBeInTheDocument();
     expect(screen.getByText('未获取到 Release')).toBeInTheDocument();
-    await waitFor(() => expect(container.querySelector('textarea')).toHaveValue(expect.stringContaining('"RESTAPI"')));
+    await waitFor(() => {
+      const config = container.querySelector('textarea');
+      expect(config).not.toBeNull();
+      expect(config?.value).toContain('"RESTAPI"');
+    });
   });
 });
