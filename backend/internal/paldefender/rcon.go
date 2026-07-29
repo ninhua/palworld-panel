@@ -19,13 +19,16 @@ import (
 )
 
 const (
-	rconPacketAuth      int32 = 3
-	rconPacketExec      int32 = 2
-	rconPacketAuthReply int32 = 2
-	rconPacketExecReply int32 = 0
-	rconPacketLimit           = 4 << 20
-	rconResponseLimit         = 8 << 20
-	rconTimeout               = 5 * time.Second
+	rconPacketAuth          int32 = 3
+	rconPacketExec          int32 = 2
+	rconPacketAuthReply     int32 = 2
+	rconPacketExecReply     int32 = 0
+	rconPacketLimit               = 4 << 20
+	rconResponseLimit             = 8 << 20
+	rconTimeout                   = 5 * time.Second
+	rconResponseIdleTimeout       = 150 * time.Millisecond
+	rconCatalogTimeout            = 30 * time.Second
+	rconCatalogIdleTimeout        = time.Second
 )
 
 var (
@@ -60,6 +63,16 @@ type rconPacket struct {
 	ID   int32
 	Type int32
 	Body string
+}
+
+type rconExecutionOptions struct {
+	firstResponseTimeout time.Duration
+	responseIdleTimeout  time.Duration
+}
+
+var defaultRCONExecutionOptions = rconExecutionOptions{
+	firstResponseTimeout: rconTimeout,
+	responseIdleTimeout:  rconResponseIdleTimeout,
 }
 
 func (m Manager) RCONWhitelist(ctx context.Context) (RCONResult, error) {
@@ -107,17 +120,24 @@ func (m Manager) RCONSkinCatalog(ctx context.Context) (RCONResult, error) {
 }
 
 func (m Manager) RCONCommands(ctx context.Context) (RCONResult, error) {
-	return m.runTypedRCON(ctx, "/getrconcmds", false)
+	return m.runTypedRCONWithOptions(ctx, "/getrconcmds", false, rconExecutionOptions{
+		firstResponseTimeout: rconCatalogTimeout,
+		responseIdleTimeout:  rconCatalogIdleTimeout,
+	})
 }
 
 func (m Manager) runTypedRCON(ctx context.Context, command string, parseEntries bool) (RCONResult, error) {
-	output, err := m.executeRCON(ctx, command)
+	return m.runTypedRCONWithOptions(ctx, command, parseEntries, defaultRCONExecutionOptions)
+}
+
+func (m Manager) runTypedRCONWithOptions(ctx context.Context, command string, parseEntries bool, options rconExecutionOptions) (RCONResult, error) {
+	output, err := m.executeRCONWithOptions(ctx, command, options)
 	if err != nil {
 		return RCONResult{}, err
 	}
 	if isUnknownRCONCommand(output) && strings.HasPrefix(command, "/") {
 		compatibleCommand := strings.TrimPrefix(command, "/")
-		compatibleOutput, compatibleErr := m.executeRCON(ctx, compatibleCommand)
+		compatibleOutput, compatibleErr := m.executeRCONWithOptions(ctx, compatibleCommand, options)
 		if compatibleErr != nil {
 			return RCONResult{}, compatibleErr
 		}
@@ -148,8 +168,18 @@ func isRejectedRCONOutput(output string) bool {
 }
 
 func (m Manager) executeRCON(ctx context.Context, command string) (string, error) {
+	return m.executeRCONWithOptions(ctx, command, defaultRCONExecutionOptions)
+}
+
+func (m Manager) executeRCONWithOptions(ctx context.Context, command string, options rconExecutionOptions) (string, error) {
 	if err := m.validateRCONPrerequisites(ctx); err != nil {
 		return "", err
+	}
+	if options.firstResponseTimeout <= 0 {
+		options.firstResponseTimeout = rconTimeout
+	}
+	if options.responseIdleTimeout <= 0 {
+		options.responseIdleTimeout = rconResponseIdleTimeout
 	}
 	command = strings.TrimSpace(command)
 	if command == "" || len(command) > 4096 || strings.ContainsAny(command, "\r\n\x00") {
@@ -230,6 +260,11 @@ func (m Manager) executeRCON(ctx context.Context, command string) (string, error
 	if err := writeRCONPacket(conn, rconPacket{ID: 2, Type: rconPacketExec, Body: command}); err != nil {
 		return "", fmt.Errorf("%w: %v", ErrRCONUnavailable, err)
 	}
+	responseDeadline := time.Now().Add(options.firstResponseTimeout)
+	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(responseDeadline) {
+		responseDeadline = contextDeadline
+	}
+	_ = conn.SetReadDeadline(responseDeadline)
 	var response strings.Builder
 	received := false
 	for {
@@ -252,7 +287,11 @@ func (m Manager) executeRCON(ctx context.Context, command string) (string, error
 			return "", ErrRCONInvalidResponse
 		}
 		response.WriteString(packet.Body)
-		_ = conn.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
+		responseDeadline = time.Now().Add(options.responseIdleTimeout)
+		if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(responseDeadline) {
+			responseDeadline = contextDeadline
+		}
+		_ = conn.SetReadDeadline(responseDeadline)
 	}
 	if !received {
 		return "", ErrRCONInvalidResponse
