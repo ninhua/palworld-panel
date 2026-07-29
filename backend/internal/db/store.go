@@ -338,6 +338,7 @@ func migrations() []schemaMigration {
 		{version: 9, apply: migrateMonitorDiagnostics},
 		{version: 10, apply: migrateMonitorLifecycleAvailability},
 		{version: 11, apply: migrateConfigRevisions},
+		{version: 12, apply: migrateCrashGuard},
 	}
 }
 

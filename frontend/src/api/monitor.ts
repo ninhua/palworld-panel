@@ -1,5 +1,44 @@
 import { apiClient, handleRequest } from './client';
-import type { DebugLogStatus, MonitorRiskReason, MonitorSample, MonitorSnapshot } from '../types';
+import type { CrashGuardEvent, CrashGuardStatus, DebugLogStatus, MonitorRiskReason, MonitorSample, MonitorSnapshot } from '../types';
+
+const emptyCrashGuardStatus: CrashGuardStatus = {
+  enabled: true,
+  tripped: false,
+  expected_operation: false,
+  recent_crash_count: 0,
+  threshold: 3,
+  window_seconds: 600,
+  updated_at: '',
+  events: [],
+};
+
+const mapCrashGuardEvent = (raw: unknown): CrashGuardEvent => {
+  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const kind: CrashGuardEvent['kind'] = data.kind === 'oom_kill' || data.kind === 'container_restart' ? data.kind : 'unexpected_exit';
+  return {
+    id: String(data.id || ''), kind, runtime_mode: String(data.runtime_mode || ''),
+    occurrences: Number(data.occurrences || 1), exit_code: Number(data.exit_code || 0),
+    oom_killed: Boolean(data.oom_killed), restart_count: Number(data.restart_count || 0),
+    started_at: data.started_at ? String(data.started_at) : undefined,
+    finished_at: data.finished_at ? String(data.finished_at) : undefined,
+    message: String(data.message || ''), created_at: String(data.created_at || ''),
+  };
+};
+
+const mapCrashGuardStatus = (raw: unknown): CrashGuardStatus => {
+  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return {
+    enabled: data.enabled === undefined ? true : Boolean(data.enabled),
+    tripped: Boolean(data.tripped), tripped_at: data.tripped_at ? String(data.tripped_at) : undefined,
+    reason: data.reason ? String(data.reason) : undefined, expected_operation: Boolean(data.expected_operation),
+    recent_crash_count: Number(data.recent_crash_count || 0), threshold: Number(data.threshold || 3),
+    window_seconds: Number(data.window_seconds || 600),
+    last_observed_status: data.last_observed_status ? String(data.last_observed_status) : undefined,
+    last_observed_runtime: data.last_observed_runtime ? String(data.last_observed_runtime) : undefined,
+    updated_at: String(data.updated_at || ''),
+    events: Array.isArray(data.events) ? data.events.map(mapCrashGuardEvent) : [],
+  };
+};
 
 const emptyDebugStatus: DebugLogStatus = {
   enabled: false,
@@ -109,6 +148,20 @@ const mapDebugStatus = (raw: unknown): DebugLogStatus => {
 };
 
 export const monitorApi = {
+  crashGuardStatus: () =>
+    handleRequest<unknown, CrashGuardStatus>(
+      () => apiClient.get('/server/crash-guard?limit=20'),
+      emptyCrashGuardStatus,
+      { map: mapCrashGuardStatus, quiet: true, fallbackOnError: true },
+    ),
+
+  recoverCrashGuard: (start = true) =>
+    handleRequest<unknown, CrashGuardStatus>(
+      () => apiClient.post('/server/crash-guard/recover', { confirm: true, start }),
+      emptyCrashGuardStatus,
+      { map: mapCrashGuardStatus, quiet: true, fallbackOnError: false },
+    ),
+
   snapshot: () =>
     handleRequest<unknown, MonitorSnapshot>(
       () => apiClient.get('/monitor/snapshot'),

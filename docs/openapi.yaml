@@ -452,6 +452,43 @@ paths:
     post: {operationId: runSchedule, tags: [system], x-palpanel-permission: 'server:control', responses: *writeResponses}
   /server/status:
     get: {operationId: getServerStatus, tags: [server], x-palpanel-permission: read, responses: *readResponses}
+  /server/crash-guard:
+    get:
+      operationId: getCrashGuardStatus
+      tags: [server]
+      x-palpanel-permission: read
+      parameters:
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200':
+          description: Crash-loop guard state and recent incidents.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CrashGuardStatusEnvelope'}
+        '400': *error
+        '401': *error
+        '500': *error
+  /server/crash-guard/recover:
+    post:
+      operationId: recoverCrashGuard
+      tags: [server]
+      x-palpanel-permission: 'server:control'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CrashGuardRecoveryRequest'}
+      responses:
+        '200':
+          description: Crash guard was cleared and optionally restarted.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CrashGuardStatusEnvelope'}
+        '400': *error
+        '401': *error
+        '403': *error
+        '409': *error
+        '500': *error
   /server/prerequisites:
     get: {operationId: getServerPrerequisites, tags: [server], x-palpanel-permission: read, responses: *readResponses}
   /server/host:
@@ -2446,6 +2483,52 @@ components:
       properties:
         waittime: {type: integer, minimum: 5, maximum: 300, default: 60}
         message: {type: string, maxLength: 4096}
+    CrashGuardEvent:
+      type: object
+      additionalProperties: false
+      required: [id, kind, runtime_mode, occurrences, exit_code, oom_killed, restart_count, message, created_at]
+      properties:
+        id: {type: string}
+        kind: {type: string, enum: [unexpected_exit, container_restart, oom_kill]}
+        runtime_mode: {type: string}
+        occurrences: {type: integer, minimum: 1}
+        exit_code: {type: integer}
+        oom_killed: {type: boolean}
+        restart_count: {type: integer, minimum: 0}
+        started_at: {type: string, format: date-time}
+        finished_at: {type: string, format: date-time}
+        message: {type: string}
+        created_at: {type: string, format: date-time}
+    CrashGuardStatus:
+      type: object
+      additionalProperties: false
+      required: [enabled, tripped, expected_operation, recent_crash_count, threshold, window_seconds, updated_at, events]
+      properties:
+        enabled: {type: boolean, const: true}
+        tripped: {type: boolean}
+        tripped_at: {type: string, format: date-time}
+        reason: {type: string}
+        expected_operation: {type: boolean}
+        recent_crash_count: {type: integer, minimum: 0}
+        threshold: {type: integer, minimum: 1}
+        window_seconds: {type: integer, minimum: 1}
+        last_observed_status: {type: string}
+        last_observed_runtime: {type: string}
+        updated_at: {type: string, format: date-time}
+        events: {type: array, items: {$ref: '#/components/schemas/CrashGuardEvent'}}
+    CrashGuardStatusEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/CrashGuardStatus'}
+    CrashGuardRecoveryRequest:
+      type: object
+      additionalProperties: false
+      required: [confirm]
+      properties:
+        confirm: {type: boolean, const: true}
+        start: {type: boolean, default: true}
     MonitorRiskReason:
       type: object
       required: [code, message, severity]
@@ -3402,7 +3485,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.34}
+            version: {type: string, const: 0.8.36}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

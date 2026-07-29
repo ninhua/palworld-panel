@@ -125,7 +125,7 @@ func TestMonitorMigrationUpgradesLegacyRowsWithSafeDefaults(t *testing.T) {
 	}
 	defer store.Close()
 	version, err := store.SchemaVersion(context.Background())
-	if err != nil || version != 11 {
+	if err != nil || version != 12 {
 		t.Fatalf("schema version = %d, %v", version, err)
 	}
 	samples, err := store.ListMonitorSamples(context.Background(), 10)

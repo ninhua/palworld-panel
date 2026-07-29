@@ -190,13 +190,14 @@ func runWithIO(args []string, input io.Reader, output, errorOutput io.Writer) er
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	configCleanupDone := serverManager.StartConfigDraftCleanup(ctx, 15*time.Minute)
+	crashGuardDone := serverManager.StartCrashGuard(ctx)
 	monitorDone := monitorManager.Start(ctx)
 	schedulerDone := schedulerManager.Start(ctx)
 	defer func() {
 		stop()
 		workerCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		_ = waitForBackground(workerCtx, monitorDone, schedulerDone, configCleanupDone)
+		_ = waitForBackground(workerCtx, monitorDone, schedulerDone, configCleanupDone, crashGuardDone)
 		_ = jobExecutor.Shutdown(workerCtx)
 	}()
 
@@ -234,7 +235,7 @@ func runWithIO(args []string, input io.Reader, output, errorOutput io.Writer) er
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("graceful shutdown: %w", err)
 	}
-	if err := waitForBackground(shutdownCtx, monitorDone, schedulerDone); err != nil {
+	if err := waitForBackground(shutdownCtx, monitorDone, schedulerDone, configCleanupDone, crashGuardDone); err != nil {
 		return err
 	}
 	if err := jobExecutor.Shutdown(shutdownCtx); err != nil {

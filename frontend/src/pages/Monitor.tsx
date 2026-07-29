@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, AlertCircle, Bug, Container, Cpu, FileText, HardDrive, MemoryStick, RefreshCw, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { Activity, AlertCircle, Bug, Container, Cpu, FileText, HardDrive, MemoryStick, RefreshCw, RotateCcw, ShieldAlert, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { getErrorMessage } from '../api/client';
 import { monitorApi } from '../api/monitor';
 import { useServerStore } from '../store/useServerStore';
-import type { DebugLogStatus, MonitorSample } from '../types';
+import type { CrashGuardStatus, DebugLogStatus, MonitorSample } from '../types';
 import { StatCard } from '../components/ui/StatCard';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { chartTooltipFormatter, formatBytes, percent, toMonitorChartPoints } from '../utils/monitor';
@@ -18,22 +18,27 @@ export const Monitor: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [debugStatus, setDebugStatus] = useState<DebugLogStatus | null>(null);
   const [debugSaving, setDebugSaving] = useState(false);
+  const [crashGuard, setCrashGuard] = useState<CrashGuardStatus | null>(null);
+  const [recoveringGuard, setRecoveringGuard] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextSnapshot, nextHistory, nextDebugStatus] = await Promise.all([
+      const [nextSnapshot, nextHistory, nextDebugStatus, nextCrashGuard] = await Promise.all([
         monitorApi.snapshot(),
         monitorApi.history(120),
         monitorApi.debugStatus(),
+        monitorApi.crashGuardStatus(),
       ]);
       setSnapshot(nextSnapshot.sample);
       setHistory(nextHistory);
       setDebugStatus(nextDebugStatus);
+      setCrashGuard(nextCrashGuard);
       setError(null);
     } catch (loadError) {
       setSnapshot(null);
       setHistory([]);
+      setCrashGuard(null);
       setError(getErrorMessage(loadError));
     } finally {
       setLoading(false);
@@ -61,6 +66,23 @@ export const Monitor: React.FC = () => {
       setError(getErrorMessage(toggleError));
     } finally {
       setDebugSaving(false);
+    }
+  };
+
+  const recoverCrashGuard = async (start: boolean) => {
+    if (!crashGuard?.tripped || recoveringGuard) return;
+    const action = start ? '解除熔断后重新启动 PalServer' : '仅解除熔断，暂不启动 PalServer';
+    if (!window.confirm(`确认已完成故障检查，并${action}？`)) return;
+    setRecoveringGuard(true);
+    try {
+      const next = await monitorApi.recoverCrashGuard(start);
+      setCrashGuard(next);
+      setError(null);
+      await load();
+    } catch (recoverError) {
+      setError(getErrorMessage(recoverError, '解除崩溃熔断失败'));
+    } finally {
+      setRecoveringGuard(false);
     }
   };
 
@@ -179,6 +201,44 @@ export const Monitor: React.FC = () => {
         ) : (
           <p className="mt-4 text-xs font-semibold text-emerald-700">当前没有派生风险</p>
         )}
+      </section>
+
+      <section className={`border-y px-5 py-5 ${crashGuard?.tripped ? 'border-rose-200 bg-rose-50' : 'border-slate-100 bg-white'}`}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <ShieldAlert size={16} className={crashGuard?.tripped ? 'text-rose-600' : 'text-emerald-600'} />
+              <h3 className="text-[14px] font-bold text-slate-800">崩溃守卫</h3>
+              <StatusBadge status={crashGuard?.tripped ? 'error' : 'running'} customText={crashGuard?.tripped ? '已熔断' : '监控中'} />
+            </div>
+            <p className={`mt-2 text-xs font-semibold ${crashGuard?.tripped ? 'text-rose-800' : 'text-slate-600'}`}>
+              {crashGuard?.tripped
+                ? crashGuard.reason || '检测到崩溃循环，已暂停自动重启。'
+                : `${Math.round((crashGuard?.window_seconds || 600) / 60)} 分钟内 ${crashGuard?.recent_crash_count || 0} / ${crashGuard?.threshold || 3} 次异常退出。`}
+            </p>
+            {crashGuard?.events.length ? (
+              <div className="mt-3 space-y-1 text-[11px] font-medium text-slate-600">
+                {crashGuard.events.slice(0, 3).map((event) => (
+                  <p key={event.id}><span className="font-mono text-slate-400">{formatLifecycleTime(event.created_at)}</span> · {event.message}{event.occurrences > 1 ? ` ×${event.occurrences}` : ''}</p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Link to="/diagnostics" className="pp-button"><Bug size={14} />打开诊断控制台</Link>
+            {crashGuard?.tripped && (
+              <>
+                <button type="button" disabled={recoveringGuard} onClick={() => recoverCrashGuard(false)} className="pp-button">
+                  仅解除熔断
+                </button>
+                <button type="button" disabled={recoveringGuard} onClick={() => recoverCrashGuard(true)} className="pp-button border-rose-300 bg-rose-600 text-white hover:bg-rose-700">
+                  <RotateCcw size={14} className={recoveringGuard ? 'animate-spin' : ''} />
+                  {recoveringGuard ? '正在恢复' : '解除并启动'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       </section>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">

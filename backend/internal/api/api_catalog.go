@@ -80,6 +80,12 @@ var apiCatalogExact = map[string]apiCatalogDescriptor{
 	"GET /api/pals": {
 		Category: "世界存档", Summary: "查询帕鲁仓库", Description: "补丁版支持等级、星级、平均 IV、性别、位置、被动词条、排序和当前服务器存档来源。", Permission: "authenticated", Request: "Query: min_level, min_stars, min_iv_average, gender, location, passive, sort, source（可选 server）。", Response: "帕鲁列表、分页摘要、索引状态和数据视图。", Patched: true,
 	},
+	"GET /api/server/crash-guard": {
+		Category: "服务器", Summary: "查询崩溃守卫", Description: "返回熔断状态、10 分钟崩溃计数、阈值和最近异常退出事件。", Permission: "authenticated", Response: "崩溃守卫状态和最近事件。", Patched: true,
+	},
+	"POST /api/server/crash-guard/recover": {
+		Category: "服务器", Summary: "恢复崩溃守卫", Description: "管理员确认解除熔断，可同时重新启动 PalServer。", Permission: "server:control", Request: `JSON: {"confirm":true,"start":true}`, Response: "恢复后的崩溃守卫状态。", Patched: true,
+	},
 	"GET /api/panel/update/status": {
 		Category: "系统", Summary: "查询面板更新状态", Description: "返回当前版本和源码 Fork 中可用的正式 Release。", Permission: "authenticated", Response: "面板版本与更新可用性。", Patched: true,
 	},

@@ -285,7 +285,7 @@ func TestStoreMigratesLegacyModsTable(t *testing.T) {
 		t.Fatalf("legacy mod defaults not applied: %#v", mods[0])
 	}
 	version, err := store.SchemaVersion(context.Background())
-	if err != nil || version != 11 {
+	if err != nil || version != 12 {
 		t.Fatalf("schema version = %d, %v", version, err)
 	}
 }

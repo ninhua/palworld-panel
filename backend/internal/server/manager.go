@@ -75,6 +75,12 @@ type Manager struct {
 	configApplyJournalPersist func(context.Context, configApplyJournal) error
 	configPrivateRemove       func(string) error
 	configDraftTTL            time.Duration
+	crashGuardNow             func() time.Time
+	crashGuardInterval        time.Duration
+	crashGuardWindow          time.Duration
+	crashGuardThreshold       int
+	crashGuardMu              *sync.Mutex
+	crashGuardAfterStateRead  func()
 }
 
 type Status struct {
@@ -169,6 +175,11 @@ func NewManager(cfg appconfig.Config, store *db.Store, runner docker.Runner, exe
 		jobHeartbeatInterval: 15 * time.Second,
 		goos:                 runtime.GOOS,
 		configDraftTTL:       24 * time.Hour,
+		crashGuardNow:        time.Now,
+		crashGuardInterval:   defaultCrashGuardInterval,
+		crashGuardWindow:     defaultCrashGuardWindow,
+		crashGuardThreshold:  defaultCrashGuardThreshold,
+		crashGuardMu:         &sync.Mutex{},
 	}
 }
 
@@ -299,7 +310,14 @@ func (m Manager) runInstallOrUpdateJob(ctx context.Context, jobID string, backup
 		action = "update"
 	}
 	wasRunning := false
+	crashGuardTripped := false
 	if update {
+		guardState, guardErr := m.store.GetCrashGuardState(ctx)
+		if guardErr != nil {
+			m.update(jobID, "failed", 5, "crash guard state read failed", guardErr.Error())
+			return false
+		}
+		crashGuardTripped = guardState.Tripped
 		status, err := m.Status(ctx)
 		if err != nil {
 			m.update(jobID, "failed", 5, "server status read failed", err.Error())
@@ -403,12 +421,14 @@ func (m Manager) runInstallOrUpdateJob(ctx context.Context, jobID string, backup
 		m.update(jobID, "failed", 80, "install state persistence failed", err.Error())
 		return false
 	}
-	if update && wasRunning {
+	if update && wasRunning && !crashGuardTripped {
 		m.update(jobID, "running", 85, "starting server after update", "")
 		if err := m.startUnlocked(ctx); err != nil {
 			m.update(jobID, "failed", 85, "restart after update failed", err.Error())
 			return false
 		}
+	} else if update && wasRunning && crashGuardTripped {
+		m.update(jobID, "running", 85, "update completed; crash guard remains tripped and server stays stopped", "")
 	}
 	m.update(jobID, "running", 95, action+" completed", "")
 	return true
@@ -481,6 +501,9 @@ func (m Manager) Start(ctx context.Context) error {
 }
 
 func (m Manager) startUnlocked(ctx context.Context) error {
+	if err := m.requireCrashGuardReady(ctx); err != nil {
+		return err
+	}
 	if issues := m.ValidateStartup(ctx); hasErrors(issues) {
 		return fmt.Errorf("startup validation failed: %s", validationIssueSummary(issues))
 	}
@@ -499,6 +522,7 @@ func (m Manager) startUnlocked(ctx context.Context) error {
 	}
 	if err == nil {
 		_ = m.store.SetKV(ctx, "pending_restart", "false")
+		_ = m.clearCrashGuardExpectedStop(ctx)
 	}
 	return err
 }
@@ -528,6 +552,7 @@ func (m Manager) Stop(ctx context.Context) error {
 }
 
 func (m Manager) stopUnlocked(ctx context.Context) error {
+	_ = m.markCrashGuardExpectedStop(ctx, "stop")
 	mode, err := m.RuntimeMode(ctx)
 	if err != nil {
 		return err
@@ -545,6 +570,10 @@ func (m Manager) Restart(ctx context.Context) error {
 }
 
 func (m Manager) restartUnlocked(ctx context.Context) error {
+	if err := m.requireCrashGuardReady(ctx); err != nil {
+		return err
+	}
+	_ = m.markCrashGuardExpectedStop(ctx, "restart")
 	mode, err := m.RuntimeMode(ctx)
 	if err != nil {
 		return err
@@ -563,11 +592,15 @@ func (m Manager) restartUnlocked(ctx context.Context) error {
 	}
 	if err == nil {
 		_ = m.store.SetKV(ctx, "pending_restart", "false")
+		_ = m.clearCrashGuardExpectedStop(ctx)
 	}
 	return err
 }
 
 func (m Manager) SafeRestart(ctx context.Context, waitSeconds int, message string, notify RestartNotifier) (db.Job, error) {
+	if err := m.requireCrashGuardReady(ctx); err != nil {
+		return db.Job{}, err
+	}
 	if waitSeconds < 5 || waitSeconds > 300 {
 		return db.Job{}, fmt.Errorf("waittime must be between 5 and 300 seconds")
 	}
@@ -575,6 +608,7 @@ func (m Manager) SafeRestart(ctx context.Context, waitSeconds int, message strin
 		message = "Server maintenance restart"
 	}
 	return m.startLifecycleJob(ctx, "safe_restart", "queued safe restart", func(jobCtx context.Context, jobID string) {
+		_ = m.markCrashGuardExpectedStop(jobCtx, "safe_restart")
 		m.update(jobID, "running", 10, "saving world and notifying players", "")
 		if notify != nil {
 			if err := notify(jobCtx, waitSeconds, message); err != nil {
@@ -614,6 +648,7 @@ func (m Manager) SafeStop(ctx context.Context, waitSeconds int, message string, 
 		message = "Server is shutting down"
 	}
 	return m.startLifecycleJob(ctx, "safe_stop", "queued safe stop", func(jobCtx context.Context, jobID string) {
+		_ = m.markCrashGuardExpectedStop(jobCtx, "safe_stop")
 		if status, err := m.Status(jobCtx); err == nil && !serverStatusRunning(status) {
 			m.update(jobID, "completed", 100, "server is already stopped", "")
 			return

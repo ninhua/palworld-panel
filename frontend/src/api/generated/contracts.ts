@@ -231,6 +231,41 @@ export interface components {
       "data": components["schemas"]["CommunityServerSourceStatus"];
       "ok": true;
     };
+    "CrashGuardEvent": {
+      "created_at": string;
+      "exit_code": number;
+      "finished_at"?: string;
+      "id": string;
+      "kind": "unexpected_exit" | "container_restart" | "oom_kill";
+      "message": string;
+      "occurrences": number;
+      "oom_killed": boolean;
+      "restart_count": number;
+      "runtime_mode": string;
+      "started_at"?: string;
+    };
+    "CrashGuardRecoveryRequest": {
+      "confirm": true;
+      "start"?: boolean;
+    };
+    "CrashGuardStatus": {
+      "enabled": true;
+      "events": Array<components["schemas"]["CrashGuardEvent"]>;
+      "expected_operation": boolean;
+      "last_observed_runtime"?: string;
+      "last_observed_status"?: string;
+      "reason"?: string;
+      "recent_crash_count": number;
+      "threshold": number;
+      "tripped": boolean;
+      "tripped_at"?: string;
+      "updated_at": string;
+      "window_seconds": number;
+    };
+    "CrashGuardStatusEnvelope": {
+      "data": components["schemas"]["CrashGuardStatus"];
+      "ok": true;
+    };
     "DevelopmentKey": {
       "created_at": string;
       "id": string;
@@ -1078,7 +1113,7 @@ export interface components {
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/palworld-panel";
-        "version": "0.8.34";
+        "version": "0.8.36";
       };
       "upstream": {
         "commit": string;

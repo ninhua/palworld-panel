@@ -68,6 +68,9 @@ func (m Manager) WorldInfo(ctx context.Context) (WorldInfo, error) {
 }
 
 func (m Manager) ResetWorld(ctx context.Context, expectedWorldID, confirmation string, hooks WorldResetHooks) (db.Job, error) {
+	if err := m.requireCrashGuardReady(ctx); err != nil {
+		return db.Job{}, err
+	}
 	expectedWorldID = strings.TrimSpace(expectedWorldID)
 	if confirmation != worldResetConfirmation {
 		return db.Job{}, fmt.Errorf("confirmation must be exactly %q", worldResetConfirmation)

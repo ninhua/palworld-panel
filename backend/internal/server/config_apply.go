@@ -58,6 +58,9 @@ func PalworldConfigRevision(path string) (string, error) {
 type ConfigReadinessVerifier func(context.Context, palconfig.Settings, []string) error
 
 func (m Manager) ApplyPalworldConfig(ctx context.Context, draft db.ConfigDraft, notify RestartNotifier, verifiers ...ConfigReadinessVerifier) (db.Job, error) {
+	if err := m.requireCrashGuardReady(ctx); err != nil {
+		return db.Job{}, err
+	}
 	if draft.ID == "" || draft.DraftPath == "" {
 		return db.Job{}, fmt.Errorf("config draft is incomplete")
 	}
@@ -342,6 +345,7 @@ func (m Manager) stopAndConfirmConfigApply(ctx context.Context) error {
 }
 
 func (m Manager) gracefulStopConfigApply(ctx context.Context, notify RestartNotifier) error {
+	_ = m.markCrashGuardExpectedStop(ctx, "config_apply")
 	if notify != nil {
 		_ = notify(ctx, 5, "Applying Palworld configuration")
 	}

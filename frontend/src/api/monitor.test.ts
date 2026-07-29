@@ -48,3 +48,27 @@ describe('monitor API', () => {
 	} });
   });
 });
+
+describe('crash guard API', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('maps crash-loop state and submits explicit recovery confirmation', async () => {
+    const get = vi.spyOn(apiClient, 'get').mockResolvedValue({
+      data: { ok: true, data: {
+        enabled: true, tripped: true, reason: 'three crashes', expected_operation: false,
+        recent_crash_count: 3, threshold: 3, window_seconds: 600, updated_at: '2026-07-29T12:00:00Z',
+        events: [{ id: 'crash_1', kind: 'oom_kill', runtime_mode: 'wine_docker', occurrences: 1,
+          exit_code: 137, oom_killed: true, restart_count: 3, message: 'OOM', created_at: '2026-07-29T12:00:00Z' }],
+      } }, status: 200,
+    } as AxiosResponse);
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({
+      data: { ok: true, data: { enabled: true, tripped: false, expected_operation: false,
+        recent_crash_count: 3, threshold: 3, window_seconds: 600, updated_at: '2026-07-29T12:01:00Z', events: [] } }, status: 200,
+    } as AxiosResponse);
+
+    await expect(monitorApi.crashGuardStatus()).resolves.toMatchObject({ tripped: true, events: [{ kind: 'oom_kill' }] });
+    await expect(monitorApi.recoverCrashGuard(true)).resolves.toMatchObject({ tripped: false });
+    expect(get).toHaveBeenCalledWith('/server/crash-guard?limit=20');
+    expect(post).toHaveBeenCalledWith('/server/crash-guard/recover', { confirm: true, start: true });
+  });
+});

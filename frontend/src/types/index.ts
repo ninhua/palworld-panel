@@ -64,6 +64,35 @@ export interface ServerStatus {
   version?: string;
 }
 
+export interface CrashGuardEvent {
+  id: string;
+  kind: 'unexpected_exit' | 'container_restart' | 'oom_kill';
+  runtime_mode: string;
+  occurrences: number;
+  exit_code: number;
+  oom_killed: boolean;
+  restart_count: number;
+  started_at?: string;
+  finished_at?: string;
+  message: string;
+  created_at: string;
+}
+
+export interface CrashGuardStatus {
+  enabled: boolean;
+  tripped: boolean;
+  tripped_at?: string;
+  reason?: string;
+  expected_operation: boolean;
+  recent_crash_count: number;
+  threshold: number;
+  window_seconds: number;
+  last_observed_status?: string;
+  last_observed_runtime?: string;
+  updated_at: string;
+  events: CrashGuardEvent[];
+}
+
 export interface ServerVersionInfo {
   installed: boolean;
   current_build_id: string;
