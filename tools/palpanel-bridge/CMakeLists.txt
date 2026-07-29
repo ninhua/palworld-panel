@@ -1,13 +1,8 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(PalPanelBridge LANGUAGES CXX)
-
-set(PALPANEL_UE4SS_ROOT "" CACHE PATH "Path to the pinned RE-UE4SS source tree")
-if(NOT EXISTS "${PALPANEL_UE4SS_ROOT}/CMakeLists.txt")
-  message(FATAL_ERROR "PALPANEL_UE4SS_ROOT must point to RE-UE4SS v3.0.1")
+if(NOT TARGET UE4SS)
+  message(FATAL_ERROR "PalPanelBridge must be added from the RE-UE4SS root CMake project")
 endif()
-
-add_subdirectory("${PALPANEL_UE4SS_ROOT}" "${CMAKE_BINARY_DIR}/ue4ss")
 
 add_library(PalPanelBridge SHARED src/main.cpp)
 target_compile_features(PalPanelBridge PRIVATE cxx_std_20)
