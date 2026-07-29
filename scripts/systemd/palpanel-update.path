@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch for verified PalPanel update requests
+
+[Path]
+PathExists=/var/lib/palpanel/panel-update/request.json
+PathExists=/var/lib/palpanel/panel-update/request.in-progress.json
+Unit=palpanel-update.service
+
+[Install]
+WantedBy=multi-user.target

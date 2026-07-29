@@ -52,7 +52,7 @@ PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更�
 - 通过后端缓存查询中国区或全球可发现社区服务器；国内网络可配置 HTTP/HTTPS/SOCKS5 代理或自建 API 镜像
 - 在“系统设置 → 网络与代理”中分别配置公共下载/服务器更新代理和社区服查询代理；前者覆盖 SteamCMD、Workshop、GitHub/HTTP(S) MOD、PalDefender 与 UE4SS，代理密码不会回显，保存后从下一次任务生效
 - 使用保存世界、广播倒计时、正常退出和受控兜底组成的安全关服流程
-- 在 Linux amd64 上从本仓库 Release 检查并安装完整面板更新；更新包经过 `SHA256SUMS` 校验，并保留旧二进制用于启动失败回滚
+- 在 Linux amd64 上从本仓库 Release 安装完整面板更新；独立 root 更新器再次校验官方 `SHA256SUMS`，切换完整版本目录，并在健康检查失败时恢复旧版本
 
 ### 存档与地图
 
@@ -275,8 +275,9 @@ Linux amd64 可以直接在面板任务队列或设置页执行“更新面板�
 
 1. 检查 [`ninhua/palworld-panel`](https://github.com/ninhua/palworld-panel/releases) 最新的非草稿、非预发布 Release。
 2. 下载 `palpanel_<版本>_linux_amd64.tar.gz` 和 `SHA256SUMS`。
-3. 校验归档与候选二进制，备份当前程序后原子替换并重启。
-4. 启动校验失败时恢复上一份二进制。
+3. 面板将已验证归档交给独立 systemd 更新器。
+4. 更新器重新校验官方 `SHA256SUMS`、安装完整版本目录并原子切换 `current`。
+5. `/api/ready` 或版本健康检查失败时恢复旧目录、旧 systemd 单元和旧更新器。
 
 这是完整 Release 更新，不再使用补丁热更新、补丁清单或 `Palworld-Panel-Patches` 补丁链。Windows 版本目前通过下载新 Release ZIP 后运行升级程序更新。
 

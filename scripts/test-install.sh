@@ -176,6 +176,7 @@ export PALPANEL_INSTALL_ROOT="$tmp/opt/palpanel"
 export PALPANEL_ETC_DIR="$tmp/etc/palpanel"
 export PALPANEL_SYSTEM_DATA_DIR="$tmp/var/lib/palpanel"
 export PALPANEL_SYSTEMD_DIR="$tmp/systemd"
+export PALPANEL_LIBEXEC_DIR="$tmp/libexec"
 export PALPANEL_SERVICE_USER="$service_user"
 export PALPANEL_SKIP_SYSTEMD=0
 
@@ -186,16 +187,19 @@ export PALPANEL_SKIP_SYSTEMD=0
 [[ "$(stat -c '%a' "$PALPANEL_ETC_DIR")" == "750" ]]
 [[ "$(stat -c '%a' "$PALPANEL_ETC_DIR/palpanel.env")" == "600" ]]
 [[ -d "$PALPANEL_SYSTEM_DATA_DIR/docker-client" ]]
+[[ -d "$PALPANEL_SYSTEM_DATA_DIR/panel-update/operations" ]]
 [[ "$(stat -c '%a' "$PALPANEL_SYSTEM_DATA_DIR/docker-client")" == "700" ]]
+[[ "$(stat -c '%a' "$PALPANEL_SYSTEM_DATA_DIR/panel-update")" == "700" ]]
 if [[ "$(id -u)" -eq 0 ]]; then
   [[ "$(stat -c '%U:%G' "$PALPANEL_SYSTEM_DATA_DIR/docker-client")" == "$service_user:$service_user" ]]
 fi
 grep -Eq '^PALWORLD_ADMIN_PASSWORD=[A-Za-z0-9_-]{40,}$' "$PALPANEL_ETC_DIR/palpanel.env"
 installed_dir="$(readlink -f "$PALPANEL_INSTALL_ROOT/current")"
-[[ "$(stat -c '%a' "$installed_dir/bin")" == "775" ]]
+[[ "$(stat -c '%a' "$installed_dir/bin")" == "755" ]]
 if [[ "$(id -u)" -eq 0 ]]; then
-  [[ "$(stat -c '%U:%G' "$installed_dir/bin")" == "root:$service_user" ]]
+  [[ "$(stat -c '%U:%G' "$installed_dir/bin")" == "root:root" ]]
 fi
+[[ -x "$PALPANEL_LIBEXEC_DIR/palpanel-updater" ]]
 [[ -f "$installed_dir/LICENSE" ]]
 [[ -f "$installed_dir/licenses/GPL-3.0.txt" ]]
 [[ -f "$installed_dir/licenses/sav-cli-LICENSE.txt" ]]
@@ -206,12 +210,17 @@ grep -qx 'Wants=palpanel-sav-cli.service palpanel-palcalc.service' "$PALPANEL_SY
 grep -Fxq "Environment=HOME=$PALPANEL_SYSTEM_DATA_DIR" "$PALPANEL_SYSTEMD_DIR/palpanel.service"
 grep -Fxq "Environment=DOCKER_CONFIG=$PALPANEL_SYSTEM_DATA_DIR/docker-client" "$PALPANEL_SYSTEMD_DIR/palpanel.service"
 grep -Fxq 'ProtectHome=true' "$PALPANEL_SYSTEMD_DIR/palpanel.service"
-grep -Fxq "ReadWritePaths=$PALPANEL_SYSTEM_DATA_DIR $PALPANEL_INSTALL_ROOT/current/bin" "$PALPANEL_SYSTEMD_DIR/palpanel.service"
+grep -Fxq "ReadWritePaths=$PALPANEL_SYSTEM_DATA_DIR" "$PALPANEL_SYSTEMD_DIR/palpanel.service"
 grep -qx 'PartOf=palpanel.service' "$PALPANEL_SYSTEMD_DIR/palpanel-sav-cli.service"
 grep -qx 'Restart=always' "$PALPANEL_SYSTEMD_DIR/palpanel-sav-cli.service"
 grep -qx 'PartOf=palpanel.service' "$PALPANEL_SYSTEMD_DIR/palpanel-palcalc.service"
 grep -qx 'Restart=always' "$PALPANEL_SYSTEMD_DIR/palpanel-palcalc.service"
-grep -Fxq 'enable palpanel-sav-cli.service palpanel-palcalc.service palpanel.service' "$systemctl_log"
+grep -Fxq "ExecStart=$PALPANEL_LIBEXEC_DIR/palpanel-updater --request $PALPANEL_SYSTEM_DATA_DIR/panel-update/request.json" "$PALPANEL_SYSTEMD_DIR/palpanel-update.service"
+grep -Fxq "PathExists=$PALPANEL_SYSTEM_DATA_DIR/panel-update/request.json" "$PALPANEL_SYSTEMD_DIR/palpanel-update.path"
+grep -Fxq "PathExists=$PALPANEL_SYSTEM_DATA_DIR/panel-update/request.in-progress.json" "$PALPANEL_SYSTEMD_DIR/palpanel-update.path"
+grep -Fxq "ReadWritePaths=$PALPANEL_INSTALL_ROOT $PALPANEL_SYSTEMD_DIR $PALPANEL_LIBEXEC_DIR $PALPANEL_SYSTEM_DATA_DIR" "$PALPANEL_SYSTEMD_DIR/palpanel-update.service"
+grep -Fxq 'enable palpanel-update.path palpanel-sav-cli.service palpanel-palcalc.service palpanel.service' "$systemctl_log"
+grep -Fxq 'start palpanel-update.path' "$systemctl_log"
 grep -Fxq 'restart palpanel-sav-cli.service palpanel-palcalc.service palpanel.service' "$systemctl_log"
 "$installed_dir/palpanelctl" start
 grep -Fxq 'start palpanel-sav-cli.service palpanel-palcalc.service palpanel.service' "$systemctl_log"
@@ -230,6 +239,7 @@ docker_client_hash="$(sha256sum "$PALPANEL_SYSTEM_DATA_DIR/docker-client/config.
 [[ -f "$PALPANEL_SYSTEM_DATA_DIR/preserve.marker" ]]
 [[ "$(sha256sum "$PALPANEL_SYSTEM_DATA_DIR/docker-client/config.json" | awk '{print $1}')" == "$docker_client_hash" ]]
 [[ "$(stat -c '%a' "$PALPANEL_SYSTEM_DATA_DIR/docker-client")" == "700" ]]
+[[ "$(stat -c '%a' "$PALPANEL_SYSTEM_DATA_DIR/panel-update")" == "700" ]]
 if [[ "$(id -u)" -eq 0 ]]; then
   [[ "$(stat -c '%U:%G' "$PALPANEL_SYSTEM_DATA_DIR/docker-client")" == "$service_user:$service_user" ]]
 
@@ -252,13 +262,16 @@ if [[ "$(id -u)" -eq 0 ]]; then
   rm "$docker_config_dir"
   mv "$saved_docker_config_dir" "$docker_config_dir"
 fi
-[[ "$(grep -Fxc 'enable palpanel-sav-cli.service palpanel-palcalc.service palpanel.service' "$systemctl_log")" -eq 2 ]]
+[[ "$(grep -Fxc 'enable palpanel-update.path palpanel-sav-cli.service palpanel-palcalc.service palpanel.service' "$systemctl_log")" -eq 2 ]]
+[[ "$(grep -Fxc 'start palpanel-update.path' "$systemctl_log")" -eq 2 ]]
 [[ "$(grep -Fxc 'restart palpanel-sav-cli.service palpanel-palcalc.service palpanel.service' "$systemctl_log")" -eq 2 ]]
 "$ctl" uninstall >/dev/null
 [[ ! -e "$PALPANEL_INSTALL_ROOT" ]]
+[[ ! -e "$PALPANEL_LIBEXEC_DIR/palpanel-updater" ]]
 [[ -f "$PALPANEL_ETC_DIR/palpanel.env" && -f "$PALPANEL_SYSTEM_DATA_DIR/preserve.marker" ]]
 
 "$ctl" install >/dev/null
 "$ctl" uninstall --purge >/dev/null
 [[ ! -e "$PALPANEL_INSTALL_ROOT" && ! -e "$PALPANEL_ETC_DIR" && ! -e "$PALPANEL_SYSTEM_DATA_DIR" ]]
+[[ ! -e "$PALPANEL_LIBEXEC_DIR/palpanel-updater" ]]
 printf 'install, upgrade, uninstall, and purge verification passed\n'

@@ -1223,18 +1223,14 @@ export interface components {
       "role": "admin" | "operator" | "viewer";
     };
     "StarterGiftConfig": {
-      "ancient_technology_points": number;
       "batch_delay_ms": number;
       "enabled": boolean;
       "item_batch_size": number;
       "items": Array<components["schemas"]["StarterGiftItem"]>;
       "pal_templates": Array<string>;
       "template_batch_size": number;
-      "technology_mode": "none" | "unlock_all" | "grant_points";
-      "technology_points": number;
     };
     "StarterGiftGrant": {
-      "ancient_technology_points": number;
       "attempts": number;
       "completed_at"?: string;
       "first_seen_at": string;
@@ -1245,13 +1241,9 @@ export interface components {
       "nickname"?: string;
       "player_id": string;
       "player_uid"?: string;
-      "progress_percent": number;
       "status": "pending" | "running" | "success" | "failed";
       "steam_id"?: string;
       "template_total": number;
-      "technology_done": boolean;
-      "technology_mode": "none" | "unlock_all" | "grant_points";
-      "technology_points": number;
       "updated_at": string;
     };
     "StarterGiftItem": {

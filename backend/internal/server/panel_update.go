@@ -23,6 +23,7 @@ import (
 	"palpanel/internal/db"
 	"palpanel/internal/jobs"
 	"palpanel/internal/networkproxy"
+	"palpanel/internal/panelupdater"
 )
 
 const (
@@ -154,6 +155,10 @@ func (m Manager) runPanelUpdate(ctx context.Context, jobID string, request Panel
 		}
 		_ = m.jobs.UpdateWithCode(jobID, "failed", progress, message, detail, code)
 	}
+	if err := externalPanelUpdaterReady(m.cfg); err != nil {
+		fail(5, "panel_external_updater_unavailable", "external panel updater is unavailable", err)
+		return
+	}
 	_ = m.jobs.Update(jobID, "running", 5, "checking PalPanel releases", "")
 	selection, err := m.resolvePanelRelease(ctx, request)
 	if err != nil {
@@ -165,14 +170,23 @@ func (m Manager) runPanelUpdate(ctx context.Context, jobID string, request Panel
 		return
 	}
 
-	stage, err := os.MkdirTemp(executableDirectory(), ".palpanel-update-")
-	if err != nil {
+	operationDir := panelupdater.OperationDir(m.cfg.DataDir, jobID)
+	if err := os.RemoveAll(operationDir); err != nil {
+		fail(20, "panel_update_stage_cleanup_failed", "cannot clean panel update staging directory", err)
+		return
+	}
+	if err := os.MkdirAll(operationDir, 0o700); err != nil {
 		fail(20, "panel_update_stage_failed", "cannot create panel update staging directory", err)
 		return
 	}
-	defer os.RemoveAll(stage)
-	checksumsPath := filepath.Join(stage, "SHA256SUMS")
-	archivePath := filepath.Join(stage, selection.Archive.Name)
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.RemoveAll(operationDir)
+		}
+	}()
+	checksumsPath := filepath.Join(operationDir, "SHA256SUMS")
+	archivePath := filepath.Join(operationDir, selection.Archive.Name)
 	_ = m.jobs.Update(jobID, "running", 25, "downloading release checksums", "")
 	if err := m.downloadPanelAsset(ctx, selection.Checksums.BrowserDownloadURL, checksumsPath, panelUpdateMaxMetadataBytes); err != nil {
 		fail(30, "panel_checksums_download_failed", "cannot download release checksums", err)
@@ -192,14 +206,14 @@ func (m Manager) runPanelUpdate(ctx context.Context, jobID string, request Panel
 		fail(55, "panel_archive_checksum_failed", "panel package checksum mismatch", err)
 		return
 	}
-	candidate := filepath.Join(stage, "palpanel")
-	if err := extractPanelBinary(archivePath, candidate); err != nil {
-		fail(60, "panel_archive_invalid", "cannot extract panel binary", err)
+	archiveSHA, err := sha256PanelFile(archivePath)
+	if err != nil {
+		fail(60, "panel_archive_hash_failed", "cannot hash panel package", err)
 		return
 	}
-	candidateSHA, err := sha256PanelFile(candidate)
-	if err != nil {
-		fail(65, "panel_binary_checksum_failed", "cannot hash panel binary", err)
+	candidate := filepath.Join(operationDir, "candidate-palpanel")
+	if err := extractPanelBinary(archivePath, candidate); err != nil {
+		fail(60, "panel_archive_invalid", "cannot extract panel binary", err)
 		return
 	}
 	if err := os.Chmod(candidate, 0o755); err != nil {
@@ -216,55 +230,35 @@ func (m Manager) runPanelUpdate(ctx context.Context, jobID string, request Panel
 		fail(70, "panel_binary_probe_failed", "panel binary probe failed", checkErr)
 		return
 	}
-
-	executable, err := executablePath()
+	healthPort, err := panelupdater.ParseListenPort(m.cfg.ListenAddr)
 	if err != nil {
-		fail(75, "panel_executable_path_failed", "cannot resolve current panel binary", err)
+		fail(75, "panel_health_port_invalid", "cannot determine panel health port", err)
 		return
 	}
-	backupDir := filepath.Join(filepath.Dir(executable), ".palpanel-update-backups")
-	if err := os.MkdirAll(backupDir, 0o700); err != nil {
-		fail(75, "panel_backup_directory_failed", "cannot create panel backup directory", err)
+	proxyURL, err := networkproxy.New(m.cfg).InstallProxyURL()
+	if err != nil {
+		fail(75, "panel_update_proxy_invalid", "cannot read panel update proxy", err)
 		return
 	}
-	backup := filepath.Join(backupDir, fmt.Sprintf("palpanel-%s-%s", request.CurrentVersion, time.Now().UTC().Format("20060102T150405.000000000Z")))
-	if err := copyPanelFile(executable, backup, 0o755); err != nil {
-		fail(75, "panel_backup_failed", "cannot back up current panel binary", err)
+	updateRequest := panelupdater.Request{
+		SchemaVersion:  panelupdater.SchemaVersion,
+		JobID:          jobID,
+		ArchivePath:    archivePath,
+		ArchiveSHA256:  archiveSHA,
+		CurrentVersion: request.CurrentVersion,
+		TargetVersion:  selection.Release.TagName,
+		HealthPort:     healthPort,
+		ProxyURL:       proxyURL,
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	_ = m.jobs.Update(jobID, "running", 90, "handing verified package to external updater", "")
+	if err := panelupdater.WriteRequest(m.cfg.DataDir, updateRequest); err != nil {
+		fail(90, "panel_update_handoff_failed", "cannot hand off package to external updater", err)
 		return
 	}
-	replacement := filepath.Join(filepath.Dir(executable), ".palpanel-update-replacement")
-	_ = os.Remove(replacement)
-	if err := copyPanelFile(candidate, replacement, 0o755); err != nil {
-		fail(85, "panel_replacement_prepare_failed", "cannot prepare panel replacement", err)
-		return
-	}
-	marker := panelRestartMarker{JobID: jobID, BinaryPath: executable, BackupPath: backup, ExpectedSHA256: candidateSHA, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
-	if err := writePanelRestartMarker(marker); err != nil {
-		_ = os.Remove(replacement)
-		fail(85, "panel_restart_marker_failed", "cannot write panel restart marker", err)
-		return
-	}
-	if err := os.Rename(replacement, executable); err != nil {
-		_ = removePanelRestartMarker(executable)
-		fail(85, "panel_replacement_failed", "cannot activate panel binary", err)
-		return
-	}
-	if activeSHA, hashErr := sha256PanelFile(executable); hashErr != nil || !strings.EqualFold(activeSHA, candidateSHA) {
-		_ = restorePanelBackup(executable, backup)
-		_ = removePanelRestartMarker(executable)
-		if hashErr == nil {
-			hashErr = fmt.Errorf("active binary sha256 = %s, expected %s", activeSHA, candidateSHA)
-		}
-		fail(90, "panel_activation_checksum_failed", "activated panel binary checksum mismatch", hashErr)
-		return
-	}
-	_ = os.RemoveAll(stage)
-	_ = m.jobs.Update(jobID, "completed", 100, "PalPanel "+selection.Release.TagName+" installed; restarting", "")
-	if err := replaceCurrentPanelProcess(executable); err != nil {
-		_ = restorePanelBackup(executable, backup)
-		_ = removePanelRestartMarker(executable)
-		fail(100, "panel_restart_failed", "panel installed but restart failed; previous binary restored", err)
-	}
+	cleanup = false
+	startPanelUpdateResultWatcher(m.cfg, m.store)
+	_ = m.jobs.Update(jobID, "running", 95, "PalPanel "+selection.Release.TagName+" package verified; external updater is switching the full release", "")
 }
 
 func (m Manager) resolvePanelRelease(ctx context.Context, request PanelUpdateRequest) (panelReleaseSelection, error) {

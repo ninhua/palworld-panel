@@ -57,6 +57,7 @@ export PALPANEL_INSTALL_ROOT="$tmp/opt/palpanel"
 export PALPANEL_ETC_DIR="$tmp/etc/palpanel"
 export PALPANEL_SYSTEM_DATA_DIR="$tmp/var/lib/palpanel"
 export PALPANEL_SYSTEMD_DIR="$tmp/systemd"
+export PALPANEL_LIBEXEC_DIR="$tmp/libexec"
 export PALPANEL_SERVICE_USER="$service_user"
 export PALPANEL_SKIP_SYSTEMD=1
 
@@ -132,11 +133,13 @@ grep -Fxq 'ProtectHome=true' "$PALPANEL_SYSTEMD_DIR/palpanel.service"
 [[ -L "$PALPANEL_INSTALL_ROOT/current" ]]
 [[ "$(readlink -f "$PALPANEL_INSTALL_ROOT/current")" == "$PALPANEL_INSTALL_ROOT/$(basename "$candidate_dir" | sed 's/^palpanel_//; s/_linux_amd64$//')" ]]
 installed_dir="$(readlink -f "$PALPANEL_INSTALL_ROOT/current")"
-[[ "$(stat -c '%a' "$installed_dir/bin")" == "775" ]]
+[[ "$(stat -c '%a' "$installed_dir/bin")" == "755" ]]
 if [[ "$(id -u)" -eq 0 ]]; then
-  [[ "$(stat -c '%U:%G' "$installed_dir/bin")" == "root:$PALPANEL_SERVICE_USER" ]]
+  [[ "$(stat -c '%U:%G' "$installed_dir/bin")" == "root:root" ]]
 fi
-grep -Fxq "ReadWritePaths=$PALPANEL_SYSTEM_DATA_DIR $PALPANEL_INSTALL_ROOT/current/bin" "$PALPANEL_SYSTEMD_DIR/palpanel.service"
+[[ -x "$PALPANEL_LIBEXEC_DIR/palpanel-updater" ]]
+grep -Fxq "ReadWritePaths=$PALPANEL_SYSTEM_DATA_DIR" "$PALPANEL_SYSTEMD_DIR/palpanel.service"
+grep -Fxq "ExecStart=$PALPANEL_LIBEXEC_DIR/palpanel-updater --request $PALPANEL_SYSTEM_DATA_DIR/panel-update/request.json" "$PALPANEL_SYSTEMD_DIR/palpanel-update.service"
 
 "$candidate_dir/palpanelctl" uninstall --purge >/dev/null
 printf 'upgrade preservation verification passed: %s -> candidate\n' "$previous_version"

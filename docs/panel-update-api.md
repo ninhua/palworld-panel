@@ -167,13 +167,16 @@ curl -fsS -X POST \
 
 1. 查询最新正式 Release。
 2. 如果当前版本已是最新，直接完成任务。
-3. 下载 `SHA256SUMS`。
-4. 下载 `palpanel_<Release Tag>_linux_amd64.tar.gz`。
-5. 校验归档 SHA256。
-6. 提取并运行候选 `palpanel --version`。
-7. 备份当前二进制并原子替换。
-8. 重启 PalPanel。
-9. 新进程启动时验证二进制；验证失败则恢复旧版本并再次重启。
+3. 下载 `SHA256SUMS` 和 Linux 完整包并进行第一轮校验。
+4. 提取并运行候选 `palpanel --version`。
+5. 将归档交给 `palpanel-update.path` 触发的 root 级外部更新器。
+6. 外部更新器从官方 Release 重新获取 `SHA256SUMS`，再验证外层归档和包内 `checksums.txt`。
+7. 安装完整版本目录，更新 systemd 单元与更新器，并原子切换 `/opt/palpanel/current`。
+8. 重启 `sav-cli`、`palcalc-bridge` 和 PalPanel。
+9. 连续验证 `/api/ready` 与 `/api/health` 返回目标版本。
+10. 验证失败时恢复旧版本目录、旧 systemd 单元和旧更新器，再验证回滚版本。
+
+更新请求被 root 更新器接管后会保存为 `request.in-progress.json`。如果更新器退出或主机重启，`palpanel-update.path` 会再次触发该请求；目标版本目录已经切换时，更新器会继续安装运行单元并执行健康检查，而不是盲目覆盖或直接判定失败。
 
 非 Linux amd64 平台调用该接口会返回 `500`，错误信息为：
 
@@ -233,7 +236,7 @@ palpanel_<Release Tag>_windows_amd64.zip
 SHA256SUMS
 ```
 
-Linux 归档中必须且只能包含一个以 `/bin/palpanel` 结尾的普通文件。更新器不会接受草稿、预发布、缺少校验文件或命名不匹配的 Release。
+Linux 归档必须包含 `palpanel`、`palpanel-updater`、`sav-cli`、`palcalc-bridge`、`palpanelctl`、五个 systemd 单元和包内 `checksums.txt`。外部更新器拒绝符号链接、硬链接、路径穿越、未被包内校验覆盖的文件以及与官方 `SHA256SUMS` 不一致的归档。
 
 当前正式发布示例：
 
@@ -241,6 +244,16 @@ Linux 归档中必须且只能包含一个以 `/bin/palpanel` 结尾的普通文
 palpanel_v1.3.0-custom.0.8.29_linux_amd64.tar.gz
 palpanel_v1.3.0-custom.0.8.29_windows_amd64.zip
 ```
+
+## 首次启用外部更新器
+
+`0.8.29` 是新的完整包更新框架首次落地版本。旧版安装中尚不存在 root 更新器和 `palpanel-update.path`，因此首次升级到本版本必须通过安装脚本或解压新版 Release 后执行：
+
+```bash
+sudo ./palpanelctl install
+```
+
+完成一次安装后，后续 Linux amd64 版本可继续从面板内执行完整包更新。
 
 ## GitHub 访问配置
 
@@ -264,6 +277,11 @@ Token 只用于 GitHub Release API 和资产请求，不应写入日志、命令
 | `error_code` | 含义 |
 | --- | --- |
 | `panel_update_check_failed` | 检查任务无法查询或解析 Release |
+| `panel_external_updater_unavailable` | 外部更新器、systemd 单元或版本化安装结构缺失 |
+| `panel_update_handoff_failed` | 无法写入受限更新请求或已有更新正在进行 |
+| `panel_update_official_checksum_failed` | root 更新器无法取得官方 `SHA256SUMS` |
+| `panel_update_archive_untrusted` | 归档哈希与官方 Release 不一致 |
+| `panel_update_health_failed` | 新版本未通过就绪和版本健康检查，已尝试回滚 |
 | `panel_release_lookup_failed` | 没有找到符合约定的正式 Release |
 | `panel_checksums_download_failed` | `SHA256SUMS` 下载失败 |
 | `panel_checksums_invalid` | 校验文件格式或路径不安全 |

@@ -13,12 +13,14 @@ ctl="$script_path"
 backend_bin="$package_dir/bin/palpanel"
 sav_bin="$package_dir/bin/sav-cli"
 palcalc_bin="$package_dir/bin/palcalc-bridge"
+updater_bin="$package_dir/bin/palpanel-updater"
 
 opt_root="${PALPANEL_INSTALL_ROOT:-/opt/palpanel}"
 etc_dir="${PALPANEL_ETC_DIR:-/etc/palpanel}"
 system_data_dir="${PALPANEL_SYSTEM_DATA_DIR:-/var/lib/palpanel}"
 systemd_dir="${PALPANEL_SYSTEMD_DIR:-/etc/systemd/system}"
 bin_link="${PALPANEL_BIN_LINK:-/usr/local/bin/palpanelctl}"
+libexec_dir="${PALPANEL_LIBEXEC_DIR:-/usr/libexec}"
 service_user="${PALPANEL_SERVICE_USER:-palpanel}"
 test_mode="${PALPANEL_TEST_MODE:-0}"
 
@@ -592,6 +594,8 @@ install_system() {
   require_root
   require_binary "$backend_bin"
   require_binary "$sav_bin"
+  require_binary "$palcalc_bin"
+  require_binary "$updater_bin"
   local docker_access=0
   local listen_addr=""
   while [[ $# -gt 0 ]]; do
@@ -617,8 +621,9 @@ install_system() {
   local staging="$opt_root/.${version}.tmp.$BASHPID"
   rm -rf "$staging"
   local docker_config_dir="$system_data_dir/docker-client"
-  mkdir -p "$staging" "$etc_dir" "$system_data_dir" "$systemd_dir"
-  chmod 755 "$opt_root"
+  local update_state_dir="$system_data_dir/panel-update"
+  mkdir -p "$staging" "$etc_dir" "$system_data_dir" "$systemd_dir" "$libexec_dir" "$update_state_dir/operations"
+  chmod u=rwx,go=rx,g-s "$opt_root"
   chmod 750 "$etc_dir"
   if [[ "$test_mode" != "1" ]]; then
     # Lock the parent before validation so the service user cannot swap the child entry.
@@ -633,7 +638,7 @@ install_system() {
   else
     mkdir "$docker_config_dir"
   fi
-  chmod 700 "$docker_config_dir"
+  chmod 700 "$docker_config_dir" "$update_state_dir" "$update_state_dir/operations"
   local item
   for item in bin backend systemd config licenses LICENSE README.md THIRD_PARTY_LICENSES.txt palpanelctl; do
     [[ -e "$package_dir/$item" ]] && cp -a "$package_dir/$item" "$staging/"
@@ -641,7 +646,7 @@ install_system() {
   rm -f "$staging/config/palpanel.env"
   rm -rf "$version_dir"
   mv "$staging" "$version_dir"
-  chmod 755 "$version_dir"
+  find "$version_dir" -type d -exec chmod u=rwx,go=rx,g-s {} +
   rm -f "$opt_root/.current.new"
   ln -s "$version_dir" "$opt_root/.current.new"
   mv -Tf "$opt_root/.current.new" "$opt_root/current"
@@ -655,8 +660,8 @@ install_system() {
     if ! id "$service_user" >/dev/null 2>&1; then
       useradd --system --home-dir "$system_data_dir" --shell /usr/sbin/nologin "$service_user"
     fi
-    chown root:root "$opt_root" "$version_dir"
-    chown root:"$service_user" "$version_dir/bin"
+    chown root:root "$opt_root"
+    chown -R root:root "$version_dir"
     chown root:"$service_user" "$etc_dir"
     if (( docker_access )); then
       getent group docker >/dev/null || fail "docker group does not exist"
@@ -666,7 +671,13 @@ install_system() {
   elif (( docker_access )); then
     fail "--docker is not available in test mode"
   fi
-  chmod 775 "$version_dir/bin"
+  chmod u=rwx,go=rx,g-s "$version_dir/bin"
+  cp "$version_dir/bin/palpanel-updater" "$libexec_dir/.palpanel-updater.tmp.$BASHPID"
+  chmod 755 "$libexec_dir/.palpanel-updater.tmp.$BASHPID"
+  if [[ "$test_mode" != "1" ]]; then
+    chown root:root "$libexec_dir/.palpanel-updater.tmp.$BASHPID"
+  fi
+  mv -f "$libexec_dir/.palpanel-updater.tmp.$BASHPID" "$libexec_dir/palpanel-updater"
   if [[ ! -f "$etc_dir/palpanel.env" ]]; then
     "$version_dir/bin/palpanel" --config "$etc_dir/palpanel.env" --init-config
   fi
@@ -689,11 +700,22 @@ install_system() {
   sed -e "s|/opt/palpanel|$opt_root|g" -e "s|/var/lib/palpanel|$system_data_dir|g" \
     -e "s|User=palpanel|User=$service_user|g" -e "s|Group=palpanel|Group=$service_user|g" \
     "$version_dir/systemd/palpanel-palcalc.service" >"$systemd_dir/palpanel-palcalc.service"
-  chmod 644 "$systemd_dir/palpanel.service" "$systemd_dir/palpanel-sav-cli.service" "$systemd_dir/palpanel-palcalc.service"
+  sed -e "s|/opt/palpanel|$opt_root|g" -e "s|/etc/palpanel|$etc_dir|g" -e "s|/var/lib/palpanel|$system_data_dir|g" \
+    -e "s|/etc/systemd/system|$systemd_dir|g" -e "s|/usr/libexec|$libexec_dir|g" \
+    "$version_dir/systemd/palpanel-update.service" >"$systemd_dir/palpanel-update.service"
+  sed -e "s|/var/lib/palpanel|$system_data_dir|g" \
+    "$version_dir/systemd/palpanel-update.path" >"$systemd_dir/palpanel-update.path"
+  chmod 644 \
+    "$systemd_dir/palpanel.service" \
+    "$systemd_dir/palpanel-sav-cli.service" \
+    "$systemd_dir/palpanel-palcalc.service" \
+    "$systemd_dir/palpanel-update.service" \
+    "$systemd_dir/palpanel-update.path"
   if service_control_enabled; then
     systemctl daemon-reload
-    systemctl enable palpanel-sav-cli.service palpanel-palcalc.service palpanel.service
+    systemctl enable palpanel-update.path palpanel-sav-cli.service palpanel-palcalc.service palpanel.service
     systemctl restart palpanel-sav-cli.service palpanel-palcalc.service palpanel.service
+    systemctl start palpanel-update.path
   fi
   printf 'installed PalPanel %s in %s\n' "$version" "$version_dir"
 }
@@ -704,7 +726,7 @@ uninstall_system() {
   [[ "${1:-}" == "--purge" ]] && purge=1 && shift
   [[ $# -eq 0 ]] || fail "unknown uninstall option: $1"
   if service_control_enabled; then
-    systemctl disable --now palpanel.service palpanel-sav-cli.service palpanel-palcalc.service 2>/dev/null || true
+    systemctl disable --now palpanel-update.path palpanel-update.service palpanel.service palpanel-sav-cli.service palpanel-palcalc.service 2>/dev/null || true
   fi
   if [[ -L "$bin_link" ]]; then
     local linked_target
@@ -713,7 +735,8 @@ uninstall_system() {
       rm -f "$bin_link"
     fi
   fi
-  rm -f "$systemd_dir/palpanel.service" "$systemd_dir/palpanel-sav-cli.service" "$systemd_dir/palpanel-palcalc.service"
+  rm -f "$systemd_dir/palpanel.service" "$systemd_dir/palpanel-sav-cli.service" "$systemd_dir/palpanel-palcalc.service" "$systemd_dir/palpanel-update.service" "$systemd_dir/palpanel-update.path"
+  rm -f "$libexec_dir/palpanel-updater"
   if service_control_enabled; then
     systemctl daemon-reload
   fi
