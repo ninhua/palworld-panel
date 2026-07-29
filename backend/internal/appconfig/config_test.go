@@ -54,6 +54,21 @@ func TestLoadAllowsExplicitDevNoAuth(t *testing.T) {
 	if cfg.EffectiveRCONHost() != "127.0.0.1" {
 		t.Fatalf("RCONHost = %q", cfg.EffectiveRCONHost())
 	}
+	if cfg.DiagnosticShellEnabled {
+		t.Fatal("expected diagnostic shell to be disabled by default")
+	}
+}
+
+func TestLoadAllowsEnablingDiagnosticShell(t *testing.T) {
+	t.Setenv("PALPANEL_REQUIRE_AUTH", "false")
+	t.Setenv("PALPANEL_DIAGNOSTIC_SHELL_ENABLED", "true")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.DiagnosticShellEnabled {
+		t.Fatal("expected diagnostic shell to be enabled")
+	}
 }
 
 func TestLoadAllowsContainerRCONHost(t *testing.T) {
@@ -162,6 +177,7 @@ func TestLoadUsesProductionNetworkAndProviderDefaults(t *testing.T) {
 func TestLoadRejectsInvalidScalarConfiguration(t *testing.T) {
 	tests := map[string]string{
 		"PALPANEL_REQUIRE_AUTH":                        "sometimes",
+		"PALPANEL_DIAGNOSTIC_SHELL_ENABLED":           "sometimes",
 		"PALPANEL_STEAM_API_TIMEOUT_SECONDS":           "soon",
 		"PALPANEL_AI_TRANSLATION_TIMEOUT_SECONDS":      "0",
 		"PALPANEL_RCON_PORT":                           "70000",
