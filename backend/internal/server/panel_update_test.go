@@ -10,6 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"palpanel/internal/appconfig"
+	"palpanel/internal/networkproxy"
 )
 
 func TestNormalizePanelUpdateRequest(t *testing.T) {
@@ -87,6 +91,38 @@ func TestResolvePanelReleaseFallsBackWhenGitHubAPIRateLimited(t *testing.T) {
 	}
 	if selection.Archive.BrowserDownloadURL != server.URL+"/ninhua/palworld-panel/releases/download/v1.3.0-custom.0.8.20/palpanel_v1.3.0-custom.0.8.20_linux_amd64.tar.gz" {
 		t.Fatalf("archive URL = %q", selection.Archive.BrowserDownloadURL)
+	}
+}
+
+func TestPanelHTTPClientUsesManagedInstallProxy(t *testing.T) {
+	var requestedHost string
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		requestedHost = request.URL.Host
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer proxyServer.Close()
+
+	root := t.TempDir()
+	cfg := appconfig.Config{RuntimeRoot: root, DataDir: filepath.Join(root, "data")}
+	enabled := true
+	proxyURL := proxyServer.URL
+	if _, err := networkproxy.New(cfg).Update(networkproxy.ConfigUpdate{
+		InstallEnabled:  &enabled,
+		InstallProxyURL: &proxyURL,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	client, err := (Manager{cfg: cfg}).panelHTTPClient(5 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Get("http://api.github.invalid/releases")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if requestedHost != "api.github.invalid" {
+		t.Fatalf("proxy received host %q", requestedHost)
 	}
 }
 

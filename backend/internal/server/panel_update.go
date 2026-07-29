@@ -22,6 +22,7 @@ import (
 
 	"palpanel/internal/db"
 	"palpanel/internal/jobs"
+	"palpanel/internal/networkproxy"
 )
 
 const (
@@ -273,7 +274,7 @@ func (m Manager) resolvePanelRelease(ctx context.Context, request PanelUpdateReq
 		if fallbackErr == nil {
 			return fallback, nil
 		}
-		return panelReleaseSelection{}, fmt.Errorf("%w; latest-release fallback failed: %v", err, fallbackErr)
+		return panelReleaseSelection{}, fmt.Errorf("%w; latest-release fallback failed: %v; GitHub is unreachable, configure 系统设置 → 网络代理 → 安装与下载代理 or set HTTPS_PROXY", err, fallbackErr)
 	}
 	var best panelReleaseSelection
 	for _, release := range releases {
@@ -304,9 +305,9 @@ func (m Manager) resolvePanelRelease(ctx context.Context, request PanelUpdateReq
 }
 
 func (m Manager) resolvePanelReleaseFromLatest(ctx context.Context, request PanelUpdateRequest) (panelReleaseSelection, error) {
-	client := m.downloadClient
-	if client == nil {
-		client = &http.Client{Timeout: 2 * time.Minute}
+	client, err := m.panelHTTPClient(2 * time.Minute)
+	if err != nil {
+		return panelReleaseSelection{}, err
 	}
 	endpoint := strings.TrimRight(panelGitHubWebBaseURL, "/") + "/" + request.Repository + "/releases/latest"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -352,9 +353,9 @@ func panelReleaseFromLatestURL(repository string, finalURL *url.URL) (panelRelea
 }
 
 func (m Manager) getPanelJSON(ctx context.Context, endpoint string, destination any) error {
-	client := m.downloadClient
-	if client == nil {
-		client = &http.Client{Timeout: 2 * time.Minute}
+	client, err := m.panelHTTPClient(2 * time.Minute)
+	if err != nil {
+		return err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -374,9 +375,9 @@ func (m Manager) getPanelJSON(ctx context.Context, endpoint string, destination 
 }
 
 func (m Manager) downloadPanelAsset(ctx context.Context, endpoint, destination string, maxBytes int64) error {
-	client := m.downloadClient
-	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Minute}
+	client, err := m.panelHTTPClient(10 * time.Minute)
+	if err != nil {
+		return err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -410,6 +411,32 @@ func (m Manager) downloadPanelAsset(ctx context.Context, endpoint, destination s
 		return fmt.Errorf("download exceeds size limit")
 	}
 	return nil
+}
+
+func (m Manager) panelHTTPClient(timeout time.Duration) (*http.Client, error) {
+	base := m.downloadClient
+	if base == nil {
+		base = &http.Client{}
+	}
+	if strings.TrimSpace(m.cfg.DataDir) == "" {
+		client := *base
+		client.Timeout = timeout
+		return &client, nil
+	}
+	proxyURL, err := networkproxy.New(m.cfg).InstallProxyURL()
+	if err != nil {
+		return nil, fmt.Errorf("cannot read install proxy for panel update: %w", err)
+	}
+	if proxyURL == "" {
+		client := *base
+		client.Timeout = timeout
+		return &client, nil
+	}
+	client, err := networkproxy.HTTPClient(base, proxyURL, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("cannot configure install proxy for panel update: %w", err)
+	}
+	return client, nil
 }
 
 func setPanelRequestHeaders(req *http.Request) {

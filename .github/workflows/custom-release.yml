@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       release_tag: ${{ steps.version.outputs.release_tag }}
+      custom_version: ${{ steps.version.outputs.custom_version }}
       source_sha: ${{ steps.source.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
@@ -53,6 +54,14 @@ jobs:
           echo "Detected custom version: $custom_version"
           echo "Release tag: $release_tag"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "custom_version=$custom_version" >> "$GITHUB_OUTPUT"
+          test -s "docs/releases/${custom_version}.md"
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-release-notes
+          path: docs/releases/${{ steps.version.outputs.custom_version }}.md
+          if-no-files-found: error
       - id: source
         name: Resolve source commit
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -184,6 +193,10 @@ jobs:
         with:
           name: custom-release-windows
           path: dist/release
+      - uses: actions/download-artifact@v4
+        with:
+          name: custom-release-notes
+          path: dist/release-notes
       - name: Create checksums
         run: |
           cd dist/release
@@ -199,7 +212,8 @@ jobs:
           tag_name: ${{ needs.validate.outputs.release_tag }}
           target_commitish: ${{ needs.validate.outputs.source_sha }}
           name: PalPanel ${{ needs.validate.outputs.release_tag }}
-          generate_release_notes: true
+          body_path: dist/release-notes/${{ needs.validate.outputs.custom_version }}.md
+          generate_release_notes: false
           prerelease: ${{ inputs.prerelease }}
           fail_on_unmatched_files: true
           files: |
