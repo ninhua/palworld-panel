@@ -23,6 +23,8 @@ const (
 	rconPacketExec          int32 = 2
 	rconPacketAuthReply     int32 = 2
 	rconPacketExecReply     int32 = 0
+	rconCommandRequestID    int32 = 2
+	rconGenericResponseID   int32 = 0
 	rconPacketLimit               = 4 << 20
 	rconResponseLimit             = 8 << 20
 	rconTimeout                   = 5 * time.Second
@@ -257,7 +259,7 @@ func (m Manager) executeRCONWithOptions(ctx context.Context, command string, opt
 	if !authenticated {
 		return "", ErrRCONAuthentication
 	}
-	if err := writeRCONPacket(conn, rconPacket{ID: 2, Type: rconPacketExec, Body: command}); err != nil {
+	if err := writeRCONPacket(conn, rconPacket{ID: rconCommandRequestID, Type: rconPacketExec, Body: command}); err != nil {
 		return "", fmt.Errorf("%w: %v", ErrRCONUnavailable, err)
 	}
 	responseDeadline := time.Now().Add(options.firstResponseTimeout)
@@ -284,7 +286,10 @@ func (m Manager) executeRCONWithOptions(ctx context.Context, command string, opt
 		if packet.ID == -1 {
 			return "", ErrRCONAuthentication
 		}
-		if packet.ID != 2 || packet.Type != rconPacketExecReply {
+		if !isRCONCommandResponse(packet, rconCommandRequestID) {
+			if m.cfg.DebugLogger != nil {
+				m.cfg.DebugLogger.Printf("paldefender rcon endpoint=%s command=%q state=ignored_response packet_id=%d packet_type=%d body_bytes=%d", target, command, packet.ID, packet.Type, len(packet.Body))
+			}
 			continue
 		}
 		received = true
@@ -302,6 +307,13 @@ func (m Manager) executeRCONWithOptions(ctx context.Context, command string, opt
 		return "", ErrRCONInvalidResponse
 	}
 	return strings.TrimSpace(strings.ReplaceAll(response.String(), "\x00", "")), nil
+}
+
+func isRCONCommandResponse(packet rconPacket, requestID int32) bool {
+	if packet.Type != rconPacketExecReply {
+		return false
+	}
+	return packet.ID == requestID || packet.ID == rconGenericResponseID
 }
 
 func rconLoopbackHost(host string) bool {

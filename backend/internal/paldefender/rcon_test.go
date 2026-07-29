@@ -81,6 +81,61 @@ func TestTypedRCONWhitelistAdminAndCatalogCommands(t *testing.T) {
 	}
 }
 
+func TestRCONAcceptsPalDefenderGenericResponseID(t *testing.T) {
+	manager, cleanup := testManager(t)
+	defer cleanup()
+	prepareGMRESTFixture(t, manager)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	if err := palconfig.Write(manager.cfg.PalWorldSettingsPath(), palconfig.Settings{
+		"RCONEnabled": "True", "RCONPort": strconv.Itoa(port), "AdminPassword": "secret",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		auth, err := readRCONPacket(conn)
+		if err != nil {
+			return
+		}
+		_ = writeRCONPacket(conn, rconPacket{ID: auth.ID, Type: rconPacketAuthReply})
+		command, err := readRCONPacket(conn)
+		if err != nil || command.Body != "/getrconcmds" {
+			return
+		}
+		_ = writeRCONPacket(conn, rconPacket{
+			ID:   rconGenericResponseID,
+			Type: rconPacketExecReply,
+			Body: "getrconcmds:0;tp:1;delitems:2;",
+		})
+	}()
+
+	result, err := manager.RCONCommands(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Output != "getrconcmds:0;tp:1;delitems:2;" {
+		t.Fatalf("RCONCommands output = %q", result.Output)
+	}
+}
+
+func TestRCONCommandResponseStillRequiresExecutionReplyType(t *testing.T) {
+	if isRCONCommandResponse(rconPacket{ID: rconGenericResponseID, Type: rconPacketAuthReply}, rconCommandRequestID) {
+		t.Fatal("authentication reply must not be accepted as a command response")
+	}
+	if !isRCONCommandResponse(rconPacket{ID: rconCommandRequestID, Type: rconPacketExecReply}, rconCommandRequestID) {
+		t.Fatal("matching execution reply should be accepted")
+	}
+}
+
 func TestAccessSettingsValidationAndPersistence(t *testing.T) {
 	manager, cleanup := testManager(t)
 	defer cleanup()
