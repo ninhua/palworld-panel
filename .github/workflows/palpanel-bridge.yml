@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ secrets.UEPSEUDO_TOKEN }}
+      UE4SS_COMMIT: c838a8acaade1a0f860bdf249f039e58f4e10088
     steps:
       - uses: actions/checkout@v4
 
@@ -36,12 +37,16 @@ jobs:
             throw "Repository secret UEPSEUDO_TOKEN is required to read Re-UE4SS/UEPseudo"
           }
 
-      - name: Fetch pinned UE4SS SDK
+      - name: Fetch matching experimental UE4SS SDK
         shell: pwsh
         run: |
           gh auth setup-git
           git config --global url."https://github.com/".insteadOf "git@github.com:"
-          git clone --branch v3.0.1 --depth 1 https://github.com/UE4SS-RE/RE-UE4SS.git "$env:RUNNER_TEMP\RE-UE4SS"
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\RE-UE4SS" | Out-Null
+          git -C "$env:RUNNER_TEMP\RE-UE4SS" init
+          git -C "$env:RUNNER_TEMP\RE-UE4SS" remote add origin https://github.com/UE4SS-RE/RE-UE4SS.git
+          git -C "$env:RUNNER_TEMP\RE-UE4SS" fetch --depth 1 origin $env:UE4SS_COMMIT
+          git -C "$env:RUNNER_TEMP\RE-UE4SS" checkout --detach FETCH_HEAD
           git -C "$env:RUNNER_TEMP\RE-UE4SS" submodule update --init --recursive --depth 1
 
       - name: Build bridge DLL
@@ -67,7 +72,7 @@ jobs:
           $artifact = "$env:RUNNER_TEMP\palpanel-bridge-build\artifact\PalPanelBridge"
           $packageRoot = "$env:RUNNER_TEMP\palpanel-bridge-package"
           $package = Join-Path $packageRoot "PalPanelBridge"
-          $zip = "$env:RUNNER_TEMP\PalPanelBridge-v0.1.1-ue4ss-v3.0.1.zip"
+          $zip = "$env:RUNNER_TEMP\PalPanelBridge-v0.1.2-ue4ss-c838a8ac.zip"
           New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
           Copy-Item -LiteralPath $artifact -Destination $package -Recurse
           Copy-Item -LiteralPath "$package\config.ini.example" -Destination "$package\config.ini"
@@ -98,7 +103,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PalPanelBridge-v0.1.1-ue4ss-v3.0.1-server-package
+          name: PalPanelBridge-v0.1.2-ue4ss-c838a8ac-server-package
           if-no-files-found: error
           retention-days: 14
-          path: ${{ runner.temp }}/PalPanelBridge-v0.1.1-ue4ss-v3.0.1.zip
+          path: ${{ runner.temp }}/PalPanelBridge-v0.1.2-ue4ss-c838a8ac.zip

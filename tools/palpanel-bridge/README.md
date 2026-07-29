@@ -10,13 +10,15 @@ It does not expose arbitrary UObject calls and cannot modify players, inventory,
 
 ## Build with GitHub Actions
 
-The official UE4SS v3.0.1 source tree depends on the restricted UEPseudo
-repository. The repository owner must link Epic Games and GitHub, accept the
-EpicGames organization invitation, and add a read-capable personal access token
-as the repository Actions secret `UEPSEUDO_TOKEN`.
+The Palworld experimental UE4SS build used by the panel reports Git SHA
+`c838a8ac`. C++ mods must use the same UE4SS commit, build configuration, and
+C runtime. That source tree depends on the restricted UEPseudo repository. The
+repository owner must link Epic Games and GitHub, accept the EpicGames
+organization invitation, and add a read-capable personal access token as the
+repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.1-ue4ss-v3.0.1.zip`, containing the complete
+`PalPanelBridge-v0.1.2-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -37,7 +39,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.1-ue4ss-v3.0.1.zip`.
+1. Extract `PalPanelBridge-v0.1.2-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.

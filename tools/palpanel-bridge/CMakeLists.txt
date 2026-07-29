@@ -5,7 +5,7 @@ if(NOT TARGET UE4SS)
 endif()
 
 add_library(PalPanelBridge SHARED src/main.cpp)
-target_compile_features(PalPanelBridge PRIVATE cxx_std_20)
+target_compile_features(PalPanelBridge PRIVATE cxx_std_23)
 target_compile_definitions(PalPanelBridge PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(PalPanelBridge PRIVATE UE4SS ws2_32)
 set_target_properties(PalPanelBridge PROPERTIES
