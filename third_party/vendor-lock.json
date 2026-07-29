@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "layout_version": 1,
+  "components": [
+    {
+      "id": "palops-web",
+      "kind": "source-tree",
+      "path": "sources/palops-web",
+      "upstream": "https://github.com/CoderYiXin/PalOpsWeb",
+      "revision": "dc2ec173c77e759482e59d9b63d228c88132061c",
+      "version": "1.3.2",
+      "license": "GPL-3.0-or-later",
+      "required_profiles": [
+        "source",
+        "build",
+        "full"
+      ]
+    },
+    {
+      "id": "maplibre-gl",
+      "kind": "runtime-tree",
+      "path": "sources/maplibre-gl",
+      "upstream": "https://github.com/maplibre/maplibre-gl-js",
+      "revision": "v6.0.0",
+      "version": "6.0.0",
+      "license": "BSD-3-Clause",
+      "required_profiles": [
+        "source",
+        "build",
+        "full"
+      ]
+    },
+    {
+      "id": "palcalc",
+      "kind": "source-tree",
+      "path": "sources/palcalc",
+      "upstream": "https://github.com/tylercamp/palcalc",
+      "revision": "repository-pinned-submodule",
+      "license": "MIT",
+      "required_profiles": [
+        "source",
+        "build",
+        "full"
+      ]
+    },
+    {
+      "id": "uesave",
+      "kind": "source-tree",
+      "path": "sources/uesave",
+      "upstream": "https://github.com/trumank/uesave",
+      "revision": "repository-pinned-snapshot",
+      "license": "MIT",
+      "required_profiles": [
+        "source",
+        "build",
+        "full"
+      ]
+    },
+    {
+      "id": "ue4ss-sdk",
+      "kind": "source-tree",
+      "path": "sources/ue4ss-sdk",
+      "upstream": "https://github.com/UE4SS-RE/RE-UE4SS",
+      "revision": "c838a8acaade1a0f860bdf249f039e58f4e10088",
+      "version": "palworld-experimental",
+      "license": "MIT + dependency licenses",
+      "required_profiles": [
+        "bridge",
+        "full"
+      ]
+    },
+    {
+      "id": "palops-map-tiles",
+      "kind": "asset-tree",
+      "path": "assets/palops-map-tiles",
+      "upstream": "authorized-private-source",
+      "revision": "palops-2026.07.5-extended",
+      "license": "authorization-required",
+      "required_profiles": [
+        "full"
+      ]
+    },
+    {
+      "id": "github-actions-bundle",
+      "kind": "source-tree",
+      "path": "sources/github-actions",
+      "upstream": "workflow uses inventory",
+      "revision": "repository-pinned-snapshots",
+      "license": "per-action licenses",
+      "required_profiles": [
+        "full"
+      ]
+    },
+    {
+      "id": "npm-cache",
+      "kind": "cache-tree",
+      "path": "caches/npm",
+      "required_profiles": [
+        "build",
+        "full"
+      ]
+    },
+    {
+      "id": "cargo-home",
+      "kind": "cache-tree",
+      "path": "caches/cargo",
+      "required_profiles": [
+        "build",
+        "full"
+      ]
+    },
+    {
+      "id": "go-mod-cache",
+      "kind": "cache-tree",
+      "path": "caches/go-mod",
+      "required_profiles": [
+        "build",
+        "full"
+      ]
+    },
+    {
+      "id": "nuget-packages",
+      "kind": "cache-tree",
+      "path": "caches/nuget",
+      "required_profiles": [
+        "build",
+        "full"
+      ]
+    }
+  ]
+}

@@ -123,3 +123,11 @@ PalOps world map data and implementation reference
 The release SBOM provides the exact package/version inventory. Corresponding
 license texts remain available from each dependency's source distribution and
 are preserved in the sav-cli vendored source archive where required by GPL.
+
+Mirrored dependency snapshots
+-----------------------------
+PalPanel can build from a separately stored vendor mirror. Every mirrored source
+or asset must retain its original license, copyright notices, provenance, pinned
+revision, and generated SHA-256 manifest. The mirror tooling itself does not
+grant redistribution rights. Private credentials and authorization documents
+containing personal information must not be included in public source archives.

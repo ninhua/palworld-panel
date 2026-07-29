@@ -27,8 +27,8 @@
 
 ```text
 上游版本：v1.3.0
-自定义版本：0.8.39
-完整标签：v1.3.0-custom.0.8.39
+自定义版本：0.8.40
+完整标签：v1.3.0-custom.0.8.40
 ```
 
 版本源位于：
@@ -463,6 +463,20 @@ frontend/src/pages/StarterGift.tsx
 - 请求参数无效
 
 不要用一个笼统的 `500` 覆盖所有失败。
+
+## 第三方镜像与离线构建
+
+第三方源码和大型资源不得依赖未锁定的运行时下载。`third_party/vendor-lock.json` 固定镜像布局，`scripts/vendorctl.py` 负责初始化、逐文件 SHA-256 清单、验证、准备和清理。
+
+构建模式：
+
+- `online`：使用本地源码，缺少地图资源时允许访问固定上游。
+- `mirror`：优先使用 `PALPANEL_VENDOR_ROOT` 中的 PalOps、MapLibre、PalCalc 和 uesave，缺少缓存时仍允许公共包源。
+- `offline`：要求完整源码和 npm/Cargo/Go/NuGet 缓存，设置包管理器离线开关并禁止 Go 代理。
+
+镜像目录不得包含符号链接、设备文件、Token 或私人授权书原件。Palpagos / World Tree 瓦片只有在授权允许再分发时才能放入 `assets/palops-map-tiles`；公开仓库只保留授权摘要和原件 SHA-256。
+
+`vendorctl prepare` 只会创建带 `.palpanel-vendor-managed` 标记的 `third_party/palcalc` 和 `third_party/uesave`。清理时不得删除没有该标记的人工工作目录。
 
 ## 17. 安全边界
 
