@@ -271,8 +271,13 @@ func (m Manager) executeRCONWithOptions(ctx context.Context, command string, opt
 		packet, err := readRCONPacket(conn)
 		if err != nil {
 			var netErr net.Error
-			if received && errors.As(err, &netErr) && netErr.Timeout() {
-				break
+			if received {
+				if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+					break
+				}
+				if errors.As(err, &netErr) && netErr.Timeout() {
+					break
+				}
 			}
 			return "", fmt.Errorf("%w: %v", ErrRCONInvalidResponse, err)
 		}
