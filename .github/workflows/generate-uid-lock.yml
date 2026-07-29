@@ -1,0 +1,25 @@
+name: Generate UID remapper lock
+
+on:
+  push:
+    branches: [custom-stable]
+    paths:
+      - .github/workflows/generate-uid-lock.yml
+
+permissions:
+  contents: read
+
+jobs:
+  lock:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate Cargo lock
+        run: cargo generate-lockfile --manifest-path tools/palworld-uid-remap/Cargo.toml
+      - name: Upload generated lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: palworld-uid-remap-cargo-lock
+          if-no-files-found: error
+          retention-days: 1
+          path: tools/palworld-uid-remap/Cargo.lock
