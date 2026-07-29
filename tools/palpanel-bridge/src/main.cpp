@@ -2,6 +2,7 @@
 
 #include <WinSock2.h>
 #include <WS2tcpip.h>
+#include <Windows.h>
 
 #include <atomic>
 #include <chrono>
@@ -13,6 +14,8 @@
 #include <sstream>
 #include <string>
 #include <thread>
+
+extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 namespace
 {
@@ -31,6 +34,24 @@ struct Job
     bool game_thread_tick_seen{};
 };
 
+std::filesystem::path mod_directory()
+{
+    std::wstring path(32768, L'\0');
+    const auto length = GetModuleFileNameW(
+        reinterpret_cast<HMODULE>(&__ImageBase), path.data(), static_cast<DWORD>(path.size()));
+    if (length == 0 || length >= path.size()) return {};
+    path.resize(length);
+    return std::filesystem::path(path).parent_path().parent_path();
+}
+
+void append_log(const std::string& message)
+{
+    const auto directory = mod_directory();
+    if (directory.empty()) return;
+    std::ofstream output(directory / "PalPanelBridge.log", std::ios::app);
+    if (output) output << message << '\n';
+}
+
 std::string trim(std::string value)
 {
     const auto begin = value.find_first_not_of(" \t\r\n");
@@ -45,7 +66,8 @@ Config load_config()
     if (const char* token = std::getenv("PALPANEL_BRIDGE_TOKEN"); token && *token) {
         config.token = token;
     }
-    std::ifstream input(std::filesystem::current_path() / "Mods" / "PalPanelBridge" / "config.ini");
+    const auto config_path = mod_directory() / "config.ini";
+    std::ifstream input(config_path);
     std::string line;
     while (std::getline(input, line)) {
         line = trim(line);
@@ -65,6 +87,8 @@ Config load_config()
         }
     }
     if (config.token == "REPLACE_WITH_A_RANDOM_TOKEN") config.token.clear();
+    append_log("config=" + config_path.string() + " port=" + std::to_string(config.port) +
+               " token_configured=" + (config.token.empty() ? "false" : "true"));
     return config;
 }
 
@@ -90,7 +114,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.3");
+        ModVersion = STR("0.1.4");
         ModDescription = STR("Read-only localhost HTTP and UE4SS game-thread probe");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -109,11 +133,13 @@ class PalPanelBridge final : public RC::CppUserModBase
         unreal_initialized_.store(true);
         bool expected = false;
         if (!server_started_.compare_exchange_strong(expected, true)) return;
+        append_log("on_unreal_init received");
         config_ = load_config();
         try {
             worker_ = std::thread([this] { serve(); });
         } catch (...) {
             server_started_.store(false);
+            append_log("failed to create HTTP worker thread");
         }
     }
 
@@ -151,7 +177,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.3\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.4\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -225,9 +251,13 @@ class PalPanelBridge final : public RC::CppUserModBase
     void serve()
     {
         WSADATA data{};
-        if (WSAStartup(MAKEWORD(2, 2), &data) != 0) return;
+        if (const auto error = WSAStartup(MAKEWORD(2, 2), &data); error != 0) {
+            append_log("WSAStartup failed error=" + std::to_string(error));
+            return;
+        }
         const auto socket_handle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (socket_handle == INVALID_SOCKET) {
+            append_log("socket failed error=" + std::to_string(WSAGetLastError()));
             WSACleanup();
             return;
         }
@@ -235,14 +265,29 @@ class PalPanelBridge final : public RC::CppUserModBase
         sockaddr_in address{};
         address.sin_family = AF_INET;
         address.sin_port = htons(config_.port);
-        if (inet_pton(AF_INET, config_.listen.c_str(), &address.sin_addr) != 1 ||
-            bind(socket_handle, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR ||
-            listen(socket_handle, 8) == SOCKET_ERROR) {
+        if (inet_pton(AF_INET, config_.listen.c_str(), &address.sin_addr) != 1) {
+            append_log("invalid listen address");
             closesocket(socket_handle);
             listener_.store(INVALID_SOCKET);
             WSACleanup();
             return;
         }
+        if (bind(socket_handle, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR) {
+            append_log("bind failed port=" + std::to_string(config_.port) +
+                       " error=" + std::to_string(WSAGetLastError()));
+            closesocket(socket_handle);
+            listener_.store(INVALID_SOCKET);
+            WSACleanup();
+            return;
+        }
+        if (listen(socket_handle, 8) == SOCKET_ERROR) {
+            append_log("listen failed error=" + std::to_string(WSAGetLastError()));
+            closesocket(socket_handle);
+            listener_.store(INVALID_SOCKET);
+            WSACleanup();
+            return;
+        }
+        append_log("listening on " + config_.listen + ":" + std::to_string(config_.port));
         while (!stopping_.load()) {
             const auto client = accept(socket_handle, nullptr, nullptr);
             if (client == INVALID_SOCKET) {
