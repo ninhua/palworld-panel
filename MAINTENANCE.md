@@ -27,8 +27,8 @@
 
 ```text
 上游版本：v1.3.0
-自定义版本：0.8.31
-完整标签：v1.3.0-custom.0.8.31
+自定义版本：0.8.32
+完整标签：v1.3.0-custom.0.8.32
 ```
 
 版本源位于：
@@ -210,7 +210,31 @@ scripts/systemd/palpanel-update.path
 docs/panel-update-api.md
 ```
 
-## 8. PalDefender 与 GM 命令
+## 8. PalWorld 配置修订历史
+
+`PalWorldSettings.ini` 的编辑继续使用“草稿 → 应用 → 健康检查 → 失败恢复”事务。修订历史只能扩展该事务，不能绕过草稿直接覆盖活动配置。
+
+维护规则：
+
+- 私密快照存放在 `DataDir/config-revisions`，文件权限必须为 `0600`，目录权限必须为 `0700`。
+- API 只能返回修订 ID、SHA-256、时间、来源和字段差异；不得返回快照路径或密码原文。
+- `AdminPassword` 与 `ServerPassword` 的差异按字段名大小写无关规则只能显示“已配置/未配置”。
+- 修订快照路径必须严格等于 `DataDir/config-revisions/<revision-id>.ini`；读取、淘汰和回滚均不得接受数据库中的任意受管路径。
+- 配置应用 journal 存在时不得捕获当前磁盘文件为正式修订，也不得生成新的回滚草稿。
+- 恢复历史版本必须先生成草稿，再调用现有 `/api/config/palworld/apply`；应用失败继续由原事务恢复应用前配置。
+- 成功应用前必须保存当前基线，成功健康检查后才写入新的活动修订。
+- 默认只保留最近 50 个修订；删除的私密快照使用可重试清理队列处理。
+
+关键文件：
+
+```text
+backend/internal/db/config_revisions.go
+backend/internal/server/config_revisions.go
+backend/internal/api/palworld_config_revisions.go
+frontend/src/components/ConfigRevisionHistory.tsx
+```
+
+## 9. PalDefender 与 GM 命令
 
 PalDefender 同时使用 REST 和 Source RCON：
 
@@ -257,7 +281,7 @@ frontend/src/pages/PlayerCenter.tsx
 - 审计结果
 - 是否存在危险的自动重试
 
-## 9. 玩家身份归并
+## 10. 玩家身份归并
 
 同一个玩家可能同时出现：
 
@@ -288,7 +312,7 @@ frontend/src/pages/PlayerCenter.tsx
 frontend/src/pages/StarterGift.tsx
 ```
 
-## 10. 新玩家礼包状态
+## 11. 新玩家礼包状态
 
 礼包状态至少区分：
 
@@ -318,7 +342,7 @@ frontend/src/pages/StarterGift.tsx
 - 选择“手工作业”必须能匹配“手工作业 + 播种”等复合用途。
 - 必须提供一键清空筛选。
 
-## 11. OpenAPI 与接口维护
+## 12. OpenAPI 与接口维护
 
 后端接口变更时必须同步：
 
@@ -344,7 +368,7 @@ frontend/src/pages/StarterGift.tsx
 
 不要用一个笼统的 `500` 覆盖所有失败。
 
-## 12. 安全边界
+## 13. 安全边界
 
 - 浏览器不能提交任意 RCON 命令。
 - 后端只能暴露有类型、有验证的管理动作。
@@ -356,7 +380,7 @@ frontend/src/pages/StarterGift.tsx
 - 存档解析保持只读，不允许浏览器直接获得原始 `.sav`。
 - 更新替换必须保留备份和启动失败回滚能力。
 
-## 13. 提交建议
+## 14. 提交建议
 
 按功能拆分提交，例如：
 
@@ -370,7 +394,7 @@ docs: add release notes for 0.8.24
 
 同一尚未发布功能可以在发布前整理提交。已经发布的提交不要改写 SHA。
 
-## 14. 发布完成检查表
+## 15. 发布完成检查表
 
 - [ ] 自定义版本已递增
 - [ ] OpenAPI 与前端契约已同步

@@ -5,6 +5,8 @@ import type {
   PalworldSchemaResponse,
   PalworldSettings,
   PalworldValidateResponse,
+  PalworldConfigRevisionList,
+  PalworldConfigRevisionDiff,
   ValidationIssue,
   Job,
 } from '../types';
@@ -91,6 +93,49 @@ export const mapSchema = (raw: unknown): PalworldSchemaResponse => {
   };
 };
 
+
+const mapRevisionList = (raw: unknown): PalworldConfigRevisionList => {
+  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const items = Array.isArray(data.items) ? data.items.map((item) => {
+    const revision = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
+    return {
+      id: String(revision.id || ''),
+      revision_sha256: String(revision.revision_sha256 || ''),
+      parent_sha256: revision.parent_sha256 ? String(revision.parent_sha256) : undefined,
+      source: String(revision.source || 'apply'),
+      changed_fields: Array.isArray(revision.changed_fields) ? revision.changed_fields.map(String) : [],
+      created_at: String(revision.created_at || ''),
+      current: Boolean(revision.current),
+    };
+  }) : [];
+  return {
+    current_revision_sha256: String(data.current_revision_sha256 || ''),
+    retention: Number(data.retention || 50),
+    items,
+  };
+};
+
+const mapRevisionDiff = (raw: unknown): PalworldConfigRevisionDiff => {
+  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const changes = Array.isArray(data.changes) ? data.changes.map((item) => {
+    const change = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
+    return {
+      field: String(change.field || ''),
+      secret: Boolean(change.secret),
+      revision_value: change.revision_value == null ? undefined : String(change.revision_value),
+      current_value: change.current_value == null ? undefined : String(change.current_value),
+      revision_configured: Boolean(change.revision_configured),
+      current_configured: Boolean(change.current_configured),
+    };
+  }) : [];
+  return {
+    revision_id: String(data.revision_id || ''),
+    revision_sha256: String(data.revision_sha256 || ''),
+    current_sha256: String(data.current_sha256 || ''),
+    changes,
+  };
+};
+
 const compactSettings = (settings: Partial<PalworldSettings>): PalworldSettings => {
   return Object.fromEntries(
     Object.entries(settings).filter((entry): entry is [string, string | number | boolean] => entry[1] !== undefined),
@@ -141,5 +186,27 @@ export const settingsApi = {
       () => apiClient.post('/config/palworld/apply', { draft_id: draftId }),
       createFallbackJob('palworld_config_apply', '已提交配置应用任务'),
       { map: mapJob, quiet: true, fallbackOnError: false },
+    ),
+
+
+  listRevisions: (limit = 50) =>
+    handleRequest<unknown, PalworldConfigRevisionList>(
+      () => apiClient.get('/config/palworld/revisions', { params: { limit } }),
+      { current_revision_sha256: '', retention: 50, items: [] },
+      { map: mapRevisionList, quiet: true, fallbackOnError: false },
+    ),
+
+  getRevisionDiff: (id: string) =>
+    handleRequest<unknown, PalworldConfigRevisionDiff>(
+      () => apiClient.get(`/config/palworld/revisions/${encodeURIComponent(id)}/diff`),
+      { revision_id: id, revision_sha256: '', current_sha256: '', changes: [] },
+      { map: mapRevisionDiff, quiet: true, fallbackOnError: false },
+    ),
+
+  restoreRevision: (id: string) =>
+    handleRequest<unknown, PalworldConfigResponse>(
+      () => apiClient.post(`/config/palworld/revisions/${encodeURIComponent(id)}/restore`, { confirm: true }),
+      fallbackConfig,
+      { map: mapPalworldConfig, quiet: true, fallbackOnError: false },
     ),
 };

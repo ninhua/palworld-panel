@@ -51,6 +51,9 @@ vi.mock('../api/settings', () => ({
     validateSettings: vi.fn(),
     updateSettings: vi.fn(),
     applySettings: vi.fn(),
+    listRevisions: vi.fn(),
+    getRevisionDiff: vi.fn(),
+    restoreRevision: vi.fn(),
   },
 }));
 
@@ -182,6 +185,13 @@ describe('Settings page', () => {
     vi.mocked(settingsApi.applySettings).mockResolvedValue({
       id: 'job_config', type: 'palworld_config_apply', status: 'waiting', progress: 0,
       created_at: '2026-07-22T00:00:00Z', message: 'queued',
+    });
+    vi.mocked(settingsApi.listRevisions).mockResolvedValue({ current_revision_sha256: 'abc123', retention: 50, items: [] });
+    vi.mocked(settingsApi.getRevisionDiff).mockResolvedValue({ revision_id: 'rev_1', revision_sha256: 'old', current_sha256: 'abc123', changes: [] });
+    vi.mocked(settingsApi.restoreRevision).mockResolvedValue({
+      settings: { ServerName: '历史服' }, path: '/srv/PalWorldSettings.ini', pending_restart: false,
+      revision_sha256: 'abc123', issues: [],
+      draft: { id: 'cfg_restore', revision_sha256: 'abc123', status: 'draft', created_at: '2026-07-29T00:00:00Z', updated_at: '2026-07-29T00:00:00Z' },
     });
   });
 

@@ -360,6 +360,38 @@ export interface PalworldConfigResponse {
   issues?: ValidationIssue[];
 }
 
+export interface PalworldConfigRevision {
+  id: string;
+  revision_sha256: string;
+  parent_sha256?: string;
+  source: 'baseline' | 'apply' | string;
+  changed_fields: string[];
+  created_at: string;
+  current: boolean;
+}
+
+export interface PalworldConfigRevisionList {
+  current_revision_sha256: string;
+  retention: number;
+  items: PalworldConfigRevision[];
+}
+
+export interface PalworldConfigRevisionFieldDiff {
+  field: string;
+  secret: boolean;
+  revision_value?: string;
+  current_value?: string;
+  revision_configured: boolean;
+  current_configured: boolean;
+}
+
+export interface PalworldConfigRevisionDiff {
+  revision_id: string;
+  revision_sha256: string;
+  current_sha256: string;
+  changes: PalworldConfigRevisionFieldDiff[];
+}
+
 export interface PalworldSchemaResponse {
   version: string;
   fields: FieldSchema[];

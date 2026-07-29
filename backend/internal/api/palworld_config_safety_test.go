@@ -373,3 +373,119 @@ func waitForConfigJob(t *testing.T, store *db.Store, id string) db.Job {
 	t.Fatal("timed out waiting for config job")
 	return db.Job{}
 }
+
+func TestPalworldConfigRevisionListMarksOnlyNewestMatchingRevisionCurrent(t *testing.T) {
+	router, cfg, store := newPalworldConfigSafetyRouter(t)
+	writePalworldConfigFixture(t, cfg, `OptionSettings=(ServerName="Current",AdminPassword="secret",RESTAPIEnabled=False)`)
+	current, err := server.PalworldConfigRevision(cfg.PalWorldSettingsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	activeContent, err := os.ReadFile(cfg.PalWorldSettingsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	revisionDir := filepath.Join(cfg.DataDir, "config-revisions")
+	if err := os.MkdirAll(revisionDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(revisionDir, "rev_current_new.ini"), activeContent, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, revision := range []db.ConfigRevision{
+		{ID: "rev_current_old", RevisionSHA256: current, SnapshotPath: filepath.Join(revisionDir, "rev_current_old.ini"), Source: "apply", CreatedAt: "2026-07-29T00:00:00Z"},
+		{ID: "rev_other", RevisionSHA256: strings.Repeat("a", 64), SnapshotPath: filepath.Join(revisionDir, "rev_other.ini"), Source: "apply", CreatedAt: "2026-07-29T01:00:00Z"},
+		{ID: "rev_current_new", RevisionSHA256: current, SnapshotPath: filepath.Join(revisionDir, "rev_current_new.ini"), Source: "apply", CreatedAt: "2026-07-29T02:00:00Z"},
+	} {
+		if err := store.CreateConfigRevision(t.Context(), revision); err != nil {
+			t.Fatal(err)
+		}
+	}
+	listed := performConfigRequest(t, router, http.MethodGet, "/api/config/palworld/revisions", "")
+	if listed.Code != http.StatusOK {
+		t.Fatalf("list status = %d: %s", listed.Code, listed.Body.String())
+	}
+	var envelope struct {
+		Data struct {
+			Items []struct {
+				ID      string `json:"id"`
+				Current bool   `json:"current"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	currentIDs := []string{}
+	for _, revision := range envelope.Data.Items {
+		if revision.Current {
+			currentIDs = append(currentIDs, revision.ID)
+		}
+	}
+	if len(currentIDs) != 1 || currentIDs[0] != "rev_current_new" {
+		t.Fatalf("current revisions = %#v; response=%s", currentIDs, listed.Body.String())
+	}
+}
+
+func TestPalworldConfigRevisionHistoryDiffAndRestoreDraftRedactSecrets(t *testing.T) {
+	router, cfg, store := newPalworldConfigSafetyRouter(t)
+	writePalworldConfigFixture(t, cfg, `OptionSettings=(ServerName="Before",AdminPassword="old-secret",ServerPassword="join-secret",RESTAPIEnabled=False)`)
+
+	listed := performConfigRequest(t, router, http.MethodGet, "/api/config/palworld/revisions", "")
+	if listed.Code != http.StatusOK {
+		t.Fatalf("list status = %d: %s", listed.Code, listed.Body.String())
+	}
+	if strings.Contains(listed.Body.String(), "old-secret") || strings.Contains(listed.Body.String(), "snapshot_path") {
+		t.Fatalf("revision list leaked private data: %s", listed.Body.String())
+	}
+	var listEnvelope struct {
+		Data struct {
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &listEnvelope); err != nil || len(listEnvelope.Data.Items) != 1 {
+		t.Fatalf("list decode = %#v, %v", listEnvelope, err)
+	}
+	baselineID := listEnvelope.Data.Items[0].ID
+
+	writePalworldConfigFixture(t, cfg, `OptionSettings=(ServerName="After",AdminPassword="new-secret",ServerPassword="join-secret",RESTAPIEnabled=False)`)
+	diff := performConfigRequest(t, router, http.MethodGet, "/api/config/palworld/revisions/"+baselineID+"/diff", "")
+	if diff.Code != http.StatusOK {
+		t.Fatalf("diff status = %d: %s", diff.Code, diff.Body.String())
+	}
+	body := diff.Body.String()
+	if !strings.Contains(body, `"field":"ServerName"`) || !strings.Contains(body, `"revision_value":"Before"`) || !strings.Contains(body, `"current_value":"After"`) {
+		t.Fatalf("diff missing visible change: %s", body)
+	}
+	if !strings.Contains(body, `"field":"AdminPassword"`) || !strings.Contains(body, `"secret":true`) || strings.Contains(body, "old-secret") || strings.Contains(body, "new-secret") {
+		t.Fatalf("diff leaked or omitted secret metadata: %s", body)
+	}
+
+	if err := store.SetKV(t.Context(), "palworld_config_apply_journal", `{}`); err != nil {
+		t.Fatal(err)
+	}
+	blocked := performConfigRequest(t, router, http.MethodPost, "/api/config/palworld/revisions/"+baselineID+"/restore", `{"confirm":true}`)
+	if blocked.Code != http.StatusConflict || !strings.Contains(blocked.Body.String(), "config_apply_in_progress") {
+		t.Fatalf("in-flight restore status = %d: %s", blocked.Code, blocked.Body.String())
+	}
+	if err := store.DeleteKV(t.Context(), "palworld_config_apply_journal"); err != nil {
+		t.Fatal(err)
+	}
+	restored := performConfigRequest(t, router, http.MethodPost, "/api/config/palworld/revisions/"+baselineID+"/restore", `{"confirm":true}`)
+	if restored.Code != http.StatusOK || !strings.Contains(restored.Body.String(), `"status":"draft"`) {
+		t.Fatalf("restore status = %d: %s", restored.Code, restored.Body.String())
+	}
+	if strings.Contains(restored.Body.String(), "old-secret") || strings.Contains(restored.Body.String(), "new-secret") {
+		t.Fatalf("restore response leaked secret: %s", restored.Body.String())
+	}
+	active, err := os.ReadFile(cfg.PalWorldSettingsPath())
+	if err != nil || !strings.Contains(string(active), `ServerName="After"`) {
+		t.Fatalf("restore draft changed active file: %s, %v", active, err)
+	}
+	latestDraft, err := store.LatestConfigDraft(t.Context())
+	if err != nil || latestDraft.Status != "draft" || latestDraft.BaseSHA256 == "" {
+		t.Fatalf("restore draft = %#v, %v", latestDraft, err)
+	}
+}

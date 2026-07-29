@@ -38,7 +38,7 @@ v<上游版本>-custom.<自定义版本>
 示例：
 
 ```text
-v1.3.0-custom.0.8.31
+v1.3.0-custom.0.8.32
 ```
 
 ## 鉴权与权限
@@ -78,14 +78,14 @@ curl -fsS \
   "ok": true,
   "data": {
     "current_version": "v1.3.0-custom.0.8.30",
-    "latest_version": "v1.3.0-custom.0.8.31",
-    "release_tag": "v1.3.0-custom.0.8.31",
-    "release_url": "https://github.com/ninhua/palworld-panel/releases/tag/v1.3.0-custom.0.8.31",
+    "latest_version": "v1.3.0-custom.0.8.32",
+    "release_tag": "v1.3.0-custom.0.8.32",
+    "release_url": "https://github.com/ninhua/palworld-panel/releases/tag/v1.3.0-custom.0.8.32",
     "update_available": true,
     "update_mode": "exec",
     "update_mode_note": "主进程通过 syscall.Exec 原地热更新，PID 保持不变并执行启动健康回滚",
     "checked_at": "2026-07-29T09:00:00Z",
-    "message": "发现面板新版本 v1.3.0-custom.0.8.31"
+    "message": "发现面板新版本 v1.3.0-custom.0.8.32"
   }
 }
 ```
@@ -212,7 +212,7 @@ systemd/palpanel-update.path
 ```json
 {
   "schema_version": 1,
-  "version": "v1.3.0-custom.0.8.31",
+  "version": "v1.3.0-custom.0.8.32",
   "exec_hot_update": {
     "supported": true,
     "required_files": ["bin/palpanel"],
@@ -232,7 +232,7 @@ systemd/palpanel-update.path
 sudo ./palpanelctl install
 ```
 
-这只影响 external/systemd 模式。启动脚本环境在安装 `0.8.30` 后可以直接使用 exec 模式。由于 `0.8.30` 本身尚未包含 exec 通道，无 systemd 环境首次升级到 `0.8.31` 仍需由外层 `start.sh` 下载完整 Release；从 `0.8.31` 开始，后续兼容版本可在面板内热更新。
+这只影响 external/systemd 模式。启动脚本环境不需要安装 root 更新器；由于 `0.8.30` 本身尚未包含 exec 通道，无 systemd 环境首次升级到 `0.8.31` 仍需由外层 `start.sh` 下载完整 Release。从 `0.8.31` 开始，后续明确声明仅更新主程序的兼容版本可在面板内热更新。
 
 ## GitHub 访问配置
 

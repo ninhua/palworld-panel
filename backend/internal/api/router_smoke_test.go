@@ -50,6 +50,7 @@ func TestAuthenticatedReadRoutesReturnStructuredResponses(t *testing.T) {
 		"/api/backups",
 		"/api/config/palworld",
 		"/api/config/palworld/schema",
+		"/api/config/palworld/revisions",
 		"/api/mods",
 		"/api/mods/workshop/status",
 		"/api/ai/translation/config",

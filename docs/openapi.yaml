@@ -618,6 +618,46 @@ paths:
       x-palpanel-permission: 'config:write'
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PalworldConfigValidateRequest'}}}}
       responses: {'200': {description: Validation result, content: {application/json: {schema: {$ref: '#/components/schemas/PalworldConfigValidationEnvelope'}}}}, '400': *error, '401': *error, '403': *error, '500': *error}
+  /config/palworld/revisions:
+    get:
+      operationId: listPalworldConfigRevisions
+      tags: [content]
+      x-palpanel-permission: 'config:write'
+      parameters:
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        '200': {description: Private PalWorldSettings.ini revision metadata without secret values or snapshot paths., content: {application/json: {schema: {$ref: '#/components/schemas/PalworldConfigRevisionListEnvelope'}}}}
+        '400': *error
+        '401': *error
+        '403': *error
+        '500': *error
+  /config/palworld/revisions/{id}/diff:
+    parameters: [*idParameter]
+    get:
+      operationId: getPalworldConfigRevisionDiff
+      tags: [content]
+      x-palpanel-permission: 'config:write'
+      responses:
+        '200': {description: Field-level comparison with secret fields reduced to configured state., content: {application/json: {schema: {$ref: '#/components/schemas/PalworldConfigRevisionDiffEnvelope'}}}}
+        '401': *error
+        '403': *error
+        '404': *error
+        '500': *error
+  /config/palworld/revisions/{id}/restore:
+    parameters: [*idParameter]
+    post:
+      operationId: restorePalworldConfigRevision
+      tags: [content]
+      x-palpanel-permission: 'config:write + server:control'
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PalworldConfigRevisionRestoreRequest'}}}}
+      responses:
+        '200': {description: A reviewable rollback draft; the active file is unchanged until the normal apply endpoint is called., content: {application/json: {schema: {$ref: '#/components/schemas/PalworldConfigEnvelope'}}}}
+        '400': *error
+        '401': *error
+        '403': *error
+        '404': *error
+        '409': *error
+        '500': *error
   /mods:
     get: {operationId: listMods, tags: [content], x-palpanel-permission: read, responses: *readResponses}
   /mods/local/scan:
@@ -1992,6 +2032,62 @@ components:
       properties:
         ok: {type: boolean, const: true}
         data: {$ref: '#/components/schemas/PalworldConfig'}
+    PalworldConfigRevision:
+      type: object
+      required: [id, revision_sha256, source, changed_fields, created_at, current]
+      additionalProperties: false
+      properties:
+        id: {type: string}
+        revision_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        parent_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        source: {type: string, enum: [baseline, apply]}
+        changed_fields: {type: array, items: {type: string}}
+        created_at: {type: string, format: date-time}
+        current: {type: boolean}
+    PalworldConfigRevisionList:
+      type: object
+      required: [current_revision_sha256, retention, items]
+      properties:
+        current_revision_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        retention: {type: integer, minimum: 1}
+        items: {type: array, items: {$ref: '#/components/schemas/PalworldConfigRevision'}}
+    PalworldConfigRevisionListEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/PalworldConfigRevisionList'}
+    PalworldConfigRevisionFieldDiff:
+      type: object
+      required: [field, secret, revision_configured, current_configured]
+      additionalProperties: false
+      properties:
+        field: {type: string}
+        secret: {type: boolean}
+        revision_value: {type: string, description: Omitted for secret fields.}
+        current_value: {type: string, description: Omitted for secret fields.}
+        revision_configured: {type: boolean}
+        current_configured: {type: boolean}
+    PalworldConfigRevisionDiff:
+      type: object
+      required: [revision_id, revision_sha256, current_sha256, changes]
+      properties:
+        revision_id: {type: string}
+        revision_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        current_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        changes: {type: array, items: {$ref: '#/components/schemas/PalworldConfigRevisionFieldDiff'}}
+    PalworldConfigRevisionDiffEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/PalworldConfigRevisionDiff'}
+    PalworldConfigRevisionRestoreRequest:
+      type: object
+      required: [confirm]
+      additionalProperties: false
+      properties:
+        confirm: {type: boolean, const: true}
     PalworldConfigSchemaEnvelope:
       type: object
       required: [ok, data]
@@ -3174,7 +3270,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.31}
+            version: {type: string, const: 0.8.32}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

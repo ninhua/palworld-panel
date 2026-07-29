@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -125,6 +126,10 @@ func TestApplyPalworldConfigHealthFailureRollsBackFileAndKV(t *testing.T) {
 	}
 	if len(startedWith) != 2 || !strings.Contains(startedWith[0], `ServerName="Changed"`) || startedWith[1] != string(before) {
 		t.Fatalf("start snapshots = %#v", startedWith)
+	}
+	revisions, err := manager.store.ListConfigRevisions(t.Context(), 10)
+	if err != nil || len(revisions) != 1 || revisions[0].Source != "baseline" {
+		t.Fatalf("failed apply revisions = %#v, %v", revisions, err)
 	}
 }
 
@@ -286,6 +291,229 @@ func TestApplyPalworldConfigReadinessVerifierUsesDraftAdminPassword(t *testing.T
 	if completed.Status != "completed" || checks != 3 {
 		t.Fatalf("job = %#v, readiness checks = %d", completed, checks)
 	}
+	revisions, err := manager.store.ListConfigRevisions(t.Context(), 10)
+	if err != nil || len(revisions) != 2 || revisions[0].Source != "apply" || revisions[1].Source != "baseline" {
+		t.Fatalf("successful apply revisions = %#v, %v", revisions, err)
+	}
+	if revisions[0].ParentSHA256 != revisions[1].RevisionSHA256 || !containsString(revisions[0].ChangedFields, "ServerName") {
+		t.Fatalf("revision lineage = %#v", revisions)
+	}
+}
+
+func TestApplyPalworldConfigCommittedJournalFailureRemovesRolledBackRevision(t *testing.T) {
+	manager, cleanup := newOperationsManager(t)
+	defer cleanup()
+	manager.configApplyStatus = func(context.Context) (Status, error) {
+		return Status{Container: docker.ContainerStatus{Exists: true, Status: "exited"}}, nil
+	}
+	manager.configApplyJournalPersist = func(ctx context.Context, journal configApplyJournal) error {
+		if journal.Phase == "committed" {
+			return errors.New("committed journal unavailable")
+		}
+		raw, _ := json.Marshal(journal)
+		return manager.store.SetKV(ctx, configApplyJournalKey, string(raw))
+	}
+	before, err := os.ReadFile(manager.cfg.PalWorldSettingsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft := createConfigApplyDraft(t, manager, "Changed")
+	job, err := manager.ApplyPalworldConfig(t.Context(), draft, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed := waitForJob(t, manager.store, job.ID)
+	if completed.Status != "failed" || completed.ErrorCode != "config_journal_write_failed" {
+		t.Fatalf("job = %#v", completed)
+	}
+	after, err := os.ReadFile(manager.cfg.PalWorldSettingsPath())
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("active config after rollback = %q, %v", after, err)
+	}
+	revisions, err := manager.store.ListConfigRevisions(t.Context(), 10)
+	if err != nil || len(revisions) != 1 || revisions[0].Source != "baseline" {
+		t.Fatalf("rolled-back revisions = %#v, %v", revisions, err)
+	}
+	files, err := filepath.Glob(filepath.Join(manager.cfg.DataDir, "config-revisions", "*.ini"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("revision files after rollback = %#v, %v", files, err)
+	}
+}
+
+func TestEnsurePalworldConfigRevisionDeduplicatesConcurrentCapture(t *testing.T) {
+	manager, cleanup := newOperationsManager(t)
+	defer cleanup()
+	const workers = 12
+	ctx := t.Context()
+	var wait sync.WaitGroup
+	errors := make(chan error, workers)
+	for range workers {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			_, err := manager.EnsurePalworldConfigRevision(ctx)
+			errors <- err
+		}()
+	}
+	wait.Wait()
+	close(errors)
+	for err := range errors {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	revisions, err := manager.store.ListConfigRevisions(t.Context(), 20)
+	if err != nil || len(revisions) != 1 {
+		t.Fatalf("concurrent revisions = %#v, %v", revisions, err)
+	}
+	files, err := filepath.Glob(filepath.Join(manager.cfg.DataDir, "config-revisions", "*.ini"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("concurrent revision files = %#v, %v", files, err)
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func TestConfigRevisionSecretFieldsAreCaseInsensitive(t *testing.T) {
+	for _, field := range []string{"AdminPassword", "adminpassword", "SERVERPASSWORD", "ServerPassword"} {
+		if !configSecretField(field) {
+			t.Fatalf("secret field %q was not recognized", field)
+		}
+	}
+	if configSecretField("ServerName") {
+		t.Fatal("non-secret field was classified as secret")
+	}
+}
+
+func TestReadPalworldConfigRevisionRejectsTamperedPrivateSnapshot(t *testing.T) {
+	manager, cleanup := newOperationsManager(t)
+	defer cleanup()
+	revision, err := manager.EnsurePalworldConfigRevision(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(revision.SnapshotPath, []byte(palconfig.SectionHeader+"\nOptionSettings=(ServerName=\"Tampered\")\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ReadPalworldConfigRevision(t.Context(), revision); err == nil || !strings.Contains(err.Error(), "sha256 mismatch") {
+		t.Fatalf("tampered snapshot error = %v", err)
+	}
+}
+
+func TestEnsurePalworldConfigRevisionReplacesMissingPrivateSnapshot(t *testing.T) {
+	manager, cleanup := newOperationsManager(t)
+	defer cleanup()
+	first, err := manager.EnsurePalworldConfigRevision(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(first.SnapshotPath); err != nil {
+		t.Fatal(err)
+	}
+	second, err := manager.EnsurePalworldConfigRevision(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ID == first.ID || second.RevisionSHA256 != first.RevisionSHA256 {
+		t.Fatalf("replacement revision = %#v; first=%#v", second, first)
+	}
+	revisions, err := manager.store.ListConfigRevisions(t.Context(), 10)
+	if err != nil || len(revisions) != 1 || revisions[0].ID != second.ID {
+		t.Fatalf("revisions after replacement = %#v, %v", revisions, err)
+	}
+	if _, err := os.Stat(second.SnapshotPath); err != nil {
+		t.Fatalf("replacement snapshot missing: %v", err)
+	}
+}
+
+func TestEnsurePalworldConfigRevisionDoesNotCaptureUncommittedApply(t *testing.T) {
+	manager, cleanup := newOperationsManager(t)
+	defer cleanup()
+	baseline, err := manager.EnsurePalworldConfigRevision(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal := configApplyJournal{DraftID: "cfg_inflight", RecoveryPath: filepath.Join(manager.cfg.DataDir, "config-drafts", "inflight.rollback"), Phase: "starting"}
+	persistJournalFixture(t, manager, journal)
+	if err := atomicWritePrivate(manager.cfg.PalWorldSettingsPath(), []byte(palconfig.SectionHeader+"\nOptionSettings=(ServerName=\"Uncommitted\")\n")); err != nil {
+		t.Fatal(err)
+	}
+	captured, err := manager.EnsurePalworldConfigRevision(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if captured.ID != baseline.ID {
+		t.Fatalf("in-flight config was captured: baseline=%#v captured=%#v", baseline, captured)
+	}
+	revisions, err := manager.store.ListConfigRevisions(t.Context(), 10)
+	if err != nil || len(revisions) != 1 {
+		t.Fatalf("in-flight revisions = %#v, %v", revisions, err)
+	}
+}
+
+func TestRecordAppliedPalworldConfigRevisionPromotesMatchingBaselineMetadata(t *testing.T) {
+	manager, cleanup := newOperationsManager(t)
+	defer cleanup()
+	initial, err := manager.EnsurePalworldConfigRevision(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWritePrivate(manager.cfg.PalWorldSettingsPath(), []byte(palconfig.SectionHeader+"\nOptionSettings=(ServerName=\"Promoted\")\n")); err != nil {
+		t.Fatal(err)
+	}
+	target, err := manager.EnsurePalworldConfigRevision(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	promoted, err := manager.RecordAppliedPalworldConfigRevision(t.Context(), targetSnapshot(t, manager.cfg.PalWorldSettingsPath()), initial.RevisionSHA256, []string{"ServerName"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if promoted.ID != target.ID || promoted.Source != "apply" || promoted.ParentSHA256 != initial.RevisionSHA256 || !containsString(promoted.ChangedFields, "ServerName") {
+		t.Fatalf("promoted revision = %#v; target=%#v", promoted, target)
+	}
+}
+
+func targetSnapshot(t *testing.T, path string) ConfigSnapshot {
+	t.Helper()
+	snapshot, err := ReadPalworldConfigSnapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
+}
+
+func TestReadPalworldConfigRevisionRejectsRedirectedSnapshotPath(t *testing.T) {
+	manager, cleanup := newOperationsManager(t)
+	defer cleanup()
+	revision, err := manager.EnsurePalworldConfigRevision(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(manager.cfg.DataDir, "config-revisions-other", revision.ID+".ini")
+	if err := atomicWritePrivate(other, revisionSnapshotContent(t, revision.SnapshotPath)); err != nil {
+		t.Fatal(err)
+	}
+	revision.SnapshotPath = other
+	if _, err := manager.ReadPalworldConfigRevision(t.Context(), revision); err == nil || !strings.Contains(err.Error(), "path mismatch") {
+		t.Fatalf("redirected snapshot error = %v", err)
+	}
+}
+
+func revisionSnapshotContent(t *testing.T, path string) []byte {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return content
 }
 
 func TestConfigPrivateCleanupRetriesDeletionFailure(t *testing.T) {
@@ -392,7 +620,7 @@ func createConfigApplyDraft(t *testing.T, manager Manager, serverName string) db
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	draft := db.ConfigDraft{ID: "cfg_test", BaseSHA256: snapshot.Revision, DraftPath: filepath.Join(dir, "cfg_test.ini"), Status: "draft"}
+	draft := db.ConfigDraft{ID: "cfg_test", BaseSHA256: snapshot.Revision, DraftPath: filepath.Join(dir, "cfg_test.ini"), Status: "draft", ModifiedFields: []string{"ServerName"}}
 	if err := os.WriteFile(draft.DraftPath, []byte(palconfig.SerializeDocument(snapshot.Document, map[string]bool{"ServerName": true})), 0o600); err != nil {
 		t.Fatal(err)
 	}

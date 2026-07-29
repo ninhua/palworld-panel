@@ -980,6 +980,45 @@ export interface components {
       "risk"?: string;
       "type": "string" | "bool" | "int" | "float" | "enum" | "list";
     };
+    "PalworldConfigRevision": {
+      "changed_fields": Array<string>;
+      "created_at": string;
+      "current": boolean;
+      "id": string;
+      "parent_sha256"?: string;
+      "revision_sha256": string;
+      "source": "baseline" | "apply";
+    };
+    "PalworldConfigRevisionDiff": {
+      "changes": Array<components["schemas"]["PalworldConfigRevisionFieldDiff"]>;
+      "current_sha256": string;
+      "revision_id": string;
+      "revision_sha256": string;
+    };
+    "PalworldConfigRevisionDiffEnvelope": {
+      "data": components["schemas"]["PalworldConfigRevisionDiff"];
+      "ok": true;
+    };
+    "PalworldConfigRevisionFieldDiff": {
+      "current_configured": boolean;
+      "current_value"?: string;
+      "field": string;
+      "revision_configured": boolean;
+      "revision_value"?: string;
+      "secret": boolean;
+    };
+    "PalworldConfigRevisionList": {
+      "current_revision_sha256": string;
+      "items": Array<components["schemas"]["PalworldConfigRevision"]>;
+      "retention": number;
+    };
+    "PalworldConfigRevisionListEnvelope": {
+      "data": components["schemas"]["PalworldConfigRevisionList"];
+      "ok": true;
+    };
+    "PalworldConfigRevisionRestoreRequest": {
+      "confirm": true;
+    };
     "PalworldConfigSchema": {
       "fields": Array<components["schemas"]["PalworldConfigFieldSchema"]>;
       "version": string;
@@ -1039,7 +1078,7 @@ export interface components {
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/palworld-panel";
-        "version": "0.8.31";
+        "version": "0.8.32";
       };
       "upstream": {
         "commit": string;

@@ -113,6 +113,10 @@ func (m Manager) runConfigApply(ctx context.Context, jobID string, draft db.Conf
 		failBeforeStop(5, "config_draft_stale", "config draft is stale", fmt.Errorf("active config changed before apply"))
 		return
 	}
+	if _, err := m.createPalworldConfigRevision(ctx, initial, "baseline", "", nil); err != nil {
+		failBeforeStop(5, "config_revision_capture_failed", "config revision capture failed", err)
+		return
+	}
 	pending, pendingFound, err := m.store.GetKV(ctx, "pending_restart")
 	if err != nil {
 		failBeforeStop(5, "config_state_read_failed", "config state read failed", err)
@@ -138,8 +142,16 @@ func (m Manager) runConfigApply(ctx context.Context, jobID string, draft db.Conf
 	}
 
 	newInstanceStarted := false
+	recordedRevisionID := ""
 	rollback := func(progress int, code, message string, cause error) {
 		rollbackErr := m.rollbackConfigApply(context.Background(), journal, initial, newInstanceStarted)
+		if rollbackErr == nil && recordedRevisionID != "" {
+			if err := m.store.DeleteConfigRevisionAndQueueCleanup(context.Background(), recordedRevisionID); err != nil {
+				rollbackErr = fmt.Errorf("remove rolled-back config revision: %w", err)
+			} else {
+				_ = m.CleanupConfigPrivateFiles(context.Background())
+			}
+		}
 		if rollbackErr == nil {
 			rollbackErr = m.clearConfigApplyJournal(context.Background(), journal)
 		}
@@ -219,6 +231,23 @@ func (m Manager) runConfigApply(ctx context.Context, jobID string, draft db.Conf
 			rollback(85, "config_health_failed", "config apply health check failed", err)
 			return
 		}
+	}
+
+	committedSnapshot, err := ReadPalworldConfigSnapshot(m.cfg.PalWorldSettingsPath())
+	if err != nil || committedSnapshot.Revision != applied.Revision {
+		if err == nil {
+			err = fmt.Errorf("active config changed before revision commit")
+		}
+		rollback(88, "config_revision_verify_failed", "config revision verification failed", err)
+		return
+	}
+	recordedRevision, err := m.RecordAppliedPalworldConfigRevision(ctx, committedSnapshot, initial.Revision, draft.ModifiedFields)
+	if err != nil {
+		rollback(90, "config_revision_commit_failed", "config revision persistence failed", err)
+		return
+	}
+	if recordedRevision.RevisionSHA256 != initial.Revision {
+		recordedRevisionID = recordedRevision.ID
 	}
 
 	journal.Phase = "committed"

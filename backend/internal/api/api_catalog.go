@@ -98,6 +98,15 @@ var apiCatalogExact = map[string]apiCatalogDescriptor{
 	"POST /api/system/diagnostics/shell": {
 		Category: "诊断", Summary: "执行受限主机命令", Description: "仅在服务端显式启用后执行单条主机命令，固定超时和输出上限。", Permission: "interactive-admin", Request: `JSON: {"command":"ss -lntp","confirm":true}`, Response: "退出码、输出、超时和截断状态。", Patched: true,
 	},
+	"GET /api/config/palworld/revisions": {
+		Category: "配置", Summary: "查询配置修订历史", Description: "返回 PalWorldSettings.ini 的持久修订记录、当前版本和保留上限，不返回私密快照路径或密码。", Permission: "config:write", Request: "Query: limit（1-100）。", Response: "当前 SHA-256、保留数量和修订列表。", Patched: true,
+	},
+	"GET /api/config/palworld/revisions/:id/diff": {
+		Category: "配置", Summary: "比较配置修订", Description: "将指定历史修订与当前配置比较；密码字段只返回是否已配置。", Permission: "config:write", Response: "字段级差异和双方 SHA-256。", Patched: true,
+	},
+	"POST /api/config/palworld/revisions/:id/restore": {
+		Category: "配置", Summary: "生成配置回滚草稿", Description: "从历史修订生成可审查草稿，实际应用继续使用原有停服、健康检查和失败自动恢复事务。", Permission: "config:write + server:control", Request: `JSON: {"confirm":true}`, Response: "目标配置的脱敏预览和待应用草稿。", Patched: true,
+	},
 	"POST /api/save-sources/import/inspect": {
 		Category: "世界存档", Summary: "检查存档导入或房主档迁移", Description: "除标准存档检查外，可识别合作房主存档并准备 UID 重映射。", Permission: "server:control", Request: "multipart/form-data 或导入检查参数；房主迁移按页面生成参数。", Response: "候选世界、冲突和迁移计划。", Patched: true,
 	},

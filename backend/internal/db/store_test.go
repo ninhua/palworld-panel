@@ -285,7 +285,7 @@ func TestStoreMigratesLegacyModsTable(t *testing.T) {
 		t.Fatalf("legacy mod defaults not applied: %#v", mods[0])
 	}
 	version, err := store.SchemaVersion(context.Background())
-	if err != nil || version != 10 {
+	if err != nil || version != 11 {
 		t.Fatalf("schema version = %d, %v", version, err)
 	}
 }
@@ -565,5 +565,45 @@ func TestBreedingStorageLifecycle(t *testing.T) {
 	}
 	if _, err := store.GetBreedSession(ctx, session.TokenHash, now); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("expired session error = %v", err)
+	}
+}
+
+func TestConfigRevisionHistoryPersistsAndPrunesPrivateSnapshots(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "config-revisions.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	oldSHA := strings.Repeat("a", 64)
+	newSHA := strings.Repeat("b", 64)
+	revisionDir := filepath.Join(t.TempDir(), "config-revisions")
+	for _, revision := range []ConfigRevision{
+		{ID: "rev_old", RevisionSHA256: oldSHA, SnapshotPath: filepath.Join(revisionDir, "rev_old.ini"), Source: "baseline", ChangedFields: []string{"ServerName"}, CreatedAt: "2026-07-29T00:00:00Z"},
+		{ID: "rev_new", RevisionSHA256: newSHA, ParentSHA256: oldSHA, SnapshotPath: filepath.Join(revisionDir, "rev_new.ini"), Source: "apply", ChangedFields: []string{"ServerName", "AdminPassword"}, CreatedAt: "2026-07-29T01:00:00Z"},
+	} {
+		if err := store.CreateConfigRevision(t.Context(), revision); err != nil {
+			t.Fatal(err)
+		}
+	}
+	items, err := store.ListConfigRevisions(t.Context(), 10)
+	if err != nil || len(items) != 2 || items[0].ID != "rev_new" || len(items[0].ChangedFields) != 2 {
+		t.Fatalf("revisions = %#v, %v", items, err)
+	}
+	removed, err := store.PruneConfigRevisions(t.Context(), 1)
+	if err != nil || len(removed) != 1 || removed[0].ID != "rev_old" {
+		t.Fatalf("removed = %#v, %v", removed, err)
+	}
+	pending, err := store.ListConfigPrivateCleanup(t.Context(), 10)
+	if err != nil || len(pending) != 1 || pending[0].Path != filepath.Join(revisionDir, "rev_old.ini") || pending[0].Kind != "config_revision" {
+		t.Fatalf("cleanup = %#v, %v", pending, err)
+	}
+	if err := store.CreateConfigRevision(t.Context(), ConfigRevision{ID: "bad", RevisionSHA256: "short", SnapshotPath: filepath.Join(revisionDir, "bad.ini"), Source: "apply"}); err == nil {
+		t.Fatal("invalid revision SHA-256 was accepted")
+	}
+	if err := store.CreateConfigRevision(t.Context(), ConfigRevision{ID: "bad/path", RevisionSHA256: oldSHA, SnapshotPath: filepath.Join(revisionDir, "bad-path.ini"), Source: "apply"}); err == nil {
+		t.Fatal("unsafe revision ID was accepted")
+	}
+	if err := store.CreateConfigRevision(t.Context(), ConfigRevision{ID: "wrong_path", RevisionSHA256: oldSHA, SnapshotPath: filepath.Join(t.TempDir(), "wrong_path.ini"), Source: "apply"}); err == nil {
+		t.Fatal("snapshot outside config-revisions was accepted")
 	}
 }

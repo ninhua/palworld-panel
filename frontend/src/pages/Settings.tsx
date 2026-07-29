@@ -10,6 +10,7 @@ import { useServerStore } from '../store/useServerStore';
 import type { AITranslationConfig, AITranslationConfigUpdate, DevelopmentKey, FieldSchema, NetworkProxyConfig, NetworkProxyConfigUpdate, PalworldConfigDraft, PalworldFormatIssue, PalworldSettings, ServerVersionInfo, ValidationIssue } from '../types';
 import { useI18n } from '../i18n';
 import { LanguageSwitcher } from '../components/ui/LanguageSwitcher';
+import { ConfigRevisionHistory } from '../components/ConfigRevisionHistory';
 
 const groupLabels: Record<string, string> = {
   server_management: '服务器管理',
@@ -712,6 +713,14 @@ export const Settings: React.FC = () => {
           </div>
         </section>
       </div>
+
+      {canConfigureNetwork && (
+        <ConfigRevisionHistory
+          canRestore={Boolean(session?.permissions.includes('server:control'))}
+          onDraftCreated={setConfigDraft}
+          onApplied={() => triggerRefresh()}
+        />
+      )}
 
       {session && session.name !== 'local' && (
         <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_2px_12px_-3px_rgba(15,23,42,0.02)] sm:p-6">
