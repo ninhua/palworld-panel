@@ -37,6 +37,7 @@
 *.py[cod]
 /palcalc-bridge/bin/
 /palcalc-bridge/obj/
+/tools/palworld-uid-remap/target/
 
 # Local design reference used while rebuilding the client
 /PalPanel-Frontend-Preview.zip

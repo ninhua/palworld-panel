@@ -65,7 +65,7 @@ if (( ! skip_tests )); then
   printf '[palpanel] Running sav-cli tests with cgo\n'
   (cd "$root_dir/sav-cli" && CGO_ENABLED=1 go test -p=1 ./...)
   printf '[palpanel] Running UID remapper tests\n'
-  (cd "$root_dir/tools/palworld-uid-remap" && cargo test --locked)
+  (cd "$root_dir/tools/palworld-uid-remap" && CARGO_TARGET_DIR="$staging_dir/uid-remapper-tests" cargo test --locked)
   printf '[palpanel] Installing frontend dependencies\n'
   (cd "$root_dir/frontend" && npm ci)
   printf '[palpanel] Running frontend checks\n'
@@ -195,6 +195,7 @@ build_project_source_archive() {
     cd "$root_dir"
     while IFS= read -r -d '' path; do
       [[ "$path" == "third_party/palcalc" ]] && continue
+      [[ "$path" == tools/palworld-uid-remap/target/* ]] && continue
       cp -a --parents "$path" "$source_root/"
     done < <(git ls-files --cached --others --exclude-standard -z)
   )
