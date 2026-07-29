@@ -86,6 +86,12 @@ Runtime-downloaded PalDefender
   A digest-verified PalDefender.zip is used only when the direct DLL assets are
   not present in that Release.
 
+UE4SS bridge SDK
+----------------
+- UE4SS-RE/RE-UE4SS v3.0.1: MIT. PalPanelBridge is compiled against this exact
+  SDK version to match the pinned runtime ABI. The standalone bridge artifact
+  includes the upstream license as UE4SS-LICENSE.txt.
+
 Runtime community icon references
 ---------------------------------
 - The player center can request Pal icons from the public GitHub Raw paths in

@@ -405,6 +405,13 @@ frontend/src/pages/StarterGift.tsx
 
 ## 15. 提交建议
 
+### PalPanelBridge 技术预览
+
+- `tools/palpanel-bridge` 当前只能执行只读游戏线程探针，禁止在验证持久化、复制和回滚前加入帕鲁或背包写操作。
+- DLL 必须使用与运行时完全一致的 UE4SS v3.0.1 SDK 和 Release CRT 构建；UE4SS 官方升级时必须重新构建。
+- HTTP 只能绑定 `127.0.0.1`，必须配置随机 Bearer Token，不得增加任意 UObject/UFunction 执行接口。
+- 网络线程只能排队，Unreal 对象访问必须在 `on_update` 游戏线程回调中执行。
+
 按功能拆分提交，例如：
 
 ```text

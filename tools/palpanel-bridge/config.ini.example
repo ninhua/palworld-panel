@@ -1,0 +1,5 @@
+# PalPanelBridge refuses probe requests until this token is replaced.
+# Keep the listener on loopback; PalPanel should be the only caller.
+listen=127.0.0.1
+port=18082
+token=REPLACE_WITH_A_RANDOM_TOKEN
