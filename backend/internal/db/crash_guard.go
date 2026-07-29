@@ -185,8 +185,10 @@ func (s *Store) CountCrashGuardOccurrencesSince(ctx context.Context, since strin
 }
 
 func (s *Store) ResolveCrashGuardAlerts(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE alerts SET status='resolved',ack_at=? WHERE source='crash-guard' AND status!='resolved'`, now())
-	return err
+	if _, err := s.db.ExecContext(ctx, `UPDATE alerts SET status='resolved',ack_at=? WHERE source='crash-guard' AND status!='resolved'`, now()); err != nil {
+		return err
+	}
+	return s.ResolveIncidentsBySource(ctx, "crash-guard", "system", "crash guard recovered")
 }
 
 func (s *Store) PruneCrashGuardEvents(ctx context.Context, keep int) error {

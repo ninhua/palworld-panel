@@ -86,6 +86,24 @@ var apiCatalogExact = map[string]apiCatalogDescriptor{
 	"POST /api/server/crash-guard/recover": {
 		Category: "服务器", Summary: "恢复崩溃守卫", Description: "管理员确认解除熔断，可同时重新启动 PalServer。", Permission: "server:control", Request: `JSON: {"confirm":true,"start":true}`, Response: "恢复后的崩溃守卫状态。", Patched: true,
 	},
+	"GET /api/incidents": {
+		Category: "事件", Summary: "查询通知与事件", Description: "按状态、级别、来源和关键词查询归并后的运行事件；不返回 Webhook 密钥或目标 URL。", Permission: "authenticated", Request: "Query: status, severity, source, q, limit, offset。", Response: "事件列表、状态汇总和脱敏 Webhook 状态。", Patched: true,
+	},
+	"GET /api/incidents/:id": {
+		Category: "事件", Summary: "查询事件详情", Description: "返回事件、状态时间线和脱敏投递记录。", Permission: "authenticated", Response: "事件详情、事件时间线和投递状态。", Patched: true,
+	},
+	"POST /api/incidents/:id/ack": {
+		Category: "事件", Summary: "确认事件", Description: "将待处理事件标记为已确认并记录操作者。", Permission: "server:control", Request: `JSON: {"confirm":true,"message":"已知悉"}`, Response: "更新后的事件和状态事件。", Patched: true,
+	},
+	"POST /api/incidents/:id/resolve": {
+		Category: "事件", Summary: "解决事件", Description: "将事件标记为已解决；同一根因再次出现时自动重新打开。", Permission: "server:control", Request: `JSON: {"confirm":true,"message":"问题已解决"}`, Response: "更新后的事件和状态事件。", Patched: true,
+	},
+	"POST /api/incidents/:id/reopen": {
+		Category: "事件", Summary: "重新打开事件", Description: "管理员手工重新打开已确认或已解决事件。", Permission: "server:control", Request: `JSON: {"confirm":true,"message":"需要继续调查"}`, Response: "更新后的事件和状态事件。", Patched: true,
+	},
+	"POST /api/system/incidents/webhook/test": {
+		Category: "事件", Summary: "测试事件 Webhook", Description: "使用服务端环境变量中的目标和 HMAC 密钥发送一条脱敏测试消息。", Permission: "interactive-admin", Request: `JSON: {"confirm":true}`, Response: "投递结果和目标主机名。", Patched: true,
+	},
 	"GET /api/panel/update/status": {
 		Category: "系统", Summary: "查询面板更新状态", Description: "返回当前版本和源码 Fork 中可用的正式 Release。", Permission: "authenticated", Response: "面板版本与更新可用性。", Patched: true,
 	},
@@ -249,7 +267,7 @@ func apiAuthentication(method, path string) string {
 	if strings.HasPrefix(path, "/api/integrations/astrbot/") {
 		return "astrbot-signature"
 	}
-	if path == "/api/system/diagnostics" || strings.HasPrefix(path, "/api/system/diagnostics/") {
+	if path == "/api/system/diagnostics" || strings.HasPrefix(path, "/api/system/diagnostics/") || path == "/api/system/incidents/webhook/test" {
 		return "interactive-admin-session"
 	}
 	return "session-or-development-key"

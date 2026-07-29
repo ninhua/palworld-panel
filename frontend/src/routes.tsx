@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Activity, Archive, ClipboardList, Database, Dna, FileDiff, FolderArchive, Globe2, LayoutDashboard,
+  Activity, Archive, BellRing, ClipboardList, Database, Dna, FileDiff, FolderArchive, Globe2, LayoutDashboard,
   Gift, ListTodo, Map as MapIcon, PackageSearch, Puzzle, Settings as SettingsIcon, Shield, Sparkles,
   SquareTerminal, UserCog, UserX, Users,
 } from 'lucide-react';
@@ -26,6 +26,7 @@ const PalDefenderGM = lazyPage(() => import('./pages/PalDefenderGM'), 'PalDefend
 const Players = lazyPage(() => import('./pages/Players'), 'Players');
 const SaveSources = lazyPage(() => import('./pages/SaveSources'), 'SaveSources');
 const SaveHistory = lazyPage(() => import('./pages/SaveHistory'), 'SaveHistory');
+const Incidents = lazyPage(() => import('./pages/Incidents'), 'Incidents');
 const Inventory = lazyPage(() => import('./pages/Inventory'), 'Inventory');
 const StarterGift = lazyPage(() => import('./pages/StarterGift'), 'StarterGift');
 const PlayerSummary = lazyPage(() => import('./pages/PlayerSummary'), 'PlayerSummary');
@@ -69,6 +70,7 @@ export const appRoutes: AppRoute[] = [
   { id: 'security', path: '/security', title: '安全防护', navLabel: '安全防护', titleKey: 'route.security', navGroup: 'system', icon: <Shield size={18} />, element: <Security /> },
   { id: 'banlist', path: '/banlist', title: '封禁列表', navLabel: '封禁列表', titleKey: 'route.banlist', navGroup: 'system', icon: <UserX size={18} />, element: <BanList /> },
   { id: 'audit', path: '/audit', title: '操作审计', navLabel: '操作审计', titleKey: 'route.audit', navGroup: 'system', icon: <ClipboardList size={18} />, element: <AuditLogs /> },
+  { id: 'incidents', path: '/incidents', title: '通知与事件', navLabel: '通知与事件', titleKey: 'route.incidents', navGroup: 'system', icon: <BellRing size={18} />, element: <Incidents /> },
   { id: 'diagnostics', path: '/diagnostics', title: '诊断控制台', navLabel: '诊断控制台', titleKey: 'route.diagnostics', navGroup: 'system', icon: <SquareTerminal size={18} />, element: <Diagnostics /> },
   { id: 'settings', path: '/settings', title: '系统设置', navLabel: '系统设置', titleKey: 'route.settings', navGroup: 'system', icon: <SettingsIcon size={18} />, element: <Settings /> },
 

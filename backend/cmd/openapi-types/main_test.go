@@ -82,3 +82,29 @@ func TestOpenAPIGeneratesPlayerAndSaveIndexContracts(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenAPIGeneratesIncidentContracts(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "contracts.ts")
+	if err := run(filepath.Join("..", "..", "..", "docs", "openapi.yaml"), output); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := string(body)
+	for _, want := range []string{
+		`"Incident":`,
+		`"IncidentEvent":`,
+		`"IncidentDelivery":`,
+		`"IncidentWebhookStatus":`,
+		`"IncidentListEnvelope":`,
+		`"IncidentDetailEnvelope":`,
+		`"status": "open" | "acknowledged" | "resolved"`,
+		`"severity": "info" | "warning" | "error" | "critical"`,
+	} {
+		if !strings.Contains(contract, want) {
+			t.Fatalf("generated incident contract does not contain %q", want)
+		}
+	}
+}

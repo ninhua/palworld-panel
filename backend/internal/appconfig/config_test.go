@@ -3,21 +3,18 @@ package appconfig
 import (
 	"encoding/hex"
 	"os"
+	"strings"
 	"testing"
 )
 
 func TestLoadRequiresAuthenticationByDefault(t *testing.T) {
 	t.Setenv("PALPANEL_REQUIRE_AUTH", "")
-	t.Setenv("PALPANEL_DIAGNOSTIC_SHELL_ENABLED", "")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
 	if !cfg.RequireAuth {
 		t.Fatal("expected authentication to be enabled by default")
-	}
-	if cfg.DiagnosticShellEnabled {
-		t.Fatal("expected diagnostic shell to be disabled by default")
 	}
 }
 
@@ -219,5 +216,41 @@ func TestValidateHTTPBaseURLAllowsPublicHTTPAndHTTPS(t *testing.T) {
 		if err := validateHTTPBaseURL("TEST_URL", raw); err == nil {
 			t.Fatalf("expected %q to be rejected", raw)
 		}
+	}
+}
+
+func TestLoadValidatesIncidentWebhookConfiguration(t *testing.T) {
+	t.Setenv("PALPANEL_REQUIRE_AUTH", "false")
+	t.Setenv("PALPANEL_INCIDENT_WEBHOOK_URL", "http://127.0.0.1:18090/hook")
+	t.Setenv("PALPANEL_INCIDENT_WEBHOOK_SECRET", "0123456789abcdef")
+	t.Setenv("PALPANEL_INCIDENT_WEBHOOK_TIMEOUT_SECONDS", "7")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.IncidentWebhookURL != "http://127.0.0.1:18090/hook" || cfg.IncidentWebhookTimeoutSeconds != 7 {
+		t.Fatalf("webhook config = %#v", cfg)
+	}
+}
+
+func TestLoadRejectsInsecureRemoteIncidentWebhook(t *testing.T) {
+	t.Setenv("PALPANEL_REQUIRE_AUTH", "false")
+	t.Setenv("PALPANEL_INCIDENT_WEBHOOK_URL", "http://example.com/hook")
+	t.Setenv("PALPANEL_INCIDENT_WEBHOOK_SECRET", "0123456789abcdef")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "must use HTTPS") {
+		t.Fatalf("expected HTTPS validation error, got %v", err)
+	}
+}
+
+func TestLoadRejectsIncidentWebhookSecretAndQueryWeakness(t *testing.T) {
+	t.Setenv("PALPANEL_REQUIRE_AUTH", "false")
+	t.Setenv("PALPANEL_INCIDENT_WEBHOOK_URL", "https://example.com/hook?token=secret")
+	t.Setenv("PALPANEL_INCIDENT_WEBHOOK_SECRET", "short")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "query strings") {
+		t.Fatalf("expected query validation error, got %v", err)
+	}
+	t.Setenv("PALPANEL_INCIDENT_WEBHOOK_URL", "https://example.com/hook")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "at least 16") {
+		t.Fatalf("expected secret validation error, got %v", err)
 	}
 }

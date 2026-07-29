@@ -27,8 +27,8 @@
 
 ```text
 上游版本：v1.3.0
-自定义版本：0.8.36
-完整标签：v1.3.0-custom.0.8.36
+自定义版本：0.8.37
+完整标签：v1.3.0-custom.0.8.37
 ```
 
 版本源位于：
@@ -281,7 +281,31 @@ backend/internal/api/crash_guard.go
 frontend/src/pages/Monitor.tsx
 ```
 
-## 11. PalDefender 与 GM 命令
+## 11. 通知与事件中心
+
+事件中心把监控告警、崩溃守卫和失败任务归并为可跟踪的故障对象。它不是日志镜像，禁止存储原始日志、文件路径、命令行或未脱敏错误正文。
+
+维护规则：
+
+- 相同根因必须使用稳定 `dedupe_key` 归并，重复发生只增加次数和时间线；已解决事件再次发生时自动重新打开。
+- 事件状态仅允许 `open`、`acknowledged`、`resolved`；确认、解决和重新打开必须写入时间线并进入操作审计。
+- 后台任务事件只保存任务 ID、任务类型和稳定错误码，不保存 `job.error` 原文。
+- 监控告警的确认与解决必须同步到对应事件；崩溃守卫恢复时必须解决 `crash-guard` 来源事件。
+- Webhook 只能通过环境变量启用，远程目标必须使用 HTTPS；HTTP 只允许回环地址。URL 不允许用户信息、查询参数或片段。
+- Webhook 请求必须使用 HMAC-SHA256 签名，签名密钥不得返回 API、日志或前端；载荷只包含脱敏事件、状态变更和固定产品元数据。
+- 投递采用至少一次语义，接收方必须按 `X-PalPanel-Delivery` 去重。禁止因投递失败再创建新的事件，避免递归风暴。
+- 最多重试 6 次；已解决事件默认保留 90 天。事件写入和状态转换必须串行化，避免并发唯一键冲突或状态覆盖。
+
+关键文件：
+
+```text
+backend/internal/db/incidents.go
+backend/internal/incidents/service.go
+backend/internal/api/incidents.go
+frontend/src/pages/Incidents.tsx
+```
+
+## 12. PalDefender 与 GM 命令
 
 PalDefender 同时使用 REST 和 Source RCON：
 
@@ -328,7 +352,7 @@ frontend/src/pages/PlayerCenter.tsx
 - 审计结果
 - 是否存在危险的自动重试
 
-## 12. 玩家身份归并
+## 13. 玩家身份归并
 
 同一个玩家可能同时出现：
 
@@ -359,7 +383,7 @@ frontend/src/pages/PlayerCenter.tsx
 frontend/src/pages/StarterGift.tsx
 ```
 
-## 13. 新玩家礼包状态
+## 14. 新玩家礼包状态
 
 礼包状态至少区分：
 
@@ -389,7 +413,7 @@ frontend/src/pages/StarterGift.tsx
 - 选择“手工作业”必须能匹配“手工作业 + 播种”等复合用途。
 - 必须提供一键清空筛选。
 
-## 14. OpenAPI 与接口维护
+## 15. OpenAPI 与接口维护
 
 后端接口变更时必须同步：
 
@@ -415,7 +439,7 @@ frontend/src/pages/StarterGift.tsx
 
 不要用一个笼统的 `500` 覆盖所有失败。
 
-## 15. 安全边界
+## 16. 安全边界
 
 - 浏览器不能提交任意 RCON 命令。
 - 后端只能暴露有类型、有验证的管理动作。
@@ -427,7 +451,7 @@ frontend/src/pages/StarterGift.tsx
 - 存档解析保持只读，不允许浏览器直接获得原始 `.sav`。
 - 更新替换必须保留备份和启动失败回滚能力。
 
-## 16. 提交建议
+## 17. 提交建议
 
 ### PalPanelBridge 技术预览
 
@@ -449,7 +473,7 @@ docs: add release notes for 0.8.24
 
 同一尚未发布功能可以在发布前整理提交。已经发布的提交不要改写 SHA。
 
-## 17. 发布完成检查表
+## 18. 发布完成检查表
 
 - [ ] 自定义版本已递增
 - [ ] OpenAPI 与前端契约已同步

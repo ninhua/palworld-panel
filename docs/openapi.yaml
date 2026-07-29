@@ -422,6 +422,100 @@ paths:
   /alerts/{id}/ack:
     parameters: [*idParameter]
     post: {operationId: acknowledgeAlert, tags: [system], x-palpanel-permission: 'server:control', responses: *writeResponses}
+  /incidents:
+    get:
+      operationId: listIncidents
+      tags: [system]
+      x-palpanel-permission: read
+      parameters:
+        - {name: status, in: query, required: false, schema: {$ref: '#/components/schemas/IncidentStatus'}}
+        - {name: severity, in: query, required: false, schema: {$ref: '#/components/schemas/IncidentSeverity'}}
+        - {name: source, in: query, required: false, schema: {type: string, maxLength: 128}}
+        - {name: q, in: query, required: false, schema: {type: string, maxLength: 256}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, maximum: 1000000, default: 0}}
+      responses:
+        '200':
+          description: Deduplicated incident list and status summary.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/IncidentListEnvelope'}
+        '400': *error
+        '401': *error
+        '500': *error
+  /incidents/{id}:
+    parameters: [*idParameter]
+    get:
+      operationId: getIncident
+      tags: [system]
+      x-palpanel-permission: read
+      responses:
+        '200':
+          description: Incident details, timeline, and redacted delivery state.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/IncidentDetailEnvelope'}
+        '400': *error
+        '401': *error
+        '404': *error
+        '500': *error
+  /incidents/{id}/ack:
+    parameters: [*idParameter]
+    post:
+      operationId: acknowledgeIncident
+      tags: [system]
+      x-palpanel-permission: 'server:control'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IncidentActionRequest'}
+      responses: {'200': {description: Incident acknowledged, content: {application/json: {schema: {$ref: '#/components/schemas/IncidentActionEnvelope'}}}}, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error}
+  /incidents/{id}/resolve:
+    parameters: [*idParameter]
+    post:
+      operationId: resolveIncident
+      tags: [system]
+      x-palpanel-permission: 'server:control'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IncidentActionRequest'}
+      responses: {'200': {description: Incident resolved, content: {application/json: {schema: {$ref: '#/components/schemas/IncidentActionEnvelope'}}}}, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error}
+  /incidents/{id}/reopen:
+    parameters: [*idParameter]
+    post:
+      operationId: reopenIncident
+      tags: [system]
+      x-palpanel-permission: 'server:control'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IncidentActionRequest'}
+      responses: {'200': {description: Incident reopened, content: {application/json: {schema: {$ref: '#/components/schemas/IncidentActionEnvelope'}}}}, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error}
+  /system/incidents/webhook/test:
+    post:
+      operationId: testIncidentWebhook
+      tags: [system]
+      x-palpanel-permission: interactive-admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IncidentWebhookTestRequest'}
+      responses:
+        '200':
+          description: Signed webhook test was delivered.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/IncidentWebhookTestEnvelope'}
+        '400': *error
+        '401': *error
+        '403': *error
+        '409': *error
+        '502': *error
   /schedules:
     get: {operationId: listSchedules, tags: [system], x-palpanel-permission: read, responses: *readResponses}
     post:
@@ -2483,6 +2577,135 @@ components:
       properties:
         waittime: {type: integer, minimum: 5, maximum: 300, default: 60}
         message: {type: string, maxLength: 4096}
+    IncidentSeverity:
+      type: string
+      enum: [info, warning, error, critical]
+    IncidentStatus:
+      type: string
+      enum: [open, acknowledged, resolved]
+    Incident:
+      type: object
+      required: [id, kind, severity, source, title, summary, status, occurrences, first_seen_at, last_seen_at, updated_at]
+      properties:
+        id: {type: string}
+        kind: {type: string}
+        severity: {$ref: '#/components/schemas/IncidentSeverity'}
+        source: {type: string}
+        title: {type: string}
+        summary: {type: string}
+        status: {$ref: '#/components/schemas/IncidentStatus'}
+        occurrences: {type: integer, minimum: 1}
+        first_seen_at: {type: string, format: date-time}
+        last_seen_at: {type: string, format: date-time}
+        acknowledged_at: {type: string, format: date-time}
+        resolved_at: {type: string, format: date-time}
+        details: {type: object, additionalProperties: true}
+        updated_at: {type: string, format: date-time}
+    IncidentEvent:
+      type: object
+      required: [id, incident_id, type, created_at]
+      properties:
+        id: {type: string}
+        incident_id: {type: string}
+        type: {type: string, enum: [opened, occurred, reopened, acknowledged, resolved, delivery_failed]}
+        actor: {type: string}
+        message: {type: string}
+        created_at: {type: string, format: date-time}
+    IncidentDelivery:
+      type: object
+      required: [id, incident_id, event_id, status, attempts, created_at, updated_at]
+      properties:
+        id: {type: string}
+        incident_id: {type: string}
+        event_id: {type: string}
+        status: {type: string, enum: [pending, delivered, failed]}
+        attempts: {type: integer, minimum: 0}
+        next_attempt_at: {type: string, format: date-time}
+        delivered_at: {type: string, format: date-time}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    IncidentWebhookStatus:
+      type: object
+      required: [enabled, signed, timeout_seconds, max_attempts]
+      properties:
+        enabled: {type: boolean}
+        target_host: {type: string}
+        signed: {type: boolean}
+        timeout_seconds: {type: integer, minimum: 1, maximum: 30}
+        max_attempts: {type: integer, minimum: 1}
+    IncidentSummary:
+      type: object
+      required: [open, acknowledged, resolved]
+      properties:
+        open: {type: integer, minimum: 0}
+        acknowledged: {type: integer, minimum: 0}
+        resolved: {type: integer, minimum: 0}
+    IncidentListResult:
+      type: object
+      required: [items, total, limit, offset, summary, webhook]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Incident'}}
+        total: {type: integer, minimum: 0}
+        limit: {type: integer, minimum: 1, maximum: 100}
+        offset: {type: integer, minimum: 0}
+        summary: {$ref: '#/components/schemas/IncidentSummary'}
+        webhook: {$ref: '#/components/schemas/IncidentWebhookStatus'}
+    IncidentListEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/IncidentListResult'}
+    IncidentDetail:
+      type: object
+      required: [incident, events, deliveries]
+      properties:
+        incident: {$ref: '#/components/schemas/Incident'}
+        events: {type: array, items: {$ref: '#/components/schemas/IncidentEvent'}}
+        deliveries: {type: array, items: {$ref: '#/components/schemas/IncidentDelivery'}}
+    IncidentDetailEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/IncidentDetail'}
+    IncidentActionRequest:
+      type: object
+      required: [confirm]
+      additionalProperties: false
+      properties:
+        confirm: {type: boolean, const: true}
+        message: {type: string, maxLength: 2048}
+    IncidentActionResult:
+      type: object
+      required: [incident, event]
+      properties:
+        incident: {$ref: '#/components/schemas/Incident'}
+        event: {$ref: '#/components/schemas/IncidentEvent'}
+    IncidentActionEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/IncidentActionResult'}
+    IncidentWebhookTestRequest:
+      type: object
+      required: [confirm]
+      additionalProperties: false
+      properties:
+        confirm: {type: boolean, const: true}
+    IncidentWebhookTestResult:
+      type: object
+      required: [delivered, target_host]
+      properties:
+        delivered: {type: boolean, const: true}
+        target_host: {type: string}
+    IncidentWebhookTestEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: {type: boolean, const: true}
+        data: {$ref: '#/components/schemas/IncidentWebhookTestResult'}
     CrashGuardEvent:
       type: object
       additionalProperties: false
@@ -3485,7 +3708,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.36}
+            version: {type: string, const: 0.8.37}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

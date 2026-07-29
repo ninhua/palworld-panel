@@ -492,6 +492,99 @@ export interface components {
       "data": components["schemas"]["ImportInspection"];
       "ok": true;
     };
+    "Incident": {
+      "acknowledged_at"?: string;
+      "details"?: Record<string, unknown>;
+      "first_seen_at": string;
+      "id": string;
+      "kind": string;
+      "last_seen_at": string;
+      "occurrences": number;
+      "resolved_at"?: string;
+      "severity": components["schemas"]["IncidentSeverity"];
+      "source": string;
+      "status": components["schemas"]["IncidentStatus"];
+      "summary": string;
+      "title": string;
+      "updated_at": string;
+    };
+    "IncidentActionEnvelope": {
+      "data": components["schemas"]["IncidentActionResult"];
+      "ok": true;
+    };
+    "IncidentActionRequest": {
+      "confirm": true;
+      "message"?: string;
+    };
+    "IncidentActionResult": {
+      "event": components["schemas"]["IncidentEvent"];
+      "incident": components["schemas"]["Incident"];
+    };
+    "IncidentDelivery": {
+      "attempts": number;
+      "created_at": string;
+      "delivered_at"?: string;
+      "event_id": string;
+      "id": string;
+      "incident_id": string;
+      "next_attempt_at"?: string;
+      "status": "pending" | "delivered" | "failed";
+      "updated_at": string;
+    };
+    "IncidentDetail": {
+      "deliveries": Array<components["schemas"]["IncidentDelivery"]>;
+      "events": Array<components["schemas"]["IncidentEvent"]>;
+      "incident": components["schemas"]["Incident"];
+    };
+    "IncidentDetailEnvelope": {
+      "data": components["schemas"]["IncidentDetail"];
+      "ok": true;
+    };
+    "IncidentEvent": {
+      "actor"?: string;
+      "created_at": string;
+      "id": string;
+      "incident_id": string;
+      "message"?: string;
+      "type": "opened" | "occurred" | "reopened" | "acknowledged" | "resolved" | "delivery_failed";
+    };
+    "IncidentListEnvelope": {
+      "data": components["schemas"]["IncidentListResult"];
+      "ok": true;
+    };
+    "IncidentListResult": {
+      "items": Array<components["schemas"]["Incident"]>;
+      "limit": number;
+      "offset": number;
+      "summary": components["schemas"]["IncidentSummary"];
+      "total": number;
+      "webhook": components["schemas"]["IncidentWebhookStatus"];
+    };
+    "IncidentSeverity": "info" | "warning" | "error" | "critical";
+    "IncidentStatus": "open" | "acknowledged" | "resolved";
+    "IncidentSummary": {
+      "acknowledged": number;
+      "open": number;
+      "resolved": number;
+    };
+    "IncidentWebhookStatus": {
+      "enabled": boolean;
+      "max_attempts": number;
+      "signed": boolean;
+      "target_host"?: string;
+      "timeout_seconds": number;
+    };
+    "IncidentWebhookTestEnvelope": {
+      "data": components["schemas"]["IncidentWebhookTestResult"];
+      "ok": true;
+    };
+    "IncidentWebhookTestRequest": {
+      "confirm": true;
+    };
+    "IncidentWebhookTestResult": {
+      "delivered": true;
+      "target_host": string;
+    };
     "Job": {
       "created_at": string;
       "error"?: string;
@@ -1113,7 +1206,7 @@ export interface components {
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/palworld-panel";
-        "version": "0.8.36";
+        "version": "0.8.37";
       };
       "upstream": {
         "commit": string;
