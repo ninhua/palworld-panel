@@ -23,15 +23,31 @@ export const Security: React.FC = () => {
 
   const load = async () => {
     setLoading(true);
-    const [nextStatus, nextReleases] = await Promise.all([securityApi.status(), securityApi.releases()]);
-    const config =
-      nextStatus.installed && !nextStatus.needs_first_start
-        ? await securityApi.getConfig()
-        : {};
+    const [statusResult, releasesResult] = await Promise.allSettled([securityApi.status(), securityApi.releases()]);
+    if (releasesResult.status === 'fulfilled') {
+      setReleases(releasesResult.value);
+    } else {
+      setReleases([]);
+    }
+    if (statusResult.status === 'rejected') {
+      setStatus(null);
+      setMessage(getErrorMessage(statusResult.reason));
+      setLoading(false);
+      return;
+    }
+    const nextStatus = statusResult.value;
     setStatus(nextStatus);
-    setReleases(nextReleases);
-    setConfigText(JSON.stringify(config, null, 2));
-    setLoading(false);
+    try {
+      const config =
+        nextStatus.installed && !nextStatus.needs_first_start
+          ? await securityApi.getConfig()
+          : {};
+      setConfigText(JSON.stringify(config, null, 2));
+    } catch (error) {
+      setMessage(`PalDefender 本地配置读取失败：${getErrorMessage(error)}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
