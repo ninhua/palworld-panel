@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -618,13 +619,19 @@ func resolveHostMigrationBinary(ctx context.Context) (string, error) {
 	}
 	var bootstrapErr error
 	if executable, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(executable), "palworld-uid-remap")
+		helperName := "palworld-uid-remap"
+		if runtime.GOOS == "windows" {
+			helperName += ".exe"
+		}
+		candidate := filepath.Join(filepath.Dir(executable), helperName)
 		if hostMigrationHelperMatches(candidate) {
 			return candidate, nil
 		}
-		bootstrapErr = bootstrapHostMigrationHelper(ctx, candidate)
-		if bootstrapErr == nil {
-			return candidate, nil
+		if runtime.GOOS == "linux" {
+			bootstrapErr = bootstrapHostMigrationHelper(ctx, candidate)
+			if bootstrapErr == nil {
+				return candidate, nil
+			}
 		}
 	}
 	if candidate, err := exec.LookPath("palworld-uid-remap"); err == nil {
@@ -752,7 +759,7 @@ func extractHostMigrationHelperArchive(archivePath, destination string) error {
 		if filepath.IsAbs(header.Name) || clean == ".." || strings.HasPrefix(clean, "../") {
 			return fmt.Errorf("unsafe archive path: %s", header.Name)
 		}
-		if !strings.HasSuffix(clean, "/overlay/bin/palworld-uid-remap") {
+		if !strings.HasSuffix(clean, "/bin/palworld-uid-remap") {
 			continue
 		}
 		if header.Typeflag != tar.TypeReg || header.Size <= 0 || header.Size > 128<<20 {

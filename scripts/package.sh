@@ -64,6 +64,8 @@ if (( ! skip_tests )); then
   (cd "$root_dir/backend" && go test -p=1 ./...)
   printf '[palpanel] Running sav-cli tests with cgo\n'
   (cd "$root_dir/sav-cli" && CGO_ENABLED=1 go test -p=1 ./...)
+  printf '[palpanel] Running UID remapper tests\n'
+  (cd "$root_dir/tools/palworld-uid-remap" && cargo test --locked)
   printf '[palpanel] Installing frontend dependencies\n'
   (cd "$root_dir/frontend" && npm ci)
   printf '[palpanel] Running frontend checks\n'
@@ -120,10 +122,20 @@ build_linux() {
   rm -rf "$package_dir" "$archive"
   copy_common_files "$package_dir"
 
+  printf '[palpanel] Building UID remapper linux-%s\n' "$arch"
+  (cd "$root_dir/tools/palworld-uid-remap" && CARGO_TARGET_DIR="$staging_dir/uid-remapper-linux-$arch" cargo build --locked --release)
+  cp "$staging_dir/uid-remapper-linux-$arch/release/palworld-uid-remap" "$package_dir/bin/palworld-uid-remap"
+  local helper_sha256
+  helper_sha256="$(sha256sum "$package_dir/bin/palworld-uid-remap" | cut -d ' ' -f 1)"
+  [[ "$helper_sha256" =~ ^[0-9a-f]{64}$ ]] || {
+    printf 'Unable to calculate UID remapper SHA-256\n' >&2
+    exit 69
+  }
   local backend_ldflags="-s -w -X palpanel/internal/buildinfo.Version=$version -X palpanel/internal/buildinfo.Commit=$commit -X palpanel/internal/buildinfo.BuildTime=$build_time"
+  local palpanel_ldflags="$backend_ldflags -X palpanel/internal/api.hostMigrationHelperSHA256=$helper_sha256"
   local sav_ldflags="-s -w -X palpanel/sav-cli/internal/buildinfo.Version=$version -X palpanel/sav-cli/internal/buildinfo.Commit=$commit -X palpanel/sav-cli/internal/buildinfo.BuildTime=$build_time"
   printf '[palpanel] Building backend linux-%s\n' "$arch"
-  (cd "$root_dir/backend" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -tags embed_webui -trimpath -ldflags "$backend_ldflags" -o "$package_dir/bin/palpanel" ./cmd/palpanel)
+  (cd "$root_dir/backend" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -tags embed_webui -trimpath -ldflags "$palpanel_ldflags" -o "$package_dir/bin/palpanel" ./cmd/palpanel)
   printf '[palpanel] Building external updater linux-%s\n' "$arch"
   (cd "$root_dir/backend" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "$backend_ldflags" -o "$package_dir/bin/palpanel-updater" ./cmd/palpanel-updater)
   printf '[palpanel] Building cgo sav-cli linux-%s\n' "$arch"
@@ -133,7 +145,7 @@ build_linux() {
   # endpoint is unavailable. GitHub CI explicitly enables the online audit.
   DOTNET_CLI_UI_LANGUAGE=en dotnet publish "$root_dir/palcalc-bridge/PalCalc.Bridge.csproj" -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:InvariantGlobalization=true "-p:NuGetAudit=$nuget_audit" -o "$staging_dir/palcalc-linux"
   cp "$staging_dir/palcalc-linux/palcalc-bridge" "$package_dir/bin/palcalc-bridge"
-  chmod 755 "$package_dir/bin/palpanel" "$package_dir/bin/palpanel-updater" "$package_dir/bin/sav-cli" "$package_dir/bin/palcalc-bridge"
+  chmod 755 "$package_dir/bin/palpanel" "$package_dir/bin/palpanel-updater" "$package_dir/bin/sav-cli" "$package_dir/bin/palcalc-bridge" "$package_dir/bin/palworld-uid-remap"
 
   (cd "$package_dir" && find . -type f ! -name checksums.txt -print0 | sort -z | xargs -0 sha256sum) >"$checksum_tmp"
   mv "$checksum_tmp" "$package_dir/checksums.txt"

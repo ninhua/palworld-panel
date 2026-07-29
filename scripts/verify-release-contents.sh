@@ -17,6 +17,7 @@ required=(
   '/bin/palpanel-updater'
   '/bin/sav-cli'
   '/bin/palcalc-bridge'
+  '/bin/palworld-uid-remap'
   '/palpanelctl'
   '/config/palpanel.env.example'
   '/systemd/palpanel.service'
@@ -44,6 +45,15 @@ trap 'rm -rf "$tmp"' EXIT
 tar -xzf "$archive" -C "$tmp"
 package_dir="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d -print -quit)"
 (cd "$package_dir" && sha256sum -c checksums.txt >/dev/null)
+helper_sha256="$(awk '$2 == "./bin/palworld-uid-remap" { print $1 }' "$package_dir/checksums.txt")"
+[[ "$helper_sha256" =~ ^[0-9a-f]{64}$ ]] || {
+  printf 'release checksums do not contain a valid UID remapper SHA-256\n' >&2
+  exit 1
+}
+grep -aFq "$helper_sha256" "$package_dir/bin/palpanel" || {
+  printf 'panel binary does not embed the packaged UID remapper SHA-256\n' >&2
+  exit 1
+}
 if grep -RInI -E 'STEAM_WEB_API_KEY[[:space:]]*=[[:space:]]*[A-Za-z0-9_+/=-]{20,}' "$package_dir" --exclude='checksums.txt'; then
   printf 'release archive contains a configured secret\n' >&2
   exit 1

@@ -272,7 +272,7 @@ func TestExtractHostMigrationHelperArchive(t *testing.T) {
 	tarWriter := tar.NewWriter(gzipWriter)
 	body := []byte("uid-remapper")
 	if err := tarWriter.WriteHeader(&tar.Header{
-		Name:     "release/overlay/bin/palworld-uid-remap",
+		Name:     "release/bin/palworld-uid-remap",
 		Mode:     0o755,
 		Size:     int64(len(body)),
 		Typeflag: tar.TypeReg,

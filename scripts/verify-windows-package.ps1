@@ -94,6 +94,7 @@ try {
     "palpanel-server.exe",
     "sav-cli.exe",
     "palcalc-bridge.exe",
+    "palworld-uid-remap.exe",
     "config\palpanel.env.example",
     "LICENSE",
     "THIRD_PARTY_LICENSES.txt",

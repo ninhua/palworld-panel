@@ -46,10 +46,12 @@ $PreviousTemp = $env:TEMP
 $PreviousTmp = $env:TMP
 $PreviousGoCache = $env:GOCACHE
 $PreviousNpmCache = $env:NPM_CONFIG_CACHE
+$PreviousCargoTargetDir = $env:CARGO_TARGET_DIR
 $env:TEMP = $PackageTemp
 $env:TMP = $PackageTemp
 $env:GOCACHE = Join-Path $PackageTemp "go-cache"
 $env:NPM_CONFIG_CACHE = Join-Path $PackageTemp "npm-cache"
+$env:CARGO_TARGET_DIR = Join-Path $PackageTemp "cargo-target"
 New-Item -ItemType Directory -Force -Path $env:GOCACHE | Out-Null
 New-Item -ItemType Directory -Force -Path $env:NPM_CONFIG_CACHE | Out-Null
 $PackageSucceeded = $false
@@ -199,6 +201,7 @@ try {
 
 if (-not $SkipTests) {
   Invoke-GoTestsWithWindowsLockRetry (Join-Path $RootDir "backend")
+  Invoke-External "cargo.exe" @("test", "--locked") (Join-Path $RootDir "tools\palworld-uid-remap")
   $oldCgo = $env:CGO_ENABLED
   $oldCc = $env:CC
   $oldCxx = $env:CXX
@@ -250,7 +253,6 @@ Copy-Item -Force (Join-Path $RootDir "third_party\palcalc\LICENSE.txt") (Join-Pa
 Copy-Item -Force (Join-Path $RootDir "backend\internal\pallocalize\LICENSE.apache-2.0") (Join-Path $PackageDir "licenses\pallocalize-Apache-2.0.txt")
 Copy-Item -Force (Join-Path $RootDir "backend\internal\paldefender\assets\LICENSE.txt") (Join-Path $PackageDir "licenses\PalDefender-MIT.txt")
 
-$backendLdflags = "-s -w -X palpanel/internal/buildinfo.Version=$Version -X palpanel/internal/buildinfo.Commit=$Commit -X palpanel/internal/buildinfo.BuildTime=$BuildTime"
 $savLdflags = "-s -w -X palpanel/sav-cli/internal/buildinfo.Version=$Version -X palpanel/sav-cli/internal/buildinfo.Commit=$Commit -X palpanel/sav-cli/internal/buildinfo.BuildTime=$BuildTime"
 $oldGoos = $env:GOOS
 $oldGoarch = $env:GOARCH
@@ -265,7 +267,16 @@ try {
   $env:GOOS = "windows"
   $env:GOARCH = "amd64"
   $env:CGO_ENABLED = "0"
-  Invoke-GoBuildWithWindowsLockRetry -Arguments @("build", "-tags", "embed_webui", "-trimpath", "-ldflags", $backendLdflags, "-o", (Join-Path $PackageDir "palpanel-server.exe"), "./cmd/palpanel") -WorkingDirectory (Join-Path $RootDir "backend")
+  Invoke-External "cargo.exe" @("build", "--locked", "--release") (Join-Path $RootDir "tools\palworld-uid-remap")
+  $UidRemapper = Join-Path $PackageDir "palworld-uid-remap.exe"
+  Copy-Item -Force (Join-Path $env:CARGO_TARGET_DIR "release\palworld-uid-remap.exe") $UidRemapper
+  $UidRemapperSHA256 = Get-FileSHA256WithWindowsLockRetry -Path $UidRemapper
+  if ($UidRemapperSHA256 -notmatch '^[0-9a-f]{64}$') {
+    throw "Unable to calculate UID remapper SHA-256"
+  }
+  $backendLdflags = "-s -w -X palpanel/internal/buildinfo.Version=$Version -X palpanel/internal/buildinfo.Commit=$Commit -X palpanel/internal/buildinfo.BuildTime=$BuildTime"
+  $palpanelLdflags = "$backendLdflags -X palpanel/internal/api.hostMigrationHelperSHA256=$UidRemapperSHA256"
+  Invoke-GoBuildWithWindowsLockRetry -Arguments @("build", "-tags", "embed_webui", "-trimpath", "-ldflags", $palpanelLdflags, "-o", (Join-Path $PackageDir "palpanel-server.exe"), "./cmd/palpanel") -WorkingDirectory (Join-Path $RootDir "backend")
   Invoke-GoBuildWithWindowsLockRetry -Arguments @("build", "-trimpath", "-ldflags", "$backendLdflags -H windowsgui", "-o", (Join-Path $PackageDir "PalPanel.exe"), "./cmd/palpanel-launcher") -WorkingDirectory (Join-Path $RootDir "backend")
 
   $env:CGO_ENABLED = "1"
@@ -305,6 +316,7 @@ Compress-Archive -Path $PackageDir -DestinationPath $Archive -Force
   $env:TMP = $PreviousTmp
   $env:GOCACHE = $PreviousGoCache
   $env:NPM_CONFIG_CACHE = $PreviousNpmCache
+  $env:CARGO_TARGET_DIR = $PreviousCargoTargetDir
   if ($PackageSucceeded -and (Test-Path -LiteralPath $PackageTemp)) {
     $previousErrorActionPreference = $ErrorActionPreference
     try {

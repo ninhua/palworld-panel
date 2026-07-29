@@ -192,6 +192,7 @@ ninhua/palworld-panel
 - 未启用托管代理时保持直连；设置了 `HTTPS_PROXY` 时，默认 HTTP Transport 可使用环境代理。
 - 代理不是强制配置，不能在未启用时偷偷切换到第三方公共镜像。
 - Release 下载必须继续校验 `SHA256SUMS`；root 更新器必须独立进行第二次官方校验。
+- Linux/Windows 正式包必须包含 `palworld-uid-remap`；打包时必须先构建 helper、计算 SHA-256，再通过 `palpanel/internal/api.hostMigrationHelperSHA256` 注入面板后端。不要调整为后端先构建，否则旧安装无法安全自举 helper。
 - 从旧版首次升级到 `0.8.29` 时，需要通过安装脚本或手动运行新版 `palpanelctl install` 安装更新器和 systemd 路径单元。
 
 关键文件：
