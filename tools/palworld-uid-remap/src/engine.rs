@@ -247,7 +247,7 @@ pub fn remap_world(
     let mut opaque_candidates = Vec::new();
     let mut semantic_after = BTreeMap::new();
     for relative in sav_files(&stage_manifest) {
-        let path = stage.path().join(relative.replace('/', "\\"));
+        let path = stage.path().join(&relative);
         let save = parse_save(&path)?;
         reject_opaque_candidates(&scan_opaque_bytes(
             &save.extra,
@@ -397,7 +397,7 @@ fn collect_unrelated_baseline(
         if relative == "Level.sav" || mapped_source_relative(&relative, mapping) {
             continue;
         }
-        let save = parse_save(&input.join(relative.replace('/', "\\")))?;
+        let save = parse_save(&input.join(&relative))?;
         collect_target_baseline(&save, mapping, &relative, target_counts)?;
         semantic.insert(relative, semantic_fingerprint(&save, mapping)?);
     }
