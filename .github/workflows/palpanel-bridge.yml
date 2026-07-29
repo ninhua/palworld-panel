@@ -61,18 +61,44 @@ jobs:
             -OutputDir "$env:RUNNER_TEMP\palpanel-bridge-build" `
             -RustCompiler $rustc
 
-      - name: Complete artifact metadata
+      - name: Create server-ready mod package
         shell: pwsh
         run: |
           $artifact = "$env:RUNNER_TEMP\palpanel-bridge-build\artifact\PalPanelBridge"
-          Copy-Item "$env:RUNNER_TEMP\RE-UE4SS\LICENSE" "$artifact\UE4SS-LICENSE.txt"
-          Get-FileHash "$artifact\dlls\main.dll" -Algorithm SHA256 |
+          $packageRoot = "$env:RUNNER_TEMP\palpanel-bridge-package"
+          $package = Join-Path $packageRoot "PalPanelBridge"
+          $zip = "$env:RUNNER_TEMP\PalPanelBridge-v0.1.0-ue4ss-v3.0.1.zip"
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+          Copy-Item -LiteralPath $artifact -Destination $package -Recurse
+          Copy-Item -LiteralPath "$package\config.ini.example" -Destination "$package\config.ini"
+          New-Item -ItemType File -Force -Path "$package\enabled.txt" | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\RE-UE4SS\LICENSE" "$package\UE4SS-LICENSE.txt"
+          Get-FileHash "$package\dlls\main.dll" -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash.ToLowerInvariant()) *dlls/main.dll" } |
-            Set-Content -Encoding ascii "$artifact\SHA256SUMS"
+            Set-Content -Encoding ascii "$package\SHA256SUMS"
+          Compress-Archive -LiteralPath $package -DestinationPath $zip -CompressionLevel Optimal
+
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
+          try {
+            $entries = $archive.Entries.FullName
+            $required = @(
+              "PalPanelBridge/dlls/main.dll",
+              "PalPanelBridge/config.ini",
+              "PalPanelBridge/enabled.txt",
+              "PalPanelBridge/SHA256SUMS"
+            )
+            foreach ($entry in $required) {
+              if ($entry -notin $entries) {
+                throw "Server package is missing required entry: $entry"
+              }
+            }
+          } finally {
+            $archive.Dispose()
+          }
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PalPanelBridge-v0.1.0-ue4ss-v3.0.1
+          name: PalPanelBridge-v0.1.0-ue4ss-v3.0.1-server-package
           if-no-files-found: error
           retention-days: 14
-          path: ${{ runner.temp }}/palpanel-bridge-build/artifact/PalPanelBridge
+          path: ${{ runner.temp }}/PalPanelBridge-v0.1.0-ue4ss-v3.0.1.zip
