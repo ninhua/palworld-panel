@@ -6,6 +6,9 @@ export interface StarterGiftConfig {
   enabled: boolean;
   items: StarterGiftItem[];
   pal_templates: string[];
+  technology_mode: 'none' | 'unlock_all' | 'grant_points';
+  technology_points: number;
+  ancient_technology_points: number;
   item_batch_size: number;
   template_batch_size: number;
   batch_delay_ms: number;
@@ -33,6 +36,10 @@ export interface StarterGiftGrant {
   resolved_player_id?: string;
   next_item: number;
   next_template: number;
+  technology_done: boolean;
+  technology_mode: 'none' | 'unlock_all' | 'grant_points' | string;
+  technology_points: number;
+  ancient_technology_points: number;
   item_total: number;
   template_total: number;
   progress_percent: number;
@@ -104,6 +111,9 @@ const emptyConfig: StarterGiftConfig = {
   enabled: false,
   items: [],
   pal_templates: [],
+  technology_mode: 'none',
+  technology_points: 0,
+  ancient_technology_points: 0,
   item_batch_size: 20,
   template_batch_size: 5,
   batch_delay_ms: 500,
@@ -129,6 +139,9 @@ const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
         return { item_id: String(item.item_id || ''), count: Number(item.count || 0) };
       }),
       pal_templates: strings(config.pal_templates),
+      technology_mode: ['unlock_all', 'grant_points'].includes(String(config.technology_mode)) ? String(config.technology_mode) as 'unlock_all' | 'grant_points' : 'none',
+      technology_points: Number(config.technology_points || 0),
+      ancient_technology_points: Number(config.ancient_technology_points || 0),
       item_batch_size: Number(config.item_batch_size || emptyConfig.item_batch_size),
       template_batch_size: Number(config.template_batch_size || emptyConfig.template_batch_size),
       batch_delay_ms: Number(config.batch_delay_ms || emptyConfig.batch_delay_ms),
@@ -148,6 +161,10 @@ const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
         resolved_player_id: optionalString(grant.resolved_player_id),
         next_item: Number(grant.next_item || 0),
         next_template: Number(grant.next_template || 0),
+        technology_done: Boolean(grant.technology_done),
+        technology_mode: String(grant.technology_mode || 'none'),
+        technology_points: Number(grant.technology_points || 0),
+        ancient_technology_points: Number(grant.ancient_technology_points || 0),
         item_total: Number(grant.item_total || 0),
         template_total: Number(grant.template_total || 0),
         progress_percent: Number(grant.progress_percent || 0),

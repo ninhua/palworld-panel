@@ -28,6 +28,10 @@ const (
 	MaxItems        = 500
 	MaxPalTemplates = 500
 
+	TechnologyModeNone        = "none"
+	TechnologyModeUnlockAll   = "unlock_all"
+	TechnologyModeGrantPoints = "grant_points"
+
 	starterGiftWorkerTimeout = 3 * time.Hour
 )
 
@@ -46,12 +50,15 @@ type ItemGrant struct {
 }
 
 type Config struct {
-	Enabled           bool        `json:"enabled"`
-	Items             []ItemGrant `json:"items"`
-	PalTemplates      []string    `json:"pal_templates"`
-	ItemBatchSize     int         `json:"item_batch_size"`
-	TemplateBatchSize int         `json:"template_batch_size"`
-	BatchDelayMS      int         `json:"batch_delay_ms"`
+	Enabled                 bool        `json:"enabled"`
+	Items                   []ItemGrant `json:"items"`
+	PalTemplates            []string    `json:"pal_templates"`
+	TechnologyMode          string      `json:"technology_mode"`
+	TechnologyPoints        int64       `json:"technology_points"`
+	AncientTechnologyPoints int64       `json:"ancient_technology_points"`
+	ItemBatchSize           int         `json:"item_batch_size"`
+	TemplateBatchSize       int         `json:"template_batch_size"`
+	BatchDelayMS            int         `json:"batch_delay_ms"`
 }
 
 type GrantEvent struct {
@@ -66,50 +73,58 @@ type GrantEvent struct {
 }
 
 type grantRecord struct {
-	PlayerID         string       `json:"player_id"`
-	PlayerUID        string       `json:"player_uid,omitempty"`
-	SteamID          string       `json:"steam_id,omitempty"`
-	Nickname         string       `json:"nickname,omitempty"`
-	Status           string       `json:"status"`
-	Phase            string       `json:"phase,omitempty"`
-	DetectionSource  string       `json:"detection_source,omitempty"`
-	DetectionReason  string       `json:"detection_reason,omitempty"`
-	Manual           bool         `json:"manual,omitempty"`
-	ResolvedPlayerID string       `json:"resolved_player_id,omitempty"`
-	NextItem         int          `json:"next_item"`
-	NextTemplate     int          `json:"next_template"`
-	Attempts         int          `json:"attempts"`
-	FirstSeenAt      string       `json:"first_seen_at"`
-	UpdatedAt        string       `json:"updated_at"`
-	CompletedAt      string       `json:"completed_at,omitempty"`
-	LastError        string       `json:"last_error,omitempty"`
-	PlanItems        []ItemGrant  `json:"plan_items,omitempty"`
-	PlanTemplates    []string     `json:"plan_templates,omitempty"`
-	Events           []GrantEvent `json:"events,omitempty"`
+	PlayerID                    string       `json:"player_id"`
+	PlayerUID                   string       `json:"player_uid,omitempty"`
+	SteamID                     string       `json:"steam_id,omitempty"`
+	Nickname                    string       `json:"nickname,omitempty"`
+	Status                      string       `json:"status"`
+	Phase                       string       `json:"phase,omitempty"`
+	DetectionSource             string       `json:"detection_source,omitempty"`
+	DetectionReason             string       `json:"detection_reason,omitempty"`
+	Manual                      bool         `json:"manual,omitempty"`
+	ResolvedPlayerID            string       `json:"resolved_player_id,omitempty"`
+	NextItem                    int          `json:"next_item"`
+	NextTemplate                int          `json:"next_template"`
+	TechnologyDone              bool         `json:"technology_done"`
+	Attempts                    int          `json:"attempts"`
+	FirstSeenAt                 string       `json:"first_seen_at"`
+	UpdatedAt                   string       `json:"updated_at"`
+	CompletedAt                 string       `json:"completed_at,omitempty"`
+	LastError                   string       `json:"last_error,omitempty"`
+	PlanItems                   []ItemGrant  `json:"plan_items,omitempty"`
+	PlanTemplates               []string     `json:"plan_templates,omitempty"`
+	PlanTechnologyMode          string       `json:"plan_technology_mode,omitempty"`
+	PlanTechnologyPoints        int64        `json:"plan_technology_points,omitempty"`
+	PlanAncientTechnologyPoints int64        `json:"plan_ancient_technology_points,omitempty"`
+	Events                      []GrantEvent `json:"events,omitempty"`
 }
 
 type Grant struct {
-	PlayerID         string       `json:"player_id"`
-	PlayerUID        string       `json:"player_uid,omitempty"`
-	SteamID          string       `json:"steam_id,omitempty"`
-	Nickname         string       `json:"nickname,omitempty"`
-	Status           string       `json:"status"`
-	Phase            string       `json:"phase,omitempty"`
-	DetectionSource  string       `json:"detection_source,omitempty"`
-	DetectionReason  string       `json:"detection_reason,omitempty"`
-	Manual           bool         `json:"manual,omitempty"`
-	ResolvedPlayerID string       `json:"resolved_player_id,omitempty"`
-	NextItem         int          `json:"next_item"`
-	NextTemplate     int          `json:"next_template"`
-	ItemTotal        int          `json:"item_total"`
-	TemplateTotal    int          `json:"template_total"`
-	ProgressPercent  int          `json:"progress_percent"`
-	Attempts         int          `json:"attempts"`
-	FirstSeenAt      string       `json:"first_seen_at"`
-	UpdatedAt        string       `json:"updated_at"`
-	CompletedAt      string       `json:"completed_at,omitempty"`
-	LastError        string       `json:"last_error,omitempty"`
-	Events           []GrantEvent `json:"events,omitempty"`
+	PlayerID                string       `json:"player_id"`
+	PlayerUID               string       `json:"player_uid,omitempty"`
+	SteamID                 string       `json:"steam_id,omitempty"`
+	Nickname                string       `json:"nickname,omitempty"`
+	Status                  string       `json:"status"`
+	Phase                   string       `json:"phase,omitempty"`
+	DetectionSource         string       `json:"detection_source,omitempty"`
+	DetectionReason         string       `json:"detection_reason,omitempty"`
+	Manual                  bool         `json:"manual,omitempty"`
+	ResolvedPlayerID        string       `json:"resolved_player_id,omitempty"`
+	NextItem                int          `json:"next_item"`
+	NextTemplate            int          `json:"next_template"`
+	TechnologyDone          bool         `json:"technology_done"`
+	TechnologyMode          string       `json:"technology_mode"`
+	TechnologyPoints        int64        `json:"technology_points"`
+	AncientTechnologyPoints int64        `json:"ancient_technology_points"`
+	ItemTotal               int          `json:"item_total"`
+	TemplateTotal           int          `json:"template_total"`
+	ProgressPercent         int          `json:"progress_percent"`
+	Attempts                int          `json:"attempts"`
+	FirstSeenAt             string       `json:"first_seen_at"`
+	UpdatedAt               string       `json:"updated_at"`
+	CompletedAt             string       `json:"completed_at,omitempty"`
+	LastError               string       `json:"last_error,omitempty"`
+	Events                  []GrantEvent `json:"events,omitempty"`
 }
 
 type PlayerDecision struct {
@@ -151,6 +166,8 @@ type Dispatcher interface {
 	ResolvePlayer(context.Context, []string) (string, error)
 	GiveItems(context.Context, string, []ItemGrant) error
 	GivePalTemplates(context.Context, string, []string) error
+	UnlockAllTechnology(context.Context, string) error
+	GiveTechnologyPoints(context.Context, string, int64, int64) error
 }
 
 type palDefenderDispatcher struct{ manager paldefender.Manager }
@@ -207,8 +224,25 @@ func (d palDefenderDispatcher) GivePalTemplates(ctx context.Context, player stri
 	return err
 }
 
+func (d palDefenderDispatcher) UnlockAllTechnology(ctx context.Context, player string) error {
+	_, err := d.manager.RESTLearnTechnology(ctx, player, paldefender.TechnologyRequest{Technology: "All"})
+	return err
+}
+
+func (d palDefenderDispatcher) GiveTechnologyPoints(ctx context.Context, player string, points, ancientPoints int64) error {
+	request := paldefender.GiveProgressionRequest{}
+	if points > 0 {
+		request.TechnologyPoints = &points
+	}
+	if ancientPoints > 0 {
+		request.AncientTechnologyPoints = &ancientPoints
+	}
+	_, err := d.manager.RESTGiveProgression(ctx, player, request)
+	return err
+}
+
 func DefaultConfig() Config {
-	return Config{ItemBatchSize: 20, TemplateBatchSize: 5, BatchDelayMS: 500}
+	return Config{TechnologyMode: TechnologyModeNone, ItemBatchSize: 20, TemplateBatchSize: 5, BatchDelayMS: 500}
 }
 
 func EmptyState() State {
@@ -586,6 +620,12 @@ func mergeGrantRecord(target *grantRecord, source grantRecord) {
 	if target.Nickname == "" {
 		target.Nickname = source.Nickname
 	}
+	if target.PlanTechnologyMode == "" || target.PlanTechnologyMode == TechnologyModeNone {
+		target.PlanTechnologyMode = source.PlanTechnologyMode
+		target.PlanTechnologyPoints = source.PlanTechnologyPoints
+		target.PlanAncientTechnologyPoints = source.PlanAncientTechnologyPoints
+		target.TechnologyDone = source.TechnologyDone
+	}
 	if target.FirstSeenAt == "" || source.FirstSeenAt != "" && source.FirstSeenAt < target.FirstSeenAt {
 		target.FirstSeenAt = source.FirstSeenAt
 	}
@@ -899,11 +939,22 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
 			batchEnd = min(grant.NextTemplate+config.TemplateBatchSize, len(grant.PlanTemplates))
 			grant.Phase = "templates"
 			appendGrantBatchEvent(&grant, "templates", "info", fmt.Sprintf("开始发放帕鲁模板批次 %d–%d / %d。", batchStart+1, batchEnd, len(grant.PlanTemplates)), grant.UpdatedAt, 0, 0, batchStart, batchEnd)
+		} else if !grant.TechnologyDone && grant.PlanTechnologyMode != TechnologyModeNone {
+			batchKind = "technology"
+			grant.Phase = "technology"
+			if grant.PlanTechnologyMode == TechnologyModeUnlockAll {
+				appendGrantEvent(&grant, "technology", "info", "开始为新玩家解锁全部科技。", grant.UpdatedAt)
+			} else {
+				appendGrantEvent(&grant, "technology", "info", fmt.Sprintf(
+					"开始为新玩家发放普通科技点 %d、古代科技点 %d。",
+					grant.PlanTechnologyPoints, grant.PlanAncientTechnologyPoints,
+				), grant.UpdatedAt)
+			}
 		} else {
 			grant.Status = "success"
 			grant.Phase = "completed"
 			grant.CompletedAt = grant.UpdatedAt
-			appendGrantEvent(&grant, "completed", "success", "所有物品与帕鲁模板均已完成。", grant.UpdatedAt)
+			appendGrantEvent(&grant, "completed", "success", "所有初始礼包内容均已完成。", grant.UpdatedAt)
 			state.Grants[key] = grant
 			err := saveState(ctx, store, scope, state)
 			stateMu.Unlock()
@@ -922,10 +973,20 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
 			if sendErr == nil {
 				grant.NextItem = batchEnd
 			}
-		} else {
+		} else if batchKind == "templates" {
 			sendErr = dispatcher.GivePalTemplates(ctx, playerID, grant.PlanTemplates[batchStart:batchEnd])
 			if sendErr == nil {
 				grant.NextTemplate = batchEnd
+			}
+		} else if grant.PlanTechnologyMode == TechnologyModeUnlockAll {
+			sendErr = dispatcher.UnlockAllTechnology(ctx, playerID)
+			if sendErr == nil {
+				grant.TechnologyDone = true
+			}
+		} else {
+			sendErr = dispatcher.GiveTechnologyPoints(ctx, playerID, grant.PlanTechnologyPoints, grant.PlanAncientTechnologyPoints)
+			if sendErr == nil {
+				grant.TechnologyDone = true
 			}
 		}
 
@@ -942,6 +1003,7 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
 		}
 		current.NextItem = grant.NextItem
 		current.NextTemplate = grant.NextTemplate
+		current.TechnologyDone = grant.TechnologyDone
 		current.Attempts = grant.Attempts
 		current.ResolvedPlayerID = playerID
 		current.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
@@ -950,20 +1012,37 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
 			current.Phase = "failed"
 			current.LastError = boundedError(sendErr)
 			appendGrantEvent(&current, "failed", "error", fmt.Sprintf("%s批次发放失败：%s", batchKind, current.LastError), current.UpdatedAt)
-		} else if current.NextItem >= len(current.PlanItems) && current.NextTemplate >= len(current.PlanTemplates) {
+		} else if grantPlanComplete(current) {
+			if batchKind == "technology" {
+				if current.PlanTechnologyMode == TechnologyModeUnlockAll {
+					appendGrantEvent(&current, "technology", "success", "全部科技已解锁。", current.UpdatedAt)
+				} else {
+					appendGrantEvent(&current, "technology", "success", fmt.Sprintf(
+						"已发放普通科技点 %d、古代科技点 %d。",
+						current.PlanTechnologyPoints, current.PlanAncientTechnologyPoints,
+					), current.UpdatedAt)
+				}
+			}
 			current.Status = "success"
 			current.Phase = "completed"
 			current.LastError = ""
 			current.CompletedAt = current.UpdatedAt
-			appendGrantEvent(&current, "completed", "success", "所有物品与帕鲁模板均已完成。", current.UpdatedAt)
+			appendGrantEvent(&current, "completed", "success", "所有初始礼包内容均已完成。", current.UpdatedAt)
 		} else {
 			current.Status = "running"
 			current.Phase = batchKind
 			current.LastError = ""
 			if batchKind == "items" {
 				appendGrantBatchEvent(&current, "items", "success", fmt.Sprintf("物品批次已完成，当前进度 %d / %d。", current.NextItem, len(current.PlanItems)), current.UpdatedAt, batchStart, batchEnd, 0, 0)
-			} else {
+			} else if batchKind == "templates" {
 				appendGrantBatchEvent(&current, "templates", "success", fmt.Sprintf("帕鲁模板批次已完成，当前进度 %d / %d。", current.NextTemplate, len(current.PlanTemplates)), current.UpdatedAt, 0, 0, batchStart, batchEnd)
+			} else if current.PlanTechnologyMode == TechnologyModeUnlockAll {
+				appendGrantEvent(&current, "technology", "success", "全部科技已解锁。", current.UpdatedAt)
+			} else {
+				appendGrantEvent(&current, "technology", "success", fmt.Sprintf(
+					"已发放普通科技点 %d、古代科技点 %d。",
+					current.PlanTechnologyPoints, current.PlanAncientTechnologyPoints,
+				), current.UpdatedAt)
 			}
 		}
 		state.Grants[key] = current
@@ -981,6 +1060,13 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
 		case <-time.After(time.Duration(config.BatchDelayMS) * time.Millisecond):
 		}
 	}
+}
+
+func grantPlanComplete(record grantRecord) bool {
+	technologyComplete := record.PlanTechnologyMode == TechnologyModeNone || record.TechnologyDone
+	return record.NextItem >= len(record.PlanItems) &&
+		record.NextTemplate >= len(record.PlanTemplates) &&
+		technologyComplete
 }
 
 func keepGrantPending(ctx context.Context, store *db.Store, scope playerpresence.Scope, key string, reason error) error {
@@ -1035,6 +1121,27 @@ func normalizeConfig(config Config) (Config, error) {
 	if len(config.PalTemplates) > MaxPalTemplates {
 		return Config{}, fmt.Errorf("pal_templates must contain at most %d entries", MaxPalTemplates)
 	}
+	config.TechnologyMode = strings.ToLower(strings.TrimSpace(config.TechnologyMode))
+	if config.TechnologyMode == "" {
+		config.TechnologyMode = TechnologyModeNone
+	}
+	switch config.TechnologyMode {
+	case TechnologyModeNone, TechnologyModeUnlockAll:
+		config.TechnologyPoints = 0
+		config.AncientTechnologyPoints = 0
+	case TechnologyModeGrantPoints:
+		if config.TechnologyPoints < 0 || config.TechnologyPoints > 2_147_483_647 {
+			return Config{}, errors.New("technology_points must be between 0 and 2147483647")
+		}
+		if config.AncientTechnologyPoints < 0 || config.AncientTechnologyPoints > 2_147_483_647 {
+			return Config{}, errors.New("ancient_technology_points must be between 0 and 2147483647")
+		}
+		if config.TechnologyPoints == 0 && config.AncientTechnologyPoints == 0 {
+			return Config{}, errors.New("grant_points mode requires ordinary or ancient technology points")
+		}
+	default:
+		return Config{}, errors.New("technology_mode must be none, unlock_all, or grant_points")
+	}
 
 	seenItems := map[string]bool{}
 	items := make([]ItemGrant, 0, len(config.Items))
@@ -1069,8 +1176,8 @@ func normalizeConfig(config Config) (Config, error) {
 		seenTemplates[name] = true
 		templates = append(templates, name)
 	}
-	if config.Enabled && len(items) == 0 && len(templates) == 0 {
-		return Config{}, errors.New("enabled starter gift requires at least one item or Pal template")
+	if config.Enabled && len(items) == 0 && len(templates) == 0 && config.TechnologyMode == TechnologyModeNone {
+		return Config{}, errors.New("enabled starter gift requires at least one item, Pal template, or technology grant")
 	}
 	config.Items = items
 	config.PalTemplates = templates
@@ -1188,6 +1295,9 @@ func loadStateKey(ctx context.Context, store *db.Store, key, scopeID string) (St
 		if grant.DetectionReason == "" {
 			grant.DetectionReason = "旧版本已创建的初始礼包任务；缺少原始判定证据。"
 		}
+		if grant.PlanTechnologyMode == "" {
+			grant.PlanTechnologyMode = TechnologyModeNone
+		}
 		state.Grants[key] = grant
 	}
 	state.Version = Version
@@ -1215,14 +1325,23 @@ func newGrantWithReason(player playerpresence.OnlinePlayer, config Config, nowTe
 		SteamID: strings.TrimSpace(player.SteamID), Nickname: strings.TrimSpace(player.Nickname), Status: "pending", Phase: "queued",
 		DetectionSource: source, DetectionReason: reason, Manual: manual, FirstSeenAt: nowText, UpdatedAt: nowText,
 		PlanItems: append([]ItemGrant(nil), config.Items...), PlanTemplates: append([]string(nil), config.PalTemplates...),
+		PlanTechnologyMode: config.TechnologyMode, PlanTechnologyPoints: config.TechnologyPoints,
+		PlanAncientTechnologyPoints: config.AncientTechnologyPoints,
 	}
 	appendGrantEvent(&record, "queued", "info", reason, nowText)
 	return record
 }
 
 func grantView(record grantRecord) Grant {
-	total := len(record.PlanItems) + len(record.PlanTemplates)
+	technologyTotal := 0
+	if record.PlanTechnologyMode != TechnologyModeNone {
+		technologyTotal = 1
+	}
+	total := len(record.PlanItems) + len(record.PlanTemplates) + technologyTotal
 	done := record.NextItem + record.NextTemplate
+	if record.TechnologyDone {
+		done++
+	}
 	progress := 0
 	if total > 0 {
 		progress = min(100, done*100/total)
@@ -1235,7 +1354,9 @@ func grantView(record grantRecord) Grant {
 		Nickname: record.Nickname, Status: record.Status, Phase: record.Phase,
 		DetectionSource: record.DetectionSource, DetectionReason: record.DetectionReason, Manual: record.Manual,
 		ResolvedPlayerID: record.ResolvedPlayerID, NextItem: record.NextItem, NextTemplate: record.NextTemplate,
-		ItemTotal: len(record.PlanItems), TemplateTotal: len(record.PlanTemplates), ProgressPercent: progress,
+		TechnologyDone: record.TechnologyDone, TechnologyMode: record.PlanTechnologyMode, TechnologyPoints: record.PlanTechnologyPoints,
+		AncientTechnologyPoints: record.PlanAncientTechnologyPoints,
+		ItemTotal:               len(record.PlanItems), TemplateTotal: len(record.PlanTemplates), ProgressPercent: progress,
 		Attempts: record.Attempts, FirstSeenAt: record.FirstSeenAt, UpdatedAt: record.UpdatedAt,
 		CompletedAt: record.CompletedAt, LastError: record.LastError, Events: append([]GrantEvent(nil), record.Events...),
 	}

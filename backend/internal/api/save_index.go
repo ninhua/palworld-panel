@@ -113,7 +113,7 @@ func (s Server) getSavePlayerInventory(c *gin.Context) {
 	id := c.Param("id")
 	items := make([]saveindex.Container, 0)
 	for _, container := range index.Containers {
-		if container.OwnerType == "player" && matchesID(id, container.OwnerID) {
+		if strings.EqualFold(strings.TrimSpace(container.OwnerType), "player") && matchesID(id, container.OwnerID) {
 			items = append(items, container)
 		}
 	}
@@ -343,7 +343,10 @@ func baseStorageContainerIdentity(container saveindex.Container, entityByID map[
 }
 
 func (s Server) listSavePals(c *gin.Context) {
-	index, status, err := s.currentSaveIndex(c)
+	index, status, view, _, valid, err := s.currentPlayerIndex(c)
+	if !valid {
+		return
+	}
 	if err != nil && !status.Stale {
 		index = saveindex.EmptyIndex()
 	}
@@ -351,7 +354,7 @@ func (s Server) listSavePals(c *gin.Context) {
 	sortPals(pals, c.Query("sort"))
 	limit, offset := limitOffset(c)
 	paged, summary := paginate(pals, limit, offset)
-	ok(c, gin.H{"pals": flattenPals(paged, index.Players), "status": status, "summary": summary})
+	ok(c, gin.H{"pals": flattenPals(paged, index.Players), "status": status, "summary": summary, "view": view})
 }
 
 func (s Server) getSavePal(c *gin.Context) {
@@ -404,13 +407,58 @@ func (s Server) currentSaveIndex(c *gin.Context) (saveindex.Index, saveindex.Sta
 }
 
 func matchesID(needle string, candidates ...string) bool {
-	needle = strings.TrimSpace(strings.ToLower(needle))
+	needleKeys := identityKeys(needle)
+	if len(needleKeys) == 0 {
+		return false
+	}
 	for _, candidate := range candidates {
-		if strings.ToLower(strings.TrimSpace(candidate)) == needle {
-			return true
+		for key := range identityKeys(candidate) {
+			if _, matched := needleKeys[key]; matched {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+func identityKeys(value string) map[string]struct{} {
+	normalized := normalizeQuery(value)
+	if normalized == "" {
+		return nil
+	}
+	keys := map[string]struct{}{normalized: {}}
+	if withoutSteamPrefix := strings.TrimPrefix(normalized, "steam_"); withoutSteamPrefix != normalized && isDecimalIdentifier(withoutSteamPrefix) {
+		keys[withoutSteamPrefix] = struct{}{}
+	}
+	compact := strings.ReplaceAll(normalized, "-", "")
+	if compact != normalized && isHexIdentifier(compact, 32) {
+		keys[compact] = struct{}{}
+	}
+	return keys
+}
+
+func isDecimalIdentifier(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, character := range value {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isHexIdentifier(value string, length int) bool {
+	if len(value) != length {
+		return false
+	}
+	for _, character := range value {
+		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
 
 func flattenPlayers(players []saveindex.Player, online onlinePlayersResult) []gin.H {
@@ -513,7 +561,7 @@ func flattenPals(pals []saveindex.Pal, players []saveindex.Player) []gin.H {
 }
 
 func flattenPal(pal saveindex.Pal, lookup map[string]saveindex.Player) gin.H {
-	owner := lookup[pal.OwnerPlayerUID]
+	owner := lookupPlayer(lookup, pal.OwnerPlayerUID)
 	status := firstNonEmpty(pal.Status, "Healthy")
 	speciesName := pallocalize.PalName(pal.CharacterID)
 	return gin.H{
@@ -734,14 +782,25 @@ func countOnlineMapEntities(entities []gin.H) int {
 }
 
 func playerLookup(players []saveindex.Player) map[string]saveindex.Player {
-	out := make(map[string]saveindex.Player, len(players)*2)
+	out := make(map[string]saveindex.Player, len(players)*4)
 	for _, player := range players {
-		out[player.PlayerUID] = player
-		if player.SteamID != "" {
-			out[player.SteamID] = player
+		for key := range identityKeys(player.PlayerUID) {
+			out[key] = player
+		}
+		for key := range identityKeys(player.SteamID) {
+			out[key] = player
 		}
 	}
 	return out
+}
+
+func lookupPlayer(players map[string]saveindex.Player, identifier string) saveindex.Player {
+	for key := range identityKeys(identifier) {
+		if player, found := players[key]; found {
+			return player
+		}
+	}
+	return saveindex.Player{}
 }
 
 func firstNonEmpty(values ...string) string {
@@ -1298,7 +1357,7 @@ func filterPals(pals []saveindex.Pal, players []saveindex.Player, c *gin.Context
 	lookup := playerLookup(players)
 	out := make([]saveindex.Pal, 0, len(pals))
 	for _, pal := range pals {
-		owner := lookup[pal.OwnerPlayerUID]
+		owner := lookupPlayer(lookup, pal.OwnerPlayerUID)
 		palGuildID := firstNonEmpty(pal.GuildID, owner.GuildID)
 		if pal.Level < minLevel || palStars(pal) < minStars || palIVAverage(pal) < minIVAverage {
 			continue
@@ -1312,7 +1371,7 @@ func filterPals(pals []saveindex.Pal, players []saveindex.Player, c *gin.Context
 		if location != "" && palLocationKind(pal) != location {
 			continue
 		}
-		if ownerUID != "" && normalizeQuery(pal.OwnerPlayerUID) != ownerUID {
+		if ownerUID != "" && !matchesID(ownerUID, pal.OwnerPlayerUID, owner.SteamID) {
 			continue
 		}
 		if guildID != "" && normalizeQuery(palGuildID) != guildID {

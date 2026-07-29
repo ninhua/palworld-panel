@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, CheckCircle2, CheckSquare, ChevronDown, CircleDot, ClipboardList, Flag, Gift, LoaderCircle, Minus, Package,
+  AlertTriangle, BookOpen, CheckCircle2, CheckSquare, ChevronDown, CircleDot, ClipboardList, Flag, Gift, LoaderCircle, Minus, Package,
   PackageCheck, PlayCircle, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Sparkles,
   Square, Trash2, UserCheck, Users, Wifi, WifiOff,
 } from 'lucide-react';
@@ -21,6 +21,9 @@ const emptyConfig: StarterGiftConfig = {
   enabled: false,
   items: [],
   pal_templates: [],
+  technology_mode: 'none',
+  technology_points: 0,
+  ancient_technology_points: 0,
   item_batch_size: 20,
   template_batch_size: 5,
   batch_delay_ms: 500,
@@ -108,7 +111,7 @@ const decisionClass = (decision: string) => ({
 }[decision] || 'border-amber-200 bg-amber-50 text-amber-700');
 
 const phaseLabel = (phase?: string) => ({
-  queued: '已排队', resolving_player: '解析玩家', ready: '准备发放', items: '发放物品', templates: '发放模板', waiting_player: '等待玩家可用',
+  queued: '已排队', resolving_player: '解析玩家', ready: '准备发放', items: '发放物品', templates: '发放模板', technology: '初始科技', waiting_player: '等待玩家可用',
   failed: '失败', completed: '完成', paused: '暂停',
 }[phase || ''] || phase || '等待处理');
 
@@ -215,6 +218,11 @@ export const StarterGift: React.FC = () => {
     };
   }, [snapshot]);
   const selectedItemTotal = useMemo(() => config.items.reduce((sum, item) => sum + Math.max(0, Number(item.count) || 0), 0), [config.items]);
+  const technologySummary = config.technology_mode === 'unlock_all'
+    ? '全部科技'
+    : config.technology_mode === 'grant_points'
+      ? `普通 ${config.technology_points} / 古代 ${config.ancient_technology_points}`
+      : '不处理';
   const dirty = Boolean(snapshot && JSON.stringify(config) !== JSON.stringify(snapshot.config));
   const visiblePlayers = useMemo(() => {
     const query = playerSearch.trim().toLowerCase();
@@ -266,6 +274,11 @@ export const StarterGift: React.FC = () => {
   };
 
   const save = async () => {
+    if (config.technology_mode === 'grant_points' && config.technology_points <= 0 && config.ancient_technology_points <= 0) {
+      setNoticeKind('error');
+      setNotice('发放科技点时，普通科技点或古代科技点至少填写一项。');
+      return;
+    }
     setBusy(true);
     setNotice('');
     try {
@@ -333,7 +346,7 @@ export const StarterGift: React.FC = () => {
         <div className="min-w-0">
           <p className="eyebrow">New player onboarding</p>
           <h1>新玩家礼包</h1>
-          <p>为当前存档世界中首次进入的玩家配置开局物品与帕鲁模板。</p>
+          <p>为当前存档世界中首次进入的玩家配置开局物品、帕鲁模板与初始科技。</p>
         </div>
         <button type="button" className="pp-button" onClick={() => void load(false, dirty)} disabled={busy}><RefreshCw className={busy ? 'animate-spin' : ''} size={15} />刷新</button>
       </div>
@@ -343,7 +356,7 @@ export const StarterGift: React.FC = () => {
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="当前世界" value={snapshot?.scope.world_id || '尚未解析'} detail="配置和发放记录按 WorldID 隔离" icon={<ShieldCheck size={18} />} />
         <SummaryCard label="自动发放" value={config.enabled ? '已启用' : '已停用'} detail={dirty ? '有未保存修改' : '配置已同步'} icon={<Gift size={18} />} />
-        <SummaryCard label="礼包内容" value={`${config.items.length} 种 / ${selectedItemTotal} 件`} detail={`${config.pal_templates.length} 个帕鲁模板`} icon={<PackageCheck size={18} />} />
+        <SummaryCard label="礼包内容" value={`${config.items.length} 种 / ${selectedItemTotal} 件`} detail={`${config.pal_templates.length} 个帕鲁模板 · 科技：${technologySummary}`} icon={<PackageCheck size={18} />} />
         <SummaryCard label="发放任务" value={snapshot?.worker_running ? '执行器运行中' : `${grantCounts.pending} 处理中`} detail={`${grantCounts.success} 完成 · ${grantCounts.failed} 失败 · 每 3 秒刷新`} icon={<Users size={18} />} />
       </section>
 
@@ -357,6 +370,19 @@ export const StarterGift: React.FC = () => {
           <label className="field-label">物品每批条目数<input type="number" min={1} max={100} value={config.item_batch_size} onChange={(event) => setConfig({ ...config, item_batch_size: Number(event.target.value) })} /></label>
           <label className="field-label">模板每批数量<input type="number" min={1} max={20} value={config.template_batch_size} onChange={(event) => setConfig({ ...config, template_batch_size: Number(event.target.value) })} /></label>
           <label className="field-label">批次间隔（毫秒）<input type="number" min={100} max={10000} step={100} value={config.batch_delay_ms} onChange={(event) => setConfig({ ...config, batch_delay_ms: Number(event.target.value) })} /></label>
+        </div>
+        <div className="mt-4 grid gap-3 rounded-2xl border border-violet-200 bg-violet-50/60 p-4 lg:grid-cols-[minmax(15rem,1.2fr)_repeat(2,minmax(10rem,1fr))]">
+          <label className="field-label">
+            <span className="inline-flex items-center gap-2"><BookOpen size={14} />初始科技</span>
+            <select value={config.technology_mode} onChange={(event) => setConfig({ ...config, technology_mode: event.target.value as StarterGiftConfig['technology_mode'] })}>
+              <option value="none">不处理</option>
+              <option value="unlock_all">解锁全部科技（learntech UserId all）</option>
+              <option value="grant_points">发放科技点</option>
+            </select>
+          </label>
+          <label className="field-label">普通科技点<input type="number" min={0} max={2147483647} disabled={config.technology_mode !== 'grant_points'} value={config.technology_points} onChange={(event) => setConfig({ ...config, technology_points: Math.max(0, Number(event.target.value) || 0) })} /></label>
+          <label className="field-label">古代科技点<input type="number" min={0} max={2147483647} disabled={config.technology_mode !== 'grant_points'} value={config.ancient_technology_points} onChange={(event) => setConfig({ ...config, ancient_technology_points: Math.max(0, Number(event.target.value) || 0) })} /></label>
+          <p className="text-[10px] font-semibold leading-5 text-violet-700 lg:col-span-3">“全部科技”使用 PalDefender 的 <code>learntech &lt;UserId&gt; all</code>；“发放科技点”会分别发放普通与古代科技点，至少填写一项。</p>
         </div>
       </section>
 
@@ -477,7 +503,7 @@ export const StarterGift: React.FC = () => {
           <div className="max-h-[42rem] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/50 p-2">
             {(snapshot?.grants || []).map((grant) => <article className="mb-2 rounded-2xl border border-slate-200 bg-white p-4 last:mb-0" key={grant.player_id}>
               <div className="flex flex-col gap-3 md:flex-row md:items-start"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="truncate text-sm font-black text-slate-800">{grant.nickname || grant.player_id}</strong><span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${statusClass(grant.status)}`}>{statusLabel(grant.status)}</span><span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-black text-slate-600">{phaseLabel(grant.phase)}</span>{grant.manual && <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-black text-violet-700">人工任务</span>}</div>
-              <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-600">{grant.detection_reason || '旧记录未保存判定原因'}</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, grant.progress_percent))}%` }} /></div><span className="mt-1 block text-[10px] font-bold text-slate-500">{grant.progress_percent}% · 物品 {grant.next_item}/{grant.item_total} · 模板 {grant.next_template}/{grant.template_total} · 尝试 {grant.attempts}</span>{grant.resolved_player_id && <span className="mt-1 block truncate font-mono text-[9px] text-slate-400">PalDefender UserId：{grant.resolved_player_id}</span>}{grant.last_error && <span className="mt-2 block break-words rounded-lg bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700">{grant.last_error}</span>}</div>
+              <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-600">{grant.detection_reason || '旧记录未保存判定原因'}</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, grant.progress_percent))}%` }} /></div><span className="mt-1 block text-[10px] font-bold text-slate-500">{grant.progress_percent}% · 物品 {grant.next_item}/{grant.item_total} · 模板 {grant.next_template}/{grant.template_total} · 科技 {grant.technology_mode === 'none' ? '无' : grant.technology_done ? '完成' : '待发放'} · 尝试 {grant.attempts}</span>{grant.technology_mode === 'grant_points' && <span className="mt-1 block text-[9px] font-semibold text-slate-400">普通科技点 {grant.technology_points} · 古代科技点 {grant.ancient_technology_points}</span>}{grant.technology_mode === 'unlock_all' && <span className="mt-1 block text-[9px] font-semibold text-slate-400">计划：解锁全部科技</span>}{grant.resolved_player_id && <span className="mt-1 block truncate font-mono text-[9px] text-slate-400">PalDefender UserId：{grant.resolved_player_id}</span>}{grant.last_error && <span className="mt-2 block break-words rounded-lg bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700">{grant.last_error}</span>}</div>
               <div className="flex shrink-0 flex-wrap justify-end gap-2">{grant.status !== 'success' && <button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(grant.player_id, 'supplement')}><PackageCheck size={14} />补发未完成</button>}<button type="button" className="pp-button" disabled={busy || !config.enabled} onClick={() => void runPlayerAction(grant.player_id, 'reissue')}><PlayCircle size={14} />完整重发</button>{snapshot?.players.some((player) => player.rearmed && [player.player_id, player.player_uid, player.steam_id].filter(Boolean).some((id) => [grant.player_id, grant.player_uid, grant.steam_id].filter(Boolean).includes(id))) ? <button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(grant.player_id, 'cancel_next_login')}><RotateCcw size={14} />取消下次进入重发</button> : <button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(grant.player_id, 'next_login')}><Flag size={14} />下次进入重发</button>}<button type="button" className="icon-danger" aria-label="删除玩家礼包任务与标记" disabled={busy} onClick={() => void forget(grant.player_id)}><Trash2 size={15} /></button></div></div>
               <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50/70"><summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-[11px] font-black text-slate-700"><ChevronDown size={13} />发放进程与判定日志（{grant.events.length}）</summary><div className="border-t border-slate-200 p-3"><ol className="space-y-2">{grant.events.slice().reverse().map((event, index) => <li key={`${event.at}-${index}`} className="flex gap-2 text-[10px]"><CircleDot className={`mt-0.5 shrink-0 ${event.level === 'error' ? 'text-rose-500' : event.level === 'warn' ? 'text-amber-500' : 'text-sky-500'}`} size={12} /><span className="min-w-0"><strong className="font-black text-slate-700">{phaseLabel(event.phase)}</strong><span className="ml-2 text-slate-400">{formatTime(event.at)}</span><span className="mt-0.5 block break-words font-semibold leading-4 text-slate-600">{event.message}</span></span></li>)}</ol>{grant.events.length === 0 && <p className="text-[10px] font-semibold text-slate-400">这是旧版创建的任务，尚无事件日志；下一次操作会开始记录。</p>}</div></details>
             </article>)}
@@ -487,7 +513,7 @@ export const StarterGift: React.FC = () => {
       </section>
 
       <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-2xl border border-slate-300 bg-white/95 p-3 shadow-xl backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-xs font-black text-slate-700"><span>{config.items.length} 种物品</span><span className="text-slate-300">·</span><span>{selectedItemTotal} 件</span><span className="text-slate-300">·</span><span>{config.pal_templates.length} 个模板</span>{dirty && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700">未保存</span>}</div><span className="mt-1 block truncate text-[10px] font-semibold text-slate-400">当前世界：{snapshot?.scope.world_id || '尚未解析'}</span></div>
+        <div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-xs font-black text-slate-700"><span>{config.items.length} 种物品</span><span className="text-slate-300">·</span><span>{selectedItemTotal} 件</span><span className="text-slate-300">·</span><span>{config.pal_templates.length} 个模板</span><span className="text-slate-300">·</span><span>科技：{technologySummary}</span>{dirty && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700">未保存</span>}</div><span className="mt-1 block truncate text-[10px] font-semibold text-slate-400">当前世界：{snapshot?.scope.world_id || '尚未解析'}</span></div>
         <div className="flex shrink-0 gap-2"><button type="button" className="pp-button" disabled={!snapshot || busy || !dirty} onClick={() => snapshot && setConfig(snapshot.config)}><RotateCcw size={14} />撤销修改</button><button type="button" className="pp-button accent" disabled={busy || !snapshot || !dirty} onClick={() => void save()}>{busy ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}保存配置</button></div>
       </div>
     </div>

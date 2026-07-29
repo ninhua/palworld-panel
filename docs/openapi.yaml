@@ -1239,7 +1239,12 @@ paths:
         - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
       responses: *readResponses
   /pals:
-    get: {operationId: listPals, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+    get:
+      operationId: listPals
+      tags: [world]
+      x-palpanel-permission: read
+      parameters: [*playerSourceParameter]
+      responses: *readResponses
   /pals/{id}:
     parameters: [*idParameter]
     get: {operationId: getPal, tags: [world], x-palpanel-permission: read, responses: *readResponses}
@@ -1624,18 +1629,21 @@ components:
         count: {type: integer, format: int64, minimum: 1, maximum: 2147483647}
     StarterGiftConfig:
       type: object
-      required: [enabled, items, pal_templates, item_batch_size, template_batch_size, batch_delay_ms]
+      required: [enabled, items, pal_templates, technology_mode, technology_points, ancient_technology_points, item_batch_size, template_batch_size, batch_delay_ms]
       additionalProperties: false
       properties:
         enabled: {type: boolean}
         items: {type: array, maxItems: 500, items: {$ref: '#/components/schemas/StarterGiftItem'}}
         pal_templates: {type: array, maxItems: 500, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 255}}
+        technology_mode: {type: string, enum: [none, unlock_all, grant_points], default: none}
+        technology_points: {type: integer, format: int64, minimum: 0, maximum: 2147483647, default: 0}
+        ancient_technology_points: {type: integer, format: int64, minimum: 0, maximum: 2147483647, default: 0}
         item_batch_size: {type: integer, minimum: 1, maximum: 100, default: 20}
         template_batch_size: {type: integer, minimum: 1, maximum: 20, default: 5}
         batch_delay_ms: {type: integer, minimum: 100, maximum: 10000, default: 500}
     StarterGiftGrant:
       type: object
-      required: [player_id, status, next_item, next_template, item_total, template_total, attempts, first_seen_at, updated_at]
+      required: [player_id, status, next_item, next_template, technology_done, technology_mode, technology_points, ancient_technology_points, item_total, template_total, progress_percent, attempts, first_seen_at, updated_at]
       additionalProperties: false
       properties:
         player_id: {type: string}
@@ -1645,8 +1653,13 @@ components:
         status: {type: string, enum: [pending, running, success, failed]}
         next_item: {type: integer, minimum: 0}
         next_template: {type: integer, minimum: 0}
+        technology_done: {type: boolean}
+        technology_mode: {type: string, enum: [none, unlock_all, grant_points]}
+        technology_points: {type: integer, format: int64, minimum: 0}
+        ancient_technology_points: {type: integer, format: int64, minimum: 0}
         item_total: {type: integer, minimum: 0}
         template_total: {type: integer, minimum: 0}
+        progress_percent: {type: integer, minimum: 0, maximum: 100}
         attempts: {type: integer, minimum: 0}
         first_seen_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
@@ -3032,7 +3045,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.28}
+            version: {type: string, const: 0.8.29}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

@@ -78,7 +78,7 @@ var apiCatalogExact = map[string]apiCatalogDescriptor{
 		Category: "世界存档", Summary: "查询全服库存", Description: "只读聚合玩家、据点和未识别容器，并返回无人时段正向净变化状态。", Permission: "authenticated", Request: "Query: q, owner_type, category, sort, source_id。", Response: "物品聚合、位置明细、筛选项、索引状态和 unattended。", Patched: true,
 	},
 	"GET /api/pals": {
-		Category: "世界存档", Summary: "查询帕鲁仓库", Description: "补丁版支持等级、星级、平均 IV、性别、位置、被动词条和排序参数。", Permission: "authenticated", Request: "Query: min_level, min_stars, min_iv_average, gender, location, passive, sort。", Response: "帕鲁列表、分页摘要和索引状态。", Patched: true,
+		Category: "世界存档", Summary: "查询帕鲁仓库", Description: "补丁版支持等级、星级、平均 IV、性别、位置、被动词条、排序和当前服务器存档来源。", Permission: "authenticated", Request: "Query: min_level, min_stars, min_iv_average, gender, location, passive, sort, source（可选 server）。", Response: "帕鲁列表、分页摘要、索引状态和数据视图。", Patched: true,
 	},
 	"GET /api/panel/update/status": {
 		Category: "系统", Summary: "查询面板更新状态", Description: "返回当前版本和源码 Fork 中可用的正式 Release。", Permission: "authenticated", Response: "面板版本与更新可用性。", Patched: true,

@@ -15,13 +15,15 @@ import (
 )
 
 type fakeDispatcher struct {
-	mu              sync.Mutex
-	itemBatches     [][]ItemGrant
-	templateBatches [][]string
-	failTemplates   int
-	resolveErr      error
-	resolvedID      string
-	resolvedAliases [][]string
+	mu               sync.Mutex
+	itemBatches      [][]ItemGrant
+	templateBatches  [][]string
+	unlockAllCalls   int
+	technologyPoints [][2]int64
+	failTemplates    int
+	resolveErr       error
+	resolvedID       string
+	resolvedAliases  [][]string
 }
 
 func (f *fakeDispatcher) ResolvePlayer(_ context.Context, aliases []string) (string, error) {
@@ -99,6 +101,20 @@ func (f *fakeDispatcher) GivePalTemplates(_ context.Context, _ string, names []s
 	return nil
 }
 
+func (f *fakeDispatcher) UnlockAllTechnology(_ context.Context, _ string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.unlockAllCalls++
+	return nil
+}
+
+func (f *fakeDispatcher) GiveTechnologyPoints(_ context.Context, _ string, points, ancientPoints int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.technologyPoints = append(f.technologyPoints, [2]int64{points, ancientPoints})
+	return nil
+}
+
 func openTestStore(t *testing.T) *db.Store {
 	t.Helper()
 	store, err := db.Open(filepath.Join(t.TempDir(), "panel.db"))
@@ -172,6 +188,61 @@ func TestBaselineExistingPlayersAndBatchNewPlayer(t *testing.T) {
 	grant := snapshot.Grants[0]
 	if grant.ItemTotal != len(config.Items) || grant.TemplateTotal != len(config.PalTemplates) {
 		t.Fatalf("frozen plan totals=%#v", grant)
+	}
+}
+
+func TestStarterGiftUnlocksAllTechnologyAsFrozenPlan(t *testing.T) {
+	store := openTestStore(t)
+	scope := testScope("world-tech-all")
+	config := Config{
+		Enabled: true, TechnologyMode: TechnologyModeUnlockAll,
+		ItemBatchSize: 20, TemplateBatchSize: 5, BatchDelayMS: 100,
+	}
+	if _, err := SaveConfig(context.Background(), store, scope, config); err != nil {
+		t.Fatal(err)
+	}
+	player := playerpresence.OnlinePlayer{SteamID: "steam_1", Nickname: "Tech"}
+	now := time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
+	if err := Observe(context.Background(), store, scope, now, []playerpresence.OnlinePlayer{player}, nil); err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeDispatcher{}
+	if err := processOne(context.Background(), store, scope, fake, identity(player.SteamID)); err != nil {
+		t.Fatal(err)
+	}
+	if fake.unlockAllCalls != 1 || len(fake.technologyPoints) != 0 {
+		t.Fatalf("technology dispatch unlock=%d points=%v", fake.unlockAllCalls, fake.technologyPoints)
+	}
+	snapshot, err := LoadSnapshot(context.Background(), store, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Grants) != 1 || !snapshot.Grants[0].TechnologyDone || snapshot.Grants[0].Status != "success" {
+		t.Fatalf("grant=%#v", snapshot.Grants)
+	}
+}
+
+func TestStarterGiftGrantsConfiguredTechnologyPoints(t *testing.T) {
+	store := openTestStore(t)
+	scope := testScope("world-tech-points")
+	config := Config{
+		Enabled: true, TechnologyMode: TechnologyModeGrantPoints, TechnologyPoints: 25, AncientTechnologyPoints: 3,
+		ItemBatchSize: 20, TemplateBatchSize: 5, BatchDelayMS: 100,
+	}
+	if _, err := SaveConfig(context.Background(), store, scope, config); err != nil {
+		t.Fatal(err)
+	}
+	player := playerpresence.OnlinePlayer{SteamID: "steam_2", Nickname: "Points"}
+	now := time.Date(2026, 7, 29, 12, 5, 0, 0, time.UTC)
+	if err := Observe(context.Background(), store, scope, now, []playerpresence.OnlinePlayer{player}, nil); err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeDispatcher{}
+	if err := processOne(context.Background(), store, scope, fake, identity(player.SteamID)); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.technologyPoints) != 1 || fake.technologyPoints[0] != [2]int64{25, 3} || fake.unlockAllCalls != 0 {
+		t.Fatalf("technology dispatch unlock=%d points=%v", fake.unlockAllCalls, fake.technologyPoints)
 	}
 }
 
@@ -427,6 +498,14 @@ func TestNormalizeConfigRejectsUnsafeOrOversizedPlans(t *testing.T) {
 	}
 	if _, err := normalizeConfig(Config{Items: items}); err == nil {
 		t.Fatal("expected oversized item plan")
+	}
+	if _, err := normalizeConfig(Config{Enabled: true, TechnologyMode: TechnologyModeGrantPoints}); err == nil {
+		t.Fatal("expected grant_points without ordinary or ancient points to fail")
+	}
+	if config, err := normalizeConfig(Config{
+		Enabled: true, TechnologyMode: TechnologyModeGrantPoints, AncientTechnologyPoints: 3,
+	}); err != nil || config.TechnologyPoints != 0 || config.AncientTechnologyPoints != 3 {
+		t.Fatalf("ancient-only technology plan was rejected: config=%#v err=%v", config, err)
 	}
 }
 

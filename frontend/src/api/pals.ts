@@ -3,6 +3,12 @@ import { emptySummary, entityListQuery, mapSummary } from './entityList';
 import { emptySaveIndexStatus, mapSaveIndexStatus } from './saveIndex';
 import type { EntityListResponse, Pal, PalListParams, UnsupportedActionResult } from '../types';
 
+type PalSource = 'server';
+type PalSourceOptions = { source?: PalSource };
+
+const withPalSource = (path: string, source?: PalSource) =>
+  source ? `${path}${path.includes('?') ? '&' : '?'}source=${source}` : path;
+
 export const mapPal = (raw: unknown): Pal => {
   const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const location = data.location && typeof data.location === 'object' ? (data.location as Record<string, unknown>) : {};
@@ -76,9 +82,9 @@ const unsupported = (message: string): Promise<UnsupportedActionResult> =>
   Promise.resolve({ ok: false, unsupported: true, message });
 
 export const palsApi = {
-  getPalsList: (params: PalListParams = {}) =>
+  getPalsList: (params: PalListParams = {}, options: PalSourceOptions = {}) =>
     handleRequest<unknown, EntityListResponse<Pal>>(
-      () => apiClient.get(`/pals${entityListQuery(params)}`),
+      () => apiClient.get(withPalSource(`/pals${entityListQuery(params)}`, options.source)),
       { items: [], status: emptySaveIndexStatus, summary: emptySummary },
       {
         map: mapPalsList,

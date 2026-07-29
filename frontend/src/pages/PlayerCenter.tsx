@@ -101,9 +101,9 @@ export const PlayerCenter: React.FC = () => {
     enabled: Boolean(saveIdentifier),
   });
   const savePalsQuery = useQuery({
-    queryKey: ['player-center', 'save-pals', selected?.player_uid],
-    queryFn: () => palsApi.getPalsList({ owner_player_uid: selected?.player_uid, limit: 5000 }),
-    enabled: Boolean(selected?.player_uid),
+    queryKey: ['player-center', 'save-pals', saveIdentifier],
+    queryFn: () => palsApi.getPalsList({ owner_player_uid: saveIdentifier, limit: 5000 }, { source: 'server' }),
+    enabled: Boolean(saveIdentifier),
   });
   const catalogQuery = useQuery({
     queryKey: ['paldefender-gm', 'item-catalog'],
