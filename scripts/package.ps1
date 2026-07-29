@@ -39,6 +39,8 @@ $PackageName = "palpanel_${Version}_windows_amd64"
 $PackageDir = Join-Path $PackagesDir $PackageName
 $Archive = Join-Path $PackagesDir "$PackageName.zip"
 $WebUIEmbedDir = Join-Path $RootDir "backend\internal\webui\embedded"
+$PalOpsMapStageDir = Join-Path $RootDir "frontend\public\map\palops"
+$MapLibreStageDir = Join-Path $RootDir "frontend\public\vendor\maplibre-gl"
 $PackageTemp = Join-Path $ManagedRuntimeRoot "temp\package-$PID-$([guid]::NewGuid().ToString('N'))"
 Assert-PalPanelManagedPath -RepositoryRoot $RootDir -TargetPath $PackageTemp | Out-Null
 New-Item -ItemType Directory -Force -Path $PackageTemp | Out-Null
@@ -46,12 +48,10 @@ $PreviousTemp = $env:TEMP
 $PreviousTmp = $env:TMP
 $PreviousGoCache = $env:GOCACHE
 $PreviousNpmCache = $env:NPM_CONFIG_CACHE
-$PreviousCargoTargetDir = $env:CARGO_TARGET_DIR
 $env:TEMP = $PackageTemp
 $env:TMP = $PackageTemp
 $env:GOCACHE = Join-Path $PackageTemp "go-cache"
 $env:NPM_CONFIG_CACHE = Join-Path $PackageTemp "npm-cache"
-$env:CARGO_TARGET_DIR = Join-Path $PackageTemp "cargo-target"
 New-Item -ItemType Directory -Force -Path $env:GOCACHE | Out-Null
 New-Item -ItemType Directory -Force -Path $env:NPM_CONFIG_CACHE | Out-Null
 $PackageSucceeded = $false
@@ -107,6 +107,55 @@ function Clear-WebUIStage {
   Get-ChildItem -LiteralPath $WebUIEmbedDir -Force |
     Where-Object { $_.Name -ne ".keep" } |
     Remove-Item -Recurse -Force
+}
+
+
+function Clear-PalOpsMapStage {
+  if (Test-Path -LiteralPath $PalOpsMapStageDir) {
+    Remove-Item -LiteralPath $PalOpsMapStageDir -Recurse -Force
+  }
+}
+
+function Clear-MapLibreStage {
+  if (Test-Path -LiteralPath $MapLibreStageDir) {
+    Remove-Item -LiteralPath $MapLibreStageDir -Recurse -Force
+  }
+}
+
+function Sync-MapLibreAssets {
+  $arguments = @(
+    (Join-Path $RootDir "scripts\sync_maplibre_assets.py"),
+    "--destination", $MapLibreStageDir
+  )
+  if (-not [string]::IsNullOrWhiteSpace($env:PALPANEL_MAPLIBRE_SOURCE_DIR)) {
+    $arguments += @("--source-dir", $env:PALPANEL_MAPLIBRE_SOURCE_DIR)
+  } else {
+    $arguments += "--allow-network"
+  }
+  Write-Host "[palpanel] Synchronizing pinned MapLibre runtime"
+  Invoke-External "python" $arguments $RootDir
+}
+
+function Sync-PalOpsMapAssets {
+  $arguments = @(
+    (Join-Path $RootDir "scripts\sync_palops_map_assets.py"),
+    "--destination", $PalOpsMapStageDir
+  )
+  if (-not [string]::IsNullOrWhiteSpace($env:PALPANEL_PALOPS_MAP_SOURCE_DIR)) {
+    $arguments += @("--source-dir", $env:PALPANEL_PALOPS_MAP_SOURCE_DIR)
+  } elseif (-not [string]::IsNullOrWhiteSpace($env:PALPANEL_PALOPS_MAP_ARCHIVE)) {
+    $arguments += @("--archive", $env:PALPANEL_PALOPS_MAP_ARCHIVE)
+  } else {
+    $arguments += "--allow-network"
+  }
+  if (-not [string]::IsNullOrWhiteSpace($env:PALPANEL_PALOPS_TILE_SOURCE_DIR)) {
+    $arguments += @("--tiles-source-dir", $env:PALPANEL_PALOPS_TILE_SOURCE_DIR)
+  }
+  if ($env:PALPANEL_INCLUDE_PALOPS_REPOSITORY_TILES -eq "true") {
+    $arguments += "--include-repository-tiles"
+  }
+  Write-Host "[palpanel] Synchronizing pinned PalOps map assets"
+  Invoke-External "python" $arguments $RootDir
 }
 
 function Invoke-GoBuildWithWindowsLockRetry {
@@ -199,9 +248,11 @@ try {
   }
   New-Item -ItemType Directory -Force -Path $PackageDir | Out-Null
 
+Sync-PalOpsMapAssets
+Sync-MapLibreAssets
+
 if (-not $SkipTests) {
   Invoke-GoTestsWithWindowsLockRetry (Join-Path $RootDir "backend")
-  Invoke-External "cargo.exe" @("test", "--locked") (Join-Path $RootDir "tools\palworld-uid-remap")
   $oldCgo = $env:CGO_ENABLED
   $oldCc = $env:CC
   $oldCxx = $env:CXX
@@ -253,6 +304,7 @@ Copy-Item -Force (Join-Path $RootDir "third_party\palcalc\LICENSE.txt") (Join-Pa
 Copy-Item -Force (Join-Path $RootDir "backend\internal\pallocalize\LICENSE.apache-2.0") (Join-Path $PackageDir "licenses\pallocalize-Apache-2.0.txt")
 Copy-Item -Force (Join-Path $RootDir "backend\internal\paldefender\assets\LICENSE.txt") (Join-Path $PackageDir "licenses\PalDefender-MIT.txt")
 
+$backendLdflags = "-s -w -X palpanel/internal/buildinfo.Version=$Version -X palpanel/internal/buildinfo.Commit=$Commit -X palpanel/internal/buildinfo.BuildTime=$BuildTime"
 $savLdflags = "-s -w -X palpanel/sav-cli/internal/buildinfo.Version=$Version -X palpanel/sav-cli/internal/buildinfo.Commit=$Commit -X palpanel/sav-cli/internal/buildinfo.BuildTime=$BuildTime"
 $oldGoos = $env:GOOS
 $oldGoarch = $env:GOARCH
@@ -263,20 +315,13 @@ $oldPath = $env:PATH
 Clear-WebUIStage
 New-Item -ItemType Directory -Force -Path $WebUIEmbedDir | Out-Null
 Copy-Item -Recurse -Force (Join-Path $RootDir "frontend\dist\*") $WebUIEmbedDir
+Clear-PalOpsMapStage
+Clear-MapLibreStage
 try {
   $env:GOOS = "windows"
   $env:GOARCH = "amd64"
   $env:CGO_ENABLED = "0"
-  Invoke-External "cargo.exe" @("build", "--locked", "--release") (Join-Path $RootDir "tools\palworld-uid-remap")
-  $UidRemapper = Join-Path $PackageDir "palworld-uid-remap.exe"
-  Copy-Item -Force (Join-Path $env:CARGO_TARGET_DIR "release\palworld-uid-remap.exe") $UidRemapper
-  $UidRemapperSHA256 = Get-FileSHA256WithWindowsLockRetry -Path $UidRemapper
-  if ($UidRemapperSHA256 -notmatch '^[0-9a-f]{64}$') {
-    throw "Unable to calculate UID remapper SHA-256"
-  }
-  $backendLdflags = "-s -w -X palpanel/internal/buildinfo.Version=$Version -X palpanel/internal/buildinfo.Commit=$Commit -X palpanel/internal/buildinfo.BuildTime=$BuildTime"
-  $palpanelLdflags = "$backendLdflags -X palpanel/internal/api.hostMigrationHelperSHA256=$UidRemapperSHA256"
-  Invoke-GoBuildWithWindowsLockRetry -Arguments @("build", "-tags", "embed_webui", "-trimpath", "-ldflags", $palpanelLdflags, "-o", (Join-Path $PackageDir "palpanel-server.exe"), "./cmd/palpanel") -WorkingDirectory (Join-Path $RootDir "backend")
+  Invoke-GoBuildWithWindowsLockRetry -Arguments @("build", "-tags", "embed_webui", "-trimpath", "-ldflags", $backendLdflags, "-o", (Join-Path $PackageDir "palpanel-server.exe"), "./cmd/palpanel") -WorkingDirectory (Join-Path $RootDir "backend")
   Invoke-GoBuildWithWindowsLockRetry -Arguments @("build", "-trimpath", "-ldflags", "$backendLdflags -H windowsgui", "-o", (Join-Path $PackageDir "PalPanel.exe"), "./cmd/palpanel-launcher") -WorkingDirectory (Join-Path $RootDir "backend")
 
   $env:CGO_ENABLED = "1"
@@ -312,11 +357,12 @@ Compress-Archive -Path $PackageDir -DestinationPath $Archive -Force
   Write-Host "[palpanel] Wrote unsigned Windows release package $Archive"
   $PackageSucceeded = $true
 } finally {
+  Clear-PalOpsMapStage
+  Clear-MapLibreStage
   $env:TEMP = $PreviousTemp
   $env:TMP = $PreviousTmp
   $env:GOCACHE = $PreviousGoCache
   $env:NPM_CONFIG_CACHE = $PreviousNpmCache
-  $env:CARGO_TARGET_DIR = $PreviousCargoTargetDir
   if ($PackageSucceeded -and (Test-Path -LiteralPath $PackageTemp)) {
     $previousErrorActionPreference = $ErrorActionPreference
     try {

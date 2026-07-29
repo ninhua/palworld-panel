@@ -83,7 +83,7 @@ export const PlayerOverview: React.FC<{
       <div className="grid gap-3 sm:grid-cols-3">
         <QuickLink to="/players" icon={<UserRound size={15} />} label="玩家存档" />
         <QuickLink to="/pals" icon={<Sword size={15} />} label="全部帕鲁" />
-        <QuickLink to="/map" icon={<MapPin size={15} />} label="实时地图" />
+        <QuickLink to="/map" icon={<MapPin size={15} />} label="世界地图" />
       </div>
     </div>
   );
