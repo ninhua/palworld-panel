@@ -302,6 +302,18 @@ python -m unittest discover -s astrbot_plugin_palpanel/tests
 
 接口定义在 [`docs/openapi.yaml`](docs/openapi.yaml)。CI 通过 GitHub Actions 验证 Linux 和 Windows 构建，正式版本以本仓库的 [Releases](https://github.com/ninhua/palworld-panel/releases) 为准。
 
+## 镜像与离线构建
+
+`0.8.40` 新增统一第三方镜像目录。先使用 `scripts/vendorctl.py init` 导入固定的 PalOps、MapLibre、PalCalc、uesave、授权地图瓦片及包管理器缓存，再设置：
+
+```bash
+export PALPANEL_DEPENDENCY_MODE=offline
+export PALPANEL_VENDOR_ROOT=/srv/palpanel-vendor
+scripts/package.sh --version v1.3.0-custom.0.8.40 --targets linux-amd64 --clean
+```
+
+`mirror` 模式使用自有镜像但允许缺失包从公共源补齐；`offline` 模式要求完整缓存并执行 SHA-256 门禁。详细目录和初始化方法见 [`docs/development/offline-vendor-build.md`](docs/development/offline-vendor-build.md)。
+
 ## 面板更新
 
 Linux amd64 可以直接在面板任务队列或设置页执行“更新面板”。面板会：

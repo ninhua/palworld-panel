@@ -1,0 +1,115 @@
+{
+  "actions": [
+    {
+      "action": "actions/checkout",
+      "ref": "v4",
+      "workflows": [
+        ".github/workflows/ci.yml:19",
+        ".github/workflows/ci.yml:109",
+        ".github/workflows/ci.yml:175",
+        ".github/workflows/custom-release.yml:33",
+        ".github/workflows/custom-release.yml:88",
+        ".github/workflows/custom-release.yml:136",
+        ".github/workflows/release.yml:15",
+        ".github/workflows/release.yml:77",
+        ".github/workflows/release.yml:132",
+        ".github/workflows/upstream-upgrade.yml:21",
+        ".github/workflows/windows-package.yml:18"
+      ]
+    },
+    {
+      "action": "actions/setup-dotnet",
+      "ref": "v4",
+      "workflows": [
+        ".github/workflows/ci.yml:23",
+        ".github/workflows/ci.yml:112",
+        ".github/workflows/custom-release.yml:93",
+        ".github/workflows/custom-release.yml:141",
+        ".github/workflows/release.yml:19",
+        ".github/workflows/release.yml:81",
+        ".github/workflows/windows-package.yml:23"
+      ]
+    },
+    {
+      "action": "actions/setup-go",
+      "ref": "v5",
+      "workflows": [
+        ".github/workflows/ci.yml:26",
+        ".github/workflows/ci.yml:115",
+        ".github/workflows/ci.yml:178",
+        ".github/workflows/custom-release.yml:96",
+        ".github/workflows/custom-release.yml:144",
+        ".github/workflows/release.yml:22",
+        ".github/workflows/release.yml:84",
+        ".github/workflows/windows-package.yml:37"
+      ]
+    },
+    {
+      "action": "actions/setup-node",
+      "ref": "v4",
+      "workflows": [
+        ".github/workflows/ci.yml:32",
+        ".github/workflows/ci.yml:121",
+        ".github/workflows/ci.yml:181",
+        ".github/workflows/custom-release.yml:102",
+        ".github/workflows/custom-release.yml:150",
+        ".github/workflows/release.yml:28",
+        ".github/workflows/release.yml:90",
+        ".github/workflows/windows-package.yml:43"
+      ]
+    },
+    {
+      "action": "actions/upload-artifact",
+      "ref": "v4",
+      "workflows": [
+        ".github/workflows/ci.yml:93",
+        ".github/workflows/ci.yml:155",
+        ".github/workflows/ci.yml:165",
+        ".github/workflows/custom-release.yml:60",
+        ".github/workflows/custom-release.yml:119",
+        ".github/workflows/custom-release.yml:173",
+        ".github/workflows/release.yml:62",
+        ".github/workflows/release.yml:119",
+        ".github/workflows/windows-package.yml:70"
+      ]
+    },
+    {
+      "action": "msys2/setup-msys2",
+      "ref": "v2",
+      "workflows": [
+        ".github/workflows/ci.yml:126",
+        ".github/workflows/custom-release.yml:155",
+        ".github/workflows/release.yml:95",
+        ".github/workflows/windows-package.yml:48"
+      ]
+    },
+    {
+      "action": "actions/download-artifact",
+      "ref": "v4",
+      "workflows": [
+        ".github/workflows/custom-release.yml:188",
+        ".github/workflows/custom-release.yml:192",
+        ".github/workflows/custom-release.yml:196",
+        ".github/workflows/release.yml:135",
+        ".github/workflows/release.yml:139"
+      ]
+    },
+    {
+      "action": "softprops/action-gh-release",
+      "ref": "v2",
+      "workflows": [
+        ".github/workflows/custom-release.yml:210",
+        ".github/workflows/release.yml:166"
+      ]
+    },
+    {
+      "action": "anchore/sbom-action",
+      "ref": "v0",
+      "workflows": [
+        ".github/workflows/release.yml:47"
+      ]
+    }
+  ],
+  "generated_from": "repository workflows",
+  "schema_version": 1
+}

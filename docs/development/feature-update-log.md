@@ -1,5 +1,24 @@
 # 功能移植更新记录
 
+## 2026-07-30：第三方镜像与完全离线构建
+
+目标版本：`v1.3.0-custom.0.8.40`
+
+已完成：
+
+- 新增统一依赖锁定清单和 `vendorctl` 镜像工具。
+- 支持 PalOps、MapLibre、PalCalc、uesave、授权地图瓦片及 npm/Cargo/Go/NuGet 缓存归档。
+- 镜像初始化生成逐文件 SHA-256；构建前验证文件数量、大小和内容哈希。
+- Linux 与 Windows 打包新增 `online`、`mirror`、`offline` 模式。
+- 离线模式关闭 Go 代理并启用 npm/Cargo 离线开关；镜像缓存复制到临时工作目录，避免构建污染主镜像。
+- 临时准备的第三方源码带管理标记，清理不会删除人工维护的目录。
+
+验证：
+
+- 新增镜像初始化、缺失组件、篡改检测、符号链接拒绝和安全清理测试。
+- 新增 CI 执行入口、Bash 语法和 PowerShell 结构检查。
+- 完整断网 Linux/Windows Release 构建需在镜像内容初始化后执行。
+
 ## 2026-07-30：PalPanelBridge UE4SS 只读链路实机验证
 
 已完成：

@@ -41,6 +41,12 @@ $Archive = Join-Path $PackagesDir "$PackageName.zip"
 $WebUIEmbedDir = Join-Path $RootDir "backend\internal\webui\embedded"
 $PalOpsMapStageDir = Join-Path $RootDir "frontend\public\map\palops"
 $MapLibreStageDir = Join-Path $RootDir "frontend\public\vendor\maplibre-gl"
+$DependencyMode = if ([string]::IsNullOrWhiteSpace($env:PALPANEL_DEPENDENCY_MODE)) { "online" } else { $env:PALPANEL_DEPENDENCY_MODE.ToLowerInvariant() }
+$VendorRoot = if ([string]::IsNullOrWhiteSpace($env:PALPANEL_VENDOR_ROOT)) { Join-Path $RootDir ".vendor" } else { Resolve-PalPanelPath -Path $env:PALPANEL_VENDOR_ROOT -BasePath $RootDir }
+$VendorWorkDir = Join-Path $ManagedRuntimeRoot "temp\vendor-$PID-$([guid]::NewGuid().ToString('N'))"
+$VendorPrepared = $false
+$NpmCiArguments = @("ci")
+$DotnetRestoreArguments = @()
 $PackageTemp = Join-Path $ManagedRuntimeRoot "temp\package-$PID-$([guid]::NewGuid().ToString('N'))"
 Assert-PalPanelManagedPath -RepositoryRoot $RootDir -TargetPath $PackageTemp | Out-Null
 New-Item -ItemType Directory -Force -Path $PackageTemp | Out-Null
@@ -119,6 +125,60 @@ function Clear-PalOpsMapStage {
 function Clear-MapLibreStage {
   if (Test-Path -LiteralPath $MapLibreStageDir) {
     Remove-Item -LiteralPath $MapLibreStageDir -Recurse -Force
+  }
+}
+
+function Clear-VendorStage {
+  if ($VendorPrepared) {
+    try {
+      Invoke-External "python" @(
+        (Join-Path $RootDir "scripts\vendorctl.py"),
+        "cleanup",
+        "--repository", $RootDir,
+        "--work-root", $VendorWorkDir
+      ) $RootDir
+    } catch {
+      Write-Warning "Unable to clean vendor staging: $($_.Exception.Message)"
+    }
+  } elseif (Test-Path -LiteralPath $VendorWorkDir) {
+    Remove-Item -LiteralPath $VendorWorkDir -Recurse -Force
+  }
+}
+
+function Initialize-DependencyMode {
+  if ($DependencyMode -eq "online") { return }
+  if ($DependencyMode -notin @("mirror", "offline")) {
+    throw "PALPANEL_DEPENDENCY_MODE must be online, mirror, or offline"
+  }
+  if (-not (Test-Path -LiteralPath $VendorRoot -PathType Container)) {
+    throw "Vendor root does not exist: $VendorRoot"
+  }
+  $profile = if ($DependencyMode -eq "offline") { "build" } else { "source" }
+  Write-Host "[palpanel] Verifying dependency mirror ($profile)"
+  Invoke-External "python" @((Join-Path $RootDir "scripts\vendorctl.py"), "verify", "--root", $VendorRoot, "--profile", $profile) $RootDir
+  Invoke-External "python" @(
+    (Join-Path $RootDir "scripts\vendorctl.py"),
+    "prepare",
+    "--root", $VendorRoot,
+    "--repository", $RootDir,
+    "--work-root", $VendorWorkDir,
+    "--profile", $profile
+  ) $RootDir
+  $script:VendorPrepared = $true
+  $environmentJson = & python (Join-Path $RootDir "scripts\vendorctl.py") env --root $VendorRoot --work-root $VendorWorkDir --format json
+  if ($LASTEXITCODE -ne 0) { throw "vendorctl env failed with exit code $LASTEXITCODE" }
+  $environment = ($environmentJson | Out-String) | ConvertFrom-Json
+  foreach ($property in $environment.PSObject.Properties) {
+    Set-Item -Path "Env:$($property.Name)" -Value ([string]$property.Value)
+  }
+  if ($DependencyMode -eq "offline") {
+    $env:GOPROXY = "off"
+    $env:GOSUMDB = "off"
+    $env:CARGO_NET_OFFLINE = "true"
+    $env:NPM_CONFIG_OFFLINE = "true"
+    $env:DOTNET_RESTORE_IGNORE_FAILED_SOURCES = "true"
+    $script:NpmCiArguments += "--offline"
+    $script:DotnetRestoreArguments += "-p:RestoreIgnoreFailedSources=true"
   }
 }
 
@@ -248,6 +308,7 @@ try {
   }
   New-Item -ItemType Directory -Force -Path $PackageDir | Out-Null
 
+Initialize-DependencyMode
 Sync-PalOpsMapAssets
 Sync-MapLibreAssets
 
@@ -269,7 +330,7 @@ if (-not $SkipTests) {
     $env:CXX = $oldCxx
     $env:PATH = $oldPath
   }
-  Invoke-External "npm.cmd" @("ci") (Join-Path $RootDir "frontend")
+  Invoke-External "npm.cmd" $NpmCiArguments (Join-Path $RootDir "frontend")
   # CI checks that generated contracts are committed. Local packaging must also
   # work before a commit, so run the same validation without diffing against HEAD.
   Invoke-External "npm.cmd" @("run", "generate:api-types") (Join-Path $RootDir "frontend")
@@ -278,7 +339,7 @@ if (-not $SkipTests) {
   Invoke-External "npm.cmd" @("run", "test") (Join-Path $RootDir "frontend")
   Invoke-External "npm.cmd" @("run", "build") (Join-Path $RootDir "frontend")
 } else {
-  Invoke-External "npm.cmd" @("ci") (Join-Path $RootDir "frontend")
+  Invoke-External "npm.cmd" $NpmCiArguments (Join-Path $RootDir "frontend")
   Invoke-External "npm.cmd" @("run", "build") (Join-Path $RootDir "frontend")
 }
 
@@ -332,7 +393,13 @@ try {
   Invoke-External (Join-Path $PackageDir "sav-cli.exe") @("verify-build", "--require-oodle") $PackageDir
   $palcalcPublish = Join-Path $RootDir "dist\palcalc-win-x64"
   if (Test-Path $palcalcPublish) { Remove-Item -Recurse -Force $palcalcPublish }
-  Invoke-External "dotnet" @("publish", (Join-Path $RootDir "palcalc-bridge\PalCalc.Bridge.csproj"), "-c", "Release", "-r", "win-x64", "--self-contained", "true", "-p:PublishSingleFile=true", "-p:IncludeNativeLibrariesForSelfExtract=true", "-p:UseSharedCompilation=false", "-o", $palcalcPublish) $RootDir
+  $dotnetPublishArguments = @(
+    "publish", (Join-Path $RootDir "palcalc-bridge\PalCalc.Bridge.csproj"),
+    "-c", "Release", "-r", "win-x64", "--self-contained", "true",
+    "-p:PublishSingleFile=true", "-p:IncludeNativeLibrariesForSelfExtract=true",
+    "-p:UseSharedCompilation=false"
+  ) + $DotnetRestoreArguments + @("-o", $palcalcPublish)
+  Invoke-External "dotnet" $dotnetPublishArguments $RootDir
   Copy-Item -Force (Join-Path $palcalcPublish "palcalc-bridge.exe") (Join-Path $PackageDir "palcalc-bridge.exe")
 } finally {
   $env:GOOS = $oldGoos
@@ -359,6 +426,7 @@ Compress-Archive -Path $PackageDir -DestinationPath $Archive -Force
 } finally {
   Clear-PalOpsMapStage
   Clear-MapLibreStage
+  Clear-VendorStage
   $env:TEMP = $PreviousTemp
   $env:TMP = $PreviousTmp
   $env:GOCACHE = $PreviousGoCache

@@ -8,12 +8,19 @@ staging_dir="$packages_dir/staging"
 webui_embed_dir="$root_dir/backend/internal/webui/embedded"
 palops_map_stage_dir="$root_dir/frontend/public/map/palops"
 maplibre_stage_dir="$root_dir/frontend/public/vendor/maplibre-gl"
+vendor_work_dir="$staging_dir/vendor-work"
 
 version=""
 targets="linux-amd64"
 skip_tests=0
 clean=0
 nuget_audit="${PALPANEL_NUGET_AUDIT:-false}"
+dependency_mode="${PALPANEL_DEPENDENCY_MODE:-online}"
+vendor_root="${PALPANEL_VENDOR_ROOT:-$root_dir/.vendor}"
+vendor_prepared=0
+cargo_network_args=()
+npm_network_args=()
+dotnet_restore_args=()
 
 case "${nuget_audit,,}" in
   true|false) nuget_audit="${nuget_audit,,}" ;;
@@ -32,12 +39,50 @@ cleanup_maplibre_stage() {
   rm -rf -- "$maplibre_stage_dir"
 }
 
+cleanup_vendor_stage() {
+  if (( vendor_prepared )); then
+    python3 "$root_dir/scripts/vendorctl.py" cleanup \
+      --repository "$root_dir" \
+      --work-root "$vendor_work_dir" >/dev/null 2>&1 || true
+  else
+    rm -rf -- "$vendor_work_dir"
+  fi
+}
+
 cleanup_staging_assets() {
   cleanup_webui_stage
   cleanup_palops_map_stage
   cleanup_maplibre_stage
+  cleanup_vendor_stage
 }
 trap cleanup_staging_assets EXIT
+
+setup_dependency_mode() {
+  local profile
+  case "$dependency_mode" in
+    online) return ;;
+    mirror) profile=source ;;
+    offline) profile=build ;;
+    *) printf 'PALPANEL_DEPENDENCY_MODE must be online, mirror, or offline\n' >&2; exit 64 ;;
+  esac
+  [[ -d "$vendor_root" ]] || { printf 'Vendor root does not exist: %s\n' "$vendor_root" >&2; exit 66; }
+  printf '[palpanel] Verifying dependency mirror (%s)\n' "$profile"
+  python3 "$root_dir/scripts/vendorctl.py" verify --root "$vendor_root" --profile "$profile"
+  python3 "$root_dir/scripts/vendorctl.py" prepare \
+    --root "$vendor_root" \
+    --repository "$root_dir" \
+    --work-root "$vendor_work_dir" \
+    --profile "$profile" >/dev/null
+  vendor_prepared=1
+  eval "$(python3 "$root_dir/scripts/vendorctl.py" env --root "$vendor_root" --work-root "$vendor_work_dir" --format shell)"
+  if [[ "$dependency_mode" == offline ]]; then
+    export GOPROXY=off GOSUMDB=off CARGO_NET_OFFLINE=true NPM_CONFIG_OFFLINE=true
+    export DOTNET_RESTORE_IGNORE_FAILED_SOURCES=true
+    cargo_network_args+=(--offline)
+    npm_network_args+=(--offline)
+    dotnet_restore_args+=('-p:RestoreIgnoreFailedSources=true')
+  fi
+}
 
 sync_palops_map_assets() {
   local args=(
@@ -111,6 +156,7 @@ if (( clean )); then
 fi
 mkdir -p "$packages_dir" "$staging_dir"
 
+setup_dependency_mode
 sync_palops_map_assets
 sync_maplibre_assets
 
@@ -120,14 +166,14 @@ if (( ! skip_tests )); then
   printf '[palpanel] Running sav-cli tests with cgo\n'
   (cd "$root_dir/sav-cli" && CGO_ENABLED=1 go test -p=1 ./...)
   printf '[palpanel] Running UID remapper tests\n'
-  (cd "$root_dir/tools/palworld-uid-remap" && CARGO_TARGET_DIR="$staging_dir/uid-remapper-tests" cargo test --locked)
+  (cd "$root_dir/tools/palworld-uid-remap" && CARGO_TARGET_DIR="$staging_dir/uid-remapper-tests" cargo test --locked "${cargo_network_args[@]}")
   printf '[palpanel] Installing frontend dependencies\n'
-  (cd "$root_dir/frontend" && npm ci)
+  (cd "$root_dir/frontend" && npm ci "${npm_network_args[@]}")
   printf '[palpanel] Running frontend checks\n'
   (cd "$root_dir/frontend" && npm run check)
 else
   printf '[palpanel] Skipping tests\n'
-  (cd "$root_dir/frontend" && npm ci && npm run build)
+  (cd "$root_dir/frontend" && npm ci "${npm_network_args[@]}" && npm run build)
 fi
 
 cleanup_webui_stage
@@ -180,7 +226,7 @@ build_linux() {
   copy_common_files "$package_dir"
 
   printf '[palpanel] Building UID remapper linux-%s\n' "$arch"
-  (cd "$root_dir/tools/palworld-uid-remap" && CARGO_TARGET_DIR="$staging_dir/uid-remapper-linux-$arch" cargo build --locked --release)
+  (cd "$root_dir/tools/palworld-uid-remap" && CARGO_TARGET_DIR="$staging_dir/uid-remapper-linux-$arch" cargo build --locked --release "${cargo_network_args[@]}")
   cp "$staging_dir/uid-remapper-linux-$arch/release/palworld-uid-remap" "$package_dir/bin/palworld-uid-remap"
   local helper_sha256
   helper_sha256="$(sha256sum "$package_dir/bin/palworld-uid-remap" | cut -d ' ' -f 1)"
@@ -200,7 +246,7 @@ build_linux() {
   printf '[palpanel] Publishing self-contained PalCalc bridge linux-%s\n' "$arch"
   # Local release packaging must remain deterministic when NuGet's advisory
   # endpoint is unavailable. GitHub CI explicitly enables the online audit.
-  DOTNET_CLI_UI_LANGUAGE=en dotnet publish "$root_dir/palcalc-bridge/PalCalc.Bridge.csproj" -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:InvariantGlobalization=true "-p:NuGetAudit=$nuget_audit" -o "$staging_dir/palcalc-linux"
+  DOTNET_CLI_UI_LANGUAGE=en dotnet publish "$root_dir/palcalc-bridge/PalCalc.Bridge.csproj" -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:InvariantGlobalization=true "-p:NuGetAudit=$nuget_audit" "${dotnet_restore_args[@]}" -o "$staging_dir/palcalc-linux"
   cp "$staging_dir/palcalc-linux/palcalc-bridge" "$package_dir/bin/palcalc-bridge"
   chmod 755 "$package_dir/bin/palpanel" "$package_dir/bin/palpanel-updater" "$package_dir/bin/sav-cli" "$package_dir/bin/palcalc-bridge" "$package_dir/bin/palworld-uid-remap"
 
@@ -256,16 +302,28 @@ build_project_source_archive() {
       cp -a --parents "$path" "$source_root/"
     done < <(git ls-files --cached --others --exclude-standard -z)
   )
-  mkdir -p "$source_root/third_party/palcalc"
-  (
-    cd "$root_dir/third_party/palcalc"
-    while IFS= read -r -d '' path; do
-      case "$path" in
-        *.dll|bin/*|*/bin/*|obj/*|*/obj/*) continue ;;
-      esac
-      cp -a --parents "$path" "$source_root/third_party/palcalc/"
-    done < <(git ls-files --cached -z)
-  )
+  for vendor_source in palcalc uesave; do
+    local vendor_source_root="$root_dir/third_party/$vendor_source"
+    [[ -d "$vendor_source_root" ]] || continue
+    rm -rf "$source_root/third_party/$vendor_source"
+    mkdir -p "$source_root/third_party/$vendor_source"
+    (
+      cd "$vendor_source_root"
+      if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        file_stream=(git ls-files --cached -z)
+      else
+        file_stream=(find . -type f -print0)
+      fi
+      while IFS= read -r -d '' path; do
+        path="${path#./}"
+        case "$path" in
+          .git/*|*.dll|bin/*|*/bin/*|obj/*|*/obj/*|target/*|*/target/*) continue ;;
+        esac
+        mkdir -p "$source_root/third_party/$vendor_source/$(dirname "$path")"
+        cp -a "$path" "$source_root/third_party/$vendor_source/$path"
+      done < <("${file_stream[@]}")
+    )
+  done
   (cd "$source_root/sav-cli" && go mod vendor)
   tar --sort=name --owner=0 --group=0 --numeric-owner -czf "$archive" -C "$staging_dir" "$source_name"
   printf '[palpanel] Wrote %s\n' "$archive"

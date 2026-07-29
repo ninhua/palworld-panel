@@ -1,5 +1,14 @@
 # 功能移植已知问题
 
+## 第三方镜像与离线构建
+
+- `offline` 模式归档项目依赖，不包含 Go、Node.js、Python、Rust、.NET SDK、MinGW 或操作系统软件包；构建机仍需预装匹配工具链。
+- npm、Cargo、Go module 和 NuGet 缓存必须在联网环境预热后导入；缺少任意锁定包时离线构建会失败。
+- `mirror` 模式允许公共源补齐缺失缓存，因此不能作为完全断网证明。
+- 大型瓦片和缓存不进入 PalPanel 主仓库；应放在独立镜像目录、Git LFS 或 Release 资产中。
+- 镜像内容有意更新后必须运行 `vendorctl refresh` 并审查新的 SHA-256 清单。
+- 授权书原件如含个人信息应私下保存；公开仓库只保留授权范围摘要和原件 SHA-256。
+
 ## PalOps 世界地图
 
 - 地图源码适配固定到 `CoderYiXin/PalOpsWeb` 1.3.2 / `dc2ec173c77e759482e59d9b63d228c88132061c`；上游数据变化不会在运行时自动漂移。
