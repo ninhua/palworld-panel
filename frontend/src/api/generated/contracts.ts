@@ -990,7 +990,7 @@ export interface components {
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/palworld-panel";
-        "version": "0.8.22";
+        "version": "0.8.23";
       };
       "upstream": {
         "commit": string;

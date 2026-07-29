@@ -1,6 +1,7 @@
 package paldefender
 
 import (
+	"errors"
 	"net"
 	"strconv"
 	"testing"
@@ -98,6 +99,66 @@ func TestTypedRCONPlayerManagementValidation(t *testing.T) {
 	}
 }
 
+func TestTypedRCONRetriesWithoutSlashForCompatibleServers(t *testing.T) {
+	manager, cleanup := testManager(t)
+	defer cleanup()
+	prepareGMRESTFixture(t, manager)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	if err := palconfig.Write(manager.cfg.PalWorldSettingsPath(), palconfig.Settings{
+		"RCONEnabled": "True", "RCONPort": strconv.Itoa(port), "AdminPassword": "secret",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	commands := make(chan string, 2)
+	go serveTestRCONResponses(listener, commands, "Unknown command", "OK")
+
+	result, err := manager.RCONTeleport(t.Context(), "steam_1", TeleportRequest{Mode: "coordinates", X: pointer(1.0), Y: pointer(1.0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Command != "tp steam_1 1 1" || result.Output != "OK" {
+		t.Fatalf("result = %#v", result)
+	}
+	for _, want := range []string{"/tp steam_1 1 1", "tp steam_1 1 1"} {
+		select {
+		case got := <-commands:
+			if got != want {
+				t.Fatalf("command = %q, want %q", got, want)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("command %q was not received", want)
+		}
+	}
+}
+
+func TestTypedRCONRejectsUnknownCommandOutput(t *testing.T) {
+	manager, cleanup := testManager(t)
+	defer cleanup()
+	prepareGMRESTFixture(t, manager)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	if err := palconfig.Write(manager.cfg.PalWorldSettingsPath(), palconfig.Settings{
+		"RCONEnabled": "True", "RCONPort": strconv.Itoa(port), "AdminPassword": "secret",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	commands := make(chan string, 2)
+	go serveTestRCONResponses(listener, commands, "Unknown command", "Unknown command")
+
+	if _, err := manager.RCONTeleport(t.Context(), "steam_1", TeleportRequest{Mode: "coordinates", X: pointer(1.0), Y: pointer(1.0)}); !errors.Is(err, ErrRCONCommandRejected) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func serveTestRCON(listener net.Listener, commands chan<- string) {
 	for {
 		conn, err := listener.Accept()
@@ -119,6 +180,30 @@ func serveTestRCON(listener net.Listener, commands chan<- string) {
 			_ = writeRCONPacket(conn, rconPacket{ID: command.ID, Type: rconPacketExecReply, Body: "OK"})
 			time.Sleep(250 * time.Millisecond)
 		}(conn)
+	}
+}
+
+func serveTestRCONResponses(listener net.Listener, commands chan<- string, responses ...string) {
+	for _, response := range responses {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		auth, err := readRCONPacket(conn)
+		if err != nil || auth.Type != rconPacketAuth || auth.Body != "secret" {
+			_ = conn.Close()
+			return
+		}
+		_ = writeRCONPacket(conn, rconPacket{ID: auth.ID, Type: rconPacketAuthReply})
+		command, err := readRCONPacket(conn)
+		if err != nil {
+			_ = conn.Close()
+			return
+		}
+		commands <- command.Body
+		_ = writeRCONPacket(conn, rconPacket{ID: command.ID, Type: rconPacketExecReply, Body: response})
+		time.Sleep(250 * time.Millisecond)
+		_ = conn.Close()
 	}
 }
 

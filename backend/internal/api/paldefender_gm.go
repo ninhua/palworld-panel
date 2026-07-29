@@ -180,6 +180,9 @@ func failPalDefenderGM(c *gin.Context, err error) {
 	case errors.Is(err, paldefender.ErrRCONAuthentication), errors.Is(err, paldefender.ErrRCONInvalidResponse):
 		fail(c, http.StatusBadGateway, "paldefender_rcon_failed", err.Error())
 		return
+	case errors.Is(err, paldefender.ErrRCONCommandRejected):
+		fail(c, http.StatusBadGateway, "paldefender_rcon_command_rejected", err.Error())
+		return
 	case errors.Is(err, paldefender.ErrExportPlayerUnavailable):
 		fail(c, http.StatusConflict, "paldefender_export_player_unavailable", err.Error())
 		return

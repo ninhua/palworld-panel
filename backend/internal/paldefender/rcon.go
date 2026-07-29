@@ -34,6 +34,7 @@ var (
 	ErrRCONUnavailable       = errors.New("Palworld RCON is unavailable")
 	ErrRCONAuthentication    = errors.New("Palworld RCON authentication failed")
 	ErrRCONInvalidResponse   = errors.New("Palworld RCON returned an invalid response")
+	ErrRCONCommandRejected   = errors.New("PalDefender rejected the RCON command")
 	ErrRCONBase64Unsupported = errors.New("PalDefender RCONbase64 must be disabled for panel-managed commands")
 	whitelistUserPattern     = regexp.MustCompile(`(?i)(?:steam|gdk|ps5)_[A-Za-z0-9_-]+`)
 	adminIPPattern           = regexp.MustCompile(`^(?:\d{1,3}|\*)(?:\.(?:\d{1,3}|\*)){3}$`)
@@ -114,11 +115,36 @@ func (m Manager) runTypedRCON(ctx context.Context, command string, parseEntries 
 	if err != nil {
 		return RCONResult{}, err
 	}
+	if isUnknownRCONCommand(output) && strings.HasPrefix(command, "/") {
+		compatibleCommand := strings.TrimPrefix(command, "/")
+		compatibleOutput, compatibleErr := m.executeRCON(ctx, compatibleCommand)
+		if compatibleErr != nil {
+			return RCONResult{}, compatibleErr
+		}
+		command, output = compatibleCommand, compatibleOutput
+	}
+	if isRejectedRCONOutput(output) {
+		return RCONResult{}, fmt.Errorf("%w: %s", ErrRCONCommandRejected, strings.TrimSpace(output))
+	}
 	result := RCONResult{Command: command, Output: output}
 	if parseEntries {
 		result.Entries = parseRCONEntries(output)
 	}
 	return result, nil
+}
+
+func isUnknownRCONCommand(output string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(output))
+	return normalized == "unknown command" ||
+		strings.HasPrefix(normalized, "unknown command:") ||
+		strings.Contains(normalized, "command not found")
+}
+
+func isRejectedRCONOutput(output string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(output))
+	return isUnknownRCONCommand(output) ||
+		strings.HasPrefix(normalized, "invalid command") ||
+		strings.HasPrefix(normalized, "error: unknown command")
 }
 
 func (m Manager) executeRCON(ctx context.Context, command string) (string, error) {
