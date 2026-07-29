@@ -1,0 +1,58 @@
+name: PalPanelBridge build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [custom-stable]
+    paths:
+      - "tools/palpanel-bridge/**"
+      - ".github/workflows/palpanel-bridge.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    env:
+      GH_TOKEN: ${{ secrets.UEPSEUDO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check private SDK credential
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+            throw "Repository secret UEPSEUDO_TOKEN is required to read Re-UE4SS/UEPseudo"
+          }
+
+      - name: Fetch pinned UE4SS SDK
+        shell: pwsh
+        run: |
+          gh auth setup-git
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git clone --branch v3.0.1 --depth 1 https://github.com/UE4SS-RE/RE-UE4SS.git "$env:RUNNER_TEMP\RE-UE4SS"
+          git -C "$env:RUNNER_TEMP\RE-UE4SS" submodule update --init --recursive --depth 1
+
+      - name: Build bridge DLL
+        shell: pwsh
+        run: |
+          ./tools/palpanel-bridge/build-local.ps1 `
+            -UE4SSRoot "$env:RUNNER_TEMP\RE-UE4SS" `
+            -OutputDir "$env:RUNNER_TEMP\palpanel-bridge-build"
+
+      - name: Complete artifact metadata
+        shell: pwsh
+        run: |
+          $artifact = "$env:RUNNER_TEMP\palpanel-bridge-build\artifact\PalPanelBridge"
+          Copy-Item "$env:RUNNER_TEMP\RE-UE4SS\LICENSE" "$artifact\UE4SS-LICENSE.txt"
+          Get-FileHash "$artifact\dlls\main.dll" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLowerInvariant()) *dlls/main.dll" } |
+            Set-Content -Encoding ascii "$artifact\SHA256SUMS"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PalPanelBridge-v0.1.0-ue4ss-v3.0.1
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ runner.temp }}/palpanel-bridge-build/artifact/PalPanelBridge
