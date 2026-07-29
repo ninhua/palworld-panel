@@ -19,7 +19,7 @@
 - `apply-source-patch.sh`
 - 补丁 hunk 重定位
 - 补丁目录 SHA256 校验
-- 面板补丁热更新
+- `Palworld-Panel-Patches` 补丁 Release 热更新
 
 ## 2. 版本规则
 
@@ -27,8 +27,8 @@
 
 ```text
 上游版本：v1.3.0
-自定义版本：0.8.30
-完整标签：v1.3.0-custom.0.8.30
+自定义版本：0.8.31
+完整标签：v1.3.0-custom.0.8.31
 ```
 
 版本源位于：
@@ -174,14 +174,13 @@ ninhua/palworld-panel
 
 更新流程：
 
-1. 查询稳定 Release。
-2. 选择版本最高且包含 Linux amd64 包与 `SHA256SUMS` 的版本。
-3. Web 进程下载并验证归档，再写入受限更新请求。
-4. `palpanel-update.path` 启动 root 级 `palpanel-updater`。
-5. 更新器重新从官方 Release 获取 `SHA256SUMS`，验证完整包和包内 `checksums.txt`。
-6. 安装新的版本目录，更新 systemd 单元和更新器，再原子切换 `current`。
-7. 重启全部服务并验证 `/api/ready` 与 `/api/health` 中的目标版本。
-8. 健康检查失败时恢复旧版本目录、旧 systemd 单元和旧更新器。
+1. 查询稳定 Release，下载 Linux amd64 归档和 `SHA256SUMS`。
+2. Web 进程校验外层归档、候选二进制版本和包内 `checksums.txt`。
+3. `PALPANEL_UPDATE_MODE=auto` 自动选择更新通道。
+4. systemd 正式安装检测到 root 更新器时，走外部完整包切换、服务重启和健康回滚。
+5. 无 systemd、但当前二进制目录可写时，要求 Release 的 `panel-update.json` 明确声明仅替换 `bin/palpanel`，然后同目录原子替换并通过 `syscall.Exec` 保持 PID。
+6. exec 新进程启动后连续验证 `/api/ready` 与 `/api/patch/info` 的目标版本；启动函数提前报错、监听失败或健康超时均恢复旧二进制并再次 `exec`。
+7. Release 声明需要同步更新侧车或其他文件时，exec 通道必须拒绝并提示使用外部完整包更新。
 
 注意事项：
 
@@ -193,13 +192,16 @@ ninhua/palworld-panel
 - 代理不是强制配置，不能在未启用时偷偷切换到第三方公共镜像。
 - Release 下载必须继续校验 `SHA256SUMS`；root 更新器必须独立进行第二次官方校验。
 - Linux/Windows 正式包必须包含 `palworld-uid-remap`；打包时必须先构建 helper、计算 SHA-256，再通过 `palpanel/internal/api.hostMigrationHelperSHA256` 注入面板后端。不要调整为后端先构建，否则旧安装无法安全自举 helper。
-- 从旧版首次升级到 `0.8.29` 时，需要通过安装脚本或手动运行新版 `palpanelctl install` 安装更新器和 systemd 路径单元。
+- exec 热更新只能接受 `panel-update.json` 中 `required_files=["bin/palpanel"]` 的 Release；不能默认为所有 Release 都可单文件热更。
+- `PALPANEL_UPDATE_MODE` 支持 `auto`、`external`、`exec`；默认 `auto`。
+- 从旧版首次升级到 `0.8.29` 时，需要通过安装脚本或手动运行新版 `palpanelctl install` 安装更新器和 systemd 路径单元；无 systemd 环境可直接使用 exec 通道。
 
 关键文件：
 
 ```text
 backend/internal/server/panel_update.go
 backend/internal/server/panel_update_test.go
+backend/internal/server/panel_update_exec_linux.go
 backend/internal/panelupdater/
 backend/cmd/palpanel-updater/
 scripts/systemd/palpanel-update.service

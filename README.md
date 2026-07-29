@@ -52,7 +52,7 @@ PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更�
 - 通过后端缓存查询中国区或全球可发现社区服务器；国内网络可配置 HTTP/HTTPS/SOCKS5 代理或自建 API 镜像
 - 在“系统设置 → 网络与代理”中分别配置公共下载/服务器更新代理和社区服查询代理；前者覆盖 SteamCMD、Workshop、GitHub/HTTP(S) MOD、PalDefender 与 UE4SS，代理密码不会回显，保存后从下一次任务生效
 - 使用保存世界、广播倒计时、正常退出和受控兜底组成的安全关服流程
-- 在 Linux amd64 上从本仓库 Release 安装完整面板更新；独立 root 更新器再次校验官方 `SHA256SUMS`，切换完整版本目录，并在健康检查失败时恢复旧版本
+- 在 Linux amd64 上从本仓库 Release 更新面板：systemd 安装走独立 root 完整包更新器，无 systemd 的可写便携环境走保持 PID 的 `syscall.Exec` 热更新；两种模式都执行版本与就绪检查并支持失败回滚
 
 ### 存档与地图
 
@@ -286,12 +286,13 @@ python -m unittest discover -s astrbot_plugin_palpanel/tests
 Linux amd64 可以直接在面板任务队列或设置页执行“更新面板”。面板会：
 
 1. 检查 [`ninhua/palworld-panel`](https://github.com/ninhua/palworld-panel/releases) 最新的非草稿、非预发布 Release。
-2. 下载 `palpanel_<版本>_linux_amd64.tar.gz` 和 `SHA256SUMS`。
-3. 面板将已验证归档交给独立 systemd 更新器。
-4. 更新器重新校验官方 `SHA256SUMS`、安装完整版本目录并原子切换 `current`。
-5. `/api/ready` 或版本健康检查失败时恢复旧目录、旧 systemd 单元和旧更新器。
+2. 下载 `palpanel_<版本>_linux_amd64.tar.gz` 和 `SHA256SUMS`，并校验外层归档、候选版本、包内 `checksums.txt` 与 `panel-update.json`。
+3. 默认 `PALPANEL_UPDATE_MODE=auto`：检测到 systemd root 更新器时走完整 Release 目录切换；否则在当前二进制目录可写时走 exec 热更新。
+4. exec 模式只接受 Release 明确声明 `required_files=["bin/palpanel"]` 的版本，原子替换主二进制后通过 `syscall.Exec` 保持原 PID。
+5. 新进程必须连续通过 `/api/ready` 和 `/api/patch/info` 目标版本检查；启动报错、监听失败或健康超时会恢复旧二进制并重新执行。
+6. Release 需要同步更新 sav-cli、PalCalc、UID remapper、控制脚本或 systemd 单元时，exec 模式会拒绝，必须使用外部完整包更新器。
 
-这是完整 Release 更新，不再使用补丁热更新、补丁清单或 `Palworld-Panel-Patches` 补丁链。Windows 版本目前通过下载新 Release ZIP 后运行升级程序更新。
+该流程不再依赖 `Palworld-Panel-Patches` 补丁链。Windows 版本目前通过下载新 Release ZIP 后运行升级程序更新。
 
 完整后端接口和机器人对接方法见 [`docs/backend-api-guide.md`](docs/backend-api-guide.md)；面板更新的任务、Release 资产和错误码详见 [`docs/panel-update-api.md`](docs/panel-update-api.md)。
 

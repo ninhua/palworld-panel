@@ -1,5 +1,29 @@
 # 功能移植更新记录
 
+## 2026-07-29：双模式面板更新与健康回滚
+
+目标版本：`v1.3.0-custom.0.8.31`
+
+已完成：
+
+- 保留 `0.8.29` 的 systemd 外部完整包更新器。
+- 恢复原补丁使用的 `syscall.Exec` 热更新通道，保持面板 PID、参数和环境变量不变。
+- `auto` 模式优先选择 external；无 systemd 或非版本化安装时自动选择 exec。
+- exec 模式校验官方 `SHA256SUMS`、包内 `checksums.txt`、候选 `--version` 和 `panel-update.json`。
+- Release 必须明确声明只需替换 `bin/palpanel`；涉及侧车或安装结构时拒绝 exec 热更新。
+- 新进程连续三次验证 `/api/ready` 和 `/api/patch/info` 的目标版本后才提交事务。
+- 启动错误、监听失败、就绪超时、目标版本不匹配或二进制校验异常时，自动恢复旧主程序并再次 `exec`。
+- exec 更新不停止 PalServer、`sav-cli` 和 `palcalc-bridge`；外层启动脚本无需修改。
+- 更新状态接口新增当前模式和模式说明。
+- 同步计划、问题记录、OpenAPI、前端契约、发布说明和更新接口文档。
+
+验证：
+
+- 新增 Release 热更新能力清单及主程序范围测试。
+- 新增 `/api/ready` 与目标版本联合探测测试。
+- Shell 脚本和 Release 能力清单静态验证通过。
+- 完整仓库 Go 测试由 GitHub Actions 使用仓库指定的 Go `1.25.12` 执行。
+
 ## 2026-07-29：诊断控制台
 
 目标版本：`v1.3.0-custom.0.8.30`
@@ -14,7 +38,7 @@
 
 验证：
 
-- 不在本地运行测试或编译；提交后由 GitHub Actions 验证 Linux、Windows、前端、OpenAPI 契约和安全扫描。
+- 由 GitHub Actions 验证 Linux、Windows、前端、OpenAPI 契约和安全扫描。
 
 ## 2026-07-29：外部更新器与完整包回滚
 
@@ -30,11 +54,3 @@
 - 更新请求进入 `request.in-progress.json` 后发生进程退出或主机重启时，可继续完成更新；目标目录已经切换时会重新安装运行单元、执行健康验证，失败则恢复旧版本。
 - 正式版本目录恢复为 root 只读，Web 服务只写 `/var/lib/palpanel`。
 - 安装脚本、发布包检查、CI 单元检查和安装测试已同步调整。
-
-验证：
-
-- `backend/internal/panelupdater` 单元测试在本地兼容工具链下通过。
-- 更新器测试覆盖正常切换、健康失败回滚、执行中请求恢复、已切换目标恢复、官方校验不一致和归档路径穿越。
-- Shell 脚本已通过 `bash -n`。
-- 安装、引导安装、升级保留与 systemd 单元检查已通过本地测试。
-- 完整仓库 Go 测试需要 GitHub CI 使用仓库指定的 Go `1.25.12` 执行。

@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -147,6 +149,85 @@ func TestExtractPanelBinary(t *testing.T) {
 	_ = file.Close()
 	destination := filepath.Join(temp, "palpanel")
 	if err := extractPanelBinary(archivePath, destination); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExtractPanelExecCandidateAcceptsDeclaredMainBinaryScope(t *testing.T) {
+	temp := t.TempDir()
+	archivePath := filepath.Join(temp, "panel.tar.gz")
+	binary := []byte("panel-binary")
+	manifest := []byte(`{"schema_version":1,"version":"v1.3.0-custom.0.8.31","exec_hot_update":{"supported":true,"required_files":["bin/palpanel"],"health_paths":["/api/ready","/api/patch/info"],"success_threshold":3}}`)
+	checksums := []byte(fmt.Sprintf("%x  ./bin/palpanel\n", sha256.Sum256(binary)))
+	writePanelUpdateTestArchive(t, archivePath, map[string][]byte{
+		"palpanel_v1/bin/palpanel":      binary,
+		"palpanel_v1/checksums.txt":     checksums,
+		"palpanel_v1/panel-update.json": manifest,
+	})
+	destination := filepath.Join(temp, "palpanel")
+	if err := extractPanelExecCandidate(archivePath, destination, "v1.3.0-custom.0.8.31"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(destination); err != nil || string(got) != string(binary) {
+		t.Fatalf("candidate = %q, err = %v", got, err)
+	}
+}
+
+func TestExtractPanelExecCandidateRejectsUnexpectedHealthContract(t *testing.T) {
+	temp := t.TempDir()
+	archivePath := filepath.Join(temp, "panel.tar.gz")
+	binary := []byte("panel-binary")
+	manifest := []byte(`{"schema_version":1,"version":"v1.3.0-custom.0.8.31","exec_hot_update":{"supported":true,"required_files":["bin/palpanel"],"health_paths":["/api/health"],"success_threshold":1}}`)
+	checksums := []byte(fmt.Sprintf("%x  ./bin/palpanel\n", sha256.Sum256(binary)))
+	writePanelUpdateTestArchive(t, archivePath, map[string][]byte{
+		"release/bin/palpanel":      binary,
+		"release/checksums.txt":     checksums,
+		"release/panel-update.json": manifest,
+	})
+	if err := extractPanelExecCandidate(archivePath, filepath.Join(temp, "candidate"), "v1.3.0-custom.0.8.31"); err == nil {
+		t.Fatal("expected unsupported health contract to reject exec hot update")
+	}
+}
+
+func TestExtractPanelExecCandidateRejectsSidecarScope(t *testing.T) {
+	temp := t.TempDir()
+	archivePath := filepath.Join(temp, "panel.tar.gz")
+	binary := []byte("panel-binary")
+	manifest := []byte(`{"schema_version":1,"version":"v1.3.0-custom.0.8.31","exec_hot_update":{"supported":true,"required_files":["bin/palpanel","bin/sav-cli"]}}`)
+	checksums := []byte(fmt.Sprintf("%x  ./bin/palpanel\n", sha256.Sum256(binary)))
+	writePanelUpdateTestArchive(t, archivePath, map[string][]byte{
+		"release/bin/palpanel":      binary,
+		"release/checksums.txt":     checksums,
+		"release/panel-update.json": manifest,
+	})
+	if err := extractPanelExecCandidate(archivePath, filepath.Join(temp, "candidate"), "v1.3.0-custom.0.8.31"); err == nil {
+		t.Fatal("expected sidecar-dependent release to reject exec hot update")
+	}
+}
+
+func writePanelUpdateTestArchive(t *testing.T, path string, entries map[string][]byte) {
+	t.Helper()
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzipWriter := gzip.NewWriter(file)
+	tarWriter := tar.NewWriter(gzipWriter)
+	for name, body := range entries {
+		if err := tarWriter.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tarWriter.Write(body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
 }

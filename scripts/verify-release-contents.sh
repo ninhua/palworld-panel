@@ -30,6 +30,7 @@ required=(
   '/licenses/GPL-3.0.txt'
   '/licenses/PalDefender-MIT.txt'
   '/licenses/PalCalc-MIT.txt'
+  '/panel-update.json'
   '/checksums.txt'
 )
 for item in "${required[@]}"; do
@@ -54,6 +55,22 @@ grep -aFq "$helper_sha256" "$package_dir/bin/palpanel" || {
   printf 'panel binary does not embed the packaged UID remapper SHA-256\n' >&2
   exit 1
 }
+python3 - "$package_dir/panel-update.json" "$(basename "$package_dir" | sed -E 's/^palpanel_(.*)_linux_amd64$/\1/')" <<'PY_PANEL_UPDATE_MANIFEST'
+from pathlib import Path
+import json
+import sys
+
+path = Path(sys.argv[1])
+expected_version = sys.argv[2]
+payload = json.loads(path.read_text(encoding="utf-8"))
+assert payload.get("schema_version") == 1, "invalid panel-update.json schema"
+assert payload.get("version") == expected_version, "panel-update.json version mismatch"
+exec_update = payload.get("exec_hot_update") or {}
+assert exec_update.get("supported") is True, "exec hot update is not enabled"
+assert exec_update.get("required_files") == ["bin/palpanel"], "exec hot update scope is not main-binary-only"
+assert exec_update.get("health_paths") == ["/api/ready", "/api/patch/info"], "exec health paths mismatch"
+assert int(exec_update.get("success_threshold", 0)) == 3, "exec success threshold mismatch"
+PY_PANEL_UPDATE_MANIFEST
 if grep -RInI -E 'STEAM_WEB_API_KEY[[:space:]]*=[[:space:]]*[A-Za-z0-9_+/=-]{20,}' "$package_dir" --exclude='checksums.txt'; then
   printf 'release archive contains a configured secret\n' >&2
   exit 1

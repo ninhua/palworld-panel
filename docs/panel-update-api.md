@@ -1,13 +1,33 @@
 # PalPanel 面板更新接口与使用方法
 
-本文档说明 PalPanel 如何从 [`ninhua/palworld-panel`](https://github.com/ninhua/palworld-panel) Release 检查并安装完整面板更新。
+本文档说明 PalPanel 如何从 `ninhua/palworld-panel` Release 检查并安装面板更新。
 
-## 适用范围
+## 更新模式
 
-- 检查更新：所有受支持平台均可调用。
-- 执行自更新：目前仅支持 Linux amd64。
-- Windows：从 [Releases](https://github.com/ninhua/palworld-panel/releases) 下载新的 Windows ZIP，校验 `SHA256SUMS` 后使用包内升级程序更新。
-- 更新类型：完整 Release 更新，不使用补丁文件、补丁 manifest 或旧补丁仓库。
+Linux amd64 支持两种更新模式：
+
+| 模式 | 适用环境 | 行为 |
+|---|---|---|
+| `external` | systemd 正式安装 | root 更新器切换完整 Release 目录，并重启 PalPanel 与侧车 |
+| `exec` | 启动脚本、容器或便携安装 | 只原子替换 `bin/palpanel`，再通过 `syscall.Exec` 保持原 PID 启动新版本 |
+
+默认配置：
+
+```env
+PALPANEL_UPDATE_MODE=auto
+```
+
+可选值：
+
+```text
+auto      优先 external；不可用时自动使用 exec
+external  强制完整包更新，缺少 systemd 更新器时拒绝执行
+exec      强制 PID 保持不变的主程序热更新
+```
+
+`exec` 不要求修改外层启动脚本。更新时 PalServer、`sav-cli` 和 `palcalc-bridge` 不停止，面板 HTTP 连接会短暂断开。
+
+为了防止组件版本混杂，exec 模式只接受 Release 内 `panel-update.json` 明确声明只需要更新 `bin/palpanel` 的版本。需要同步更新侧车、控制脚本或安装结构的 Release 必须使用 external 模式或外部部署脚本更新。
 
 正式版本格式：
 
@@ -18,30 +38,23 @@ v<上游版本>-custom.<自定义版本>
 示例：
 
 ```text
-v1.3.0-custom.0.8.29
+v1.3.0-custom.0.8.31
 ```
 
 ## 鉴权与权限
 
-所有接口都位于 `/api` 下，需要登录会话或 API Key。
-
-API Key 使用：
+所有更新接口位于 `/api` 下，需要登录会话或 API Key。
 
 ```http
 Authorization: Bearer ppk_...
 ```
 
-权限要求：
-
 | 接口 | 方法 | 权限 |
-| --- | --- | --- |
+|---|---|---|
 | `/api/panel/update/status` | `GET` | 已登录 |
 | `/api/panel/update/check` | `POST` | `server:control` |
 | `/api/panel/update` | `POST` | `server:control` |
 | `/api/jobs/:id` | `GET` | 已登录 |
-| `/api/jobs?limit=50` | `GET` | 已登录 |
-
-浏览器登录会话调用 `POST` 接口时还必须满足同源检查。外部自动化建议使用具有 `server:control` 权限的 API Key。
 
 以下示例使用：
 
@@ -52,62 +65,40 @@ PANEL_TOKEN="ppk_..."
 
 ## 查询更新状态
 
-```http
-GET /api/panel/update/status
-```
-
-示例：
-
 ```bash
 curl -fsS \
   -H "Authorization: Bearer ${PANEL_TOKEN}" \
   "${PANEL_URL}/api/panel/update/status"
 ```
 
-成功响应：
+成功响应示例：
 
 ```json
 {
   "ok": true,
   "data": {
-    "current_version": "v1.3.0-custom.0.8.19",
-    "latest_version": "v1.3.0-custom.0.8.29",
-    "release_tag": "v1.3.0-custom.0.8.29",
-    "release_url": "https://github.com/ninhua/palworld-panel/releases/tag/v1.3.0-custom.0.8.29",
+    "current_version": "v1.3.0-custom.0.8.30",
+    "latest_version": "v1.3.0-custom.0.8.31",
+    "release_tag": "v1.3.0-custom.0.8.31",
+    "release_url": "https://github.com/ninhua/palworld-panel/releases/tag/v1.3.0-custom.0.8.31",
     "update_available": true,
-    "checked_at": "2026-07-29T04:00:00Z",
-    "message": "发现面板新版本 v1.3.0-custom.0.8.29"
+    "update_mode": "exec",
+    "update_mode_note": "主进程通过 syscall.Exec 原地热更新，PID 保持不变并执行启动健康回滚",
+    "checked_at": "2026-07-29T09:00:00Z",
+    "message": "发现面板新版本 v1.3.0-custom.0.8.31"
   }
 }
 ```
 
-该接口优先查询 GitHub Releases API；如果匿名 API 配额耗尽，会自动通过 GitHub `releases/latest`
-网页重定向解析最新版，不要求服务器配置 GitHub Token。查询结果只选择：
+Release 查询只接受：
 
-- 非草稿 Release；
-- 非预发布 Release；
-- 符合 `vX.Y.Z-custom.X.Y.Z` 格式；
+- 非草稿、非预发布 Release；
+- 符合 `vX.Y.Z-custom.X.Y.Z` 的版本；
 - 同时包含 Linux amd64 包和 `SHA256SUMS`。
 
-GitHub 查询失败时返回 `502`：
+GitHub Releases API 受限时会回退到 `/releases/latest` 重定向解析。
 
-```json
-{
-  "ok": false,
-  "error": {
-    "code": "panel_update_status_failed",
-    "message": "..."
-  }
-}
-```
-
-## 创建“检查更新”任务
-
-```http
-POST /api/panel/update/check
-```
-
-此接口只检查 Release，不下载或替换面板程序。
+## 创建检查任务
 
 ```bash
 curl -fsS -X POST \
@@ -115,30 +106,9 @@ curl -fsS -X POST \
   "${PANEL_URL}/api/panel/update/check"
 ```
 
-成功时返回 `202 Accepted` 和任务：
+该任务只检查 Release，不下载或替换程序。
 
-```json
-{
-  "ok": true,
-  "data": {
-    "id": "job_...",
-    "type": "panel_update_check",
-    "status": "waiting",
-    "progress": 0,
-    "message": "queued panel update check",
-    "created_at": "...",
-    "updated_at": "..."
-  }
-}
-```
-
-## 创建面板更新任务
-
-```http
-POST /api/panel/update
-```
-
-Linux amd64 示例：
+## 创建更新任务
 
 ```bash
 curl -fsS -X POST \
@@ -146,47 +116,46 @@ curl -fsS -X POST \
   "${PANEL_URL}/api/panel/update"
 ```
 
-成功时返回 `202 Accepted`：
+成功时返回 `202 Accepted` 和 `panel_update` 任务。
 
-```json
-{
-  "ok": true,
-  "data": {
-    "id": "job_...",
-    "type": "panel_update",
-    "status": "waiting",
-    "progress": 0,
-    "message": "queued panel update",
-    "created_at": "...",
-    "updated_at": "..."
-  }
-}
-```
+### 公共准备阶段
 
-任务随后执行：
+两种模式都会执行：
 
 1. 查询最新正式 Release。
-2. 如果当前版本已是最新，直接完成任务。
-3. 下载 `SHA256SUMS` 和 Linux 完整包并进行第一轮校验。
-4. 提取并运行候选 `palpanel --version`。
-5. 将归档交给 `palpanel-update.path` 触发的 root 级外部更新器。
-6. 外部更新器从官方 Release 重新获取 `SHA256SUMS`，再验证外层归档和包内 `checksums.txt`。
-7. 安装完整版本目录，更新 systemd 单元与更新器，并原子切换 `/opt/palpanel/current`。
-8. 重启 `sav-cli`、`palcalc-bridge` 和 PalPanel。
-9. 连续验证 `/api/ready` 与 `/api/health` 返回目标版本。
-10. 验证失败时恢复旧版本目录、旧 systemd 单元和旧更新器，再验证回滚版本。
+2. 下载并解析 `SHA256SUMS`。
+3. 下载 Linux 完整包并校验官方 SHA-256。
+4. 提取候选 `bin/palpanel`。
+5. 校验包内 `checksums.txt`。
+6. 执行候选程序 `--version`，确认与 Release 标签一致。
 
-更新请求被 root 更新器接管后会保存为 `request.in-progress.json`。如果更新器退出或主机重启，`palpanel-update.path` 会再次触发该请求；目标版本目录已经切换时，更新器会继续安装运行单元并执行健康检查，而不是盲目覆盖或直接判定失败。
+### exec 热更新阶段
 
-非 Linux amd64 平台调用该接口会返回 `500`，错误信息为：
+1. 校验 `panel-update.json`，确认该 Release 只需要替换 `bin/palpanel`。
+2. 备份当前主程序到 `bin/.palpanel-update-backups/`。
+3. 写入 `bin/.palpanel-update-state.json`。
+4. 在同目录原子替换主程序。
+5. 使用 `syscall.Exec` 让新程序接管当前 PID、参数和环境变量。
+6. 新程序启动后连续三次验证 `/api/ready` 和 `/api/patch/info` 的目标版本。
+7. 验证成功后删除事务标记，并保留最近四份备份。
+8. 启动报错、监听失败、就绪超时或版本不匹配时，恢复旧主程序并再次 `exec` 旧版本。
 
-```text
-panel self-update currently requires linux-amd64
-```
+外层 `start.sh` 等待的 PID 不变，因此不会因为面板热更新而结束容器。该模式不重启游戏服务和侧车。
+
+### external 完整包阶段
+
+1. Web 进程写入受限更新请求。
+2. `palpanel-update.path` 启动 root 级 `palpanel-updater`。
+3. 更新器独立重新获取官方 `SHA256SUMS`。
+4. 验证完整包及包内所有文件。
+5. 安装新版本目录、更新 systemd 单元和更新器。
+6. 原子切换 `/opt/palpanel/current`。
+7. 重启 PalPanel、`sav-cli` 和 `palcalc-bridge`。
+8. 验证 `/api/ready` 与目标版本；失败时恢复旧目录、旧单元和旧更新器。
+
+执行中的外部请求保存在 `request.in-progress.json`，主机重启后可继续或回滚。
 
 ## 查询任务结果
-
-使用创建任务响应中的 `id`：
 
 ```bash
 JOB_ID="job_..."
@@ -196,34 +165,18 @@ curl -fsS \
   "${PANEL_URL}/api/jobs/${JOB_ID}"
 ```
 
-任务状态：
-
 | 状态 | 含义 |
-| --- | --- |
-| `waiting` | 等待任务执行 |
-| `running` | 正在检查、下载、校验或替换 |
-| `completed` | 已完成；更新任务通常会紧接着重启面板 |
-| `failed` | 失败，查看 `error_code` 和 `error` |
+|---|---|
+| `waiting` | 等待执行 |
+| `running` | 正在下载、校验、切换或验证启动状态 |
+| `completed` | 新版本已通过健康和版本验证 |
+| `failed` | 更新失败或已回滚，查看 `error_code` 与 `error` |
 
-轮询示例：
-
-```bash
-while true; do
-  curl -fsS \
-    -H "Authorization: Bearer ${PANEL_TOKEN}" \
-    "${PANEL_URL}/api/jobs/${JOB_ID}"
-  sleep 2
-done
-```
-
-更新过程中连接短暂断开属于正常现象。面板重启后，可检查：
+exec 切换期间连接短暂断开属于正常现象。恢复后可查询：
 
 ```bash
-curl -fsS "${PANEL_URL}/api/health"
-
-curl -fsS \
-  -H "Authorization: Bearer ${PANEL_TOKEN}" \
-  "${PANEL_URL}/api/panel/update/status"
+curl -fsS "${PANEL_URL}/api/ready"
+curl -fsS "${PANEL_URL}/api/patch/info"
 ```
 
 ## Release 资产约定
@@ -236,28 +189,52 @@ palpanel_<Release Tag>_windows_amd64.zip
 SHA256SUMS
 ```
 
-Linux 归档必须包含 `palpanel`、`palpanel-updater`、`sav-cli`、`palcalc-bridge`、`palpanelctl`、五个 systemd 单元和包内 `checksums.txt`。外部更新器拒绝符号链接、硬链接、路径穿越、未被包内校验覆盖的文件以及与官方 `SHA256SUMS` 不一致的归档。
-
-当前正式发布示例：
+Linux 包必须包含：
 
 ```text
-palpanel_v1.3.0-custom.0.8.29_linux_amd64.tar.gz
-palpanel_v1.3.0-custom.0.8.29_windows_amd64.zip
+bin/palpanel
+bin/palpanel-updater
+bin/sav-cli
+bin/palcalc-bridge
+bin/palworld-uid-remap
+palpanelctl
+panel-update.json
+checksums.txt
+systemd/palpanel.service
+systemd/palpanel-sav-cli.service
+systemd/palpanel-palcalc.service
+systemd/palpanel-update.service
+systemd/palpanel-update.path
 ```
 
-## 首次启用外部更新器
+`panel-update.json` 示例：
 
-`0.8.29` 是新的完整包更新框架首次落地版本。旧版安装中尚不存在 root 更新器和 `palpanel-update.path`，因此首次升级到本版本必须通过安装脚本或解压新版 Release 后执行：
+```json
+{
+  "schema_version": 1,
+  "version": "v1.3.0-custom.0.8.31",
+  "exec_hot_update": {
+    "supported": true,
+    "required_files": ["bin/palpanel"],
+    "health_paths": ["/api/ready", "/api/patch/info"],
+    "success_threshold": 3
+  }
+}
+```
+
+当某个版本必须同步更新侧车或安装文件时，发布流程必须把 `supported` 改为 `false`，或在 `required_files` 中列出所需文件。exec 模式会拒绝此类 Release。
+
+## 首次启用 external 模式
+
+从 `0.8.28` 或更早版本首次升级到包含外部更新器的版本时，需要通过安装脚本或新版 Release 执行：
 
 ```bash
 sudo ./palpanelctl install
 ```
 
-完成一次安装后，后续 Linux amd64 版本可继续从面板内执行完整包更新。
+这只影响 external/systemd 模式。启动脚本环境在安装 `0.8.30` 后可以直接使用 exec 模式。由于 `0.8.30` 本身尚未包含 exec 通道，无 systemd 环境首次升级到 `0.8.31` 仍需由外层 `start.sh` 下载完整 Release；从 `0.8.31` 开始，后续兼容版本可在面板内热更新。
 
 ## GitHub 访问配置
-
-公开仓库通常不需要 Token。遇到 GitHub API 限流时，可在 PalPanel 进程环境中设置：
 
 ```env
 PALPANEL_GITHUB_TOKEN=github_token
@@ -270,35 +247,42 @@ GITHUB_TOKEN=github_token
 GH_TOKEN=github_token
 ```
 
-Token 只用于 GitHub Release API 和资产请求，不应写入日志、命令历史或公开配置。
+更新下载同时使用“系统设置 → 网络与代理 → 安装与下载代理”。
 
 ## 常见错误
 
 | `error_code` | 含义 |
-| --- | --- |
-| `panel_update_check_failed` | 检查任务无法查询或解析 Release |
+|---|---|
+| `panel_update_check_failed` | 无法查询或解析 Release |
+| `panel_update_mode_unavailable` | external 与 exec 均不可用，或强制模式不满足环境要求 |
+| `panel_exec_package_incompatible` | Release 未声明可安全地只热更主程序 |
+| `panel_exec_update_failed` | 主程序备份、替换或 `exec` 失败 |
+| `panel_exec_activation_interrupted` | 事务标记已写入，但旧程序仍是活动文件 |
+| `panel_exec_startup_verification_failed` | 新程序未通过就绪或目标版本验证 |
+| `panel_exec_update_rolled_back` | exec 热更新失败，旧程序已恢复并重新启动 |
 | `panel_external_updater_unavailable` | 外部更新器、systemd 单元或版本化安装结构缺失 |
-| `panel_update_handoff_failed` | 无法写入受限更新请求或已有更新正在进行 |
+| `panel_update_handoff_failed` | 无法写入外部更新请求或已有更新正在执行 |
 | `panel_update_official_checksum_failed` | root 更新器无法取得官方 `SHA256SUMS` |
-| `panel_update_archive_untrusted` | 归档哈希与官方 Release 不一致 |
-| `panel_update_health_failed` | 新版本未通过就绪和版本健康检查，已尝试回滚 |
-| `panel_release_lookup_failed` | 没有找到符合约定的正式 Release |
+| `panel_update_archive_untrusted` | 完整包与官方 SHA-256 不一致 |
+| `panel_update_health_failed` | external 新版本健康检查失败并已尝试回滚 |
+| `panel_release_lookup_failed` | 未找到符合约定的正式 Release |
 | `panel_checksums_download_failed` | `SHA256SUMS` 下载失败 |
 | `panel_checksums_invalid` | 校验文件格式或路径不安全 |
-| `panel_archive_download_failed` | Linux 完整包下载失败 |
-| `panel_archive_checksum_failed` | 完整包 SHA256 不匹配 |
-| `panel_archive_invalid` | 归档结构或二进制条目不符合约定 |
+| `panel_archive_download_failed` | Linux 包下载失败 |
+| `panel_archive_checksum_failed` | Linux 包 SHA-256 不匹配 |
+| `panel_archive_invalid` | 归档结构或主程序条目不符合约定 |
 | `panel_binary_probe_failed` | 候选程序无法运行或版本不匹配 |
-| `panel_backup_failed` | 无法备份当前程序 |
-| `panel_replacement_failed` | 无法原子替换当前程序 |
-| `panel_activation_checksum_failed` | 替换后的程序校验失败 |
-| `panel_restart_failed` | 替换成功但进程重启失败，旧程序会被恢复 |
-| `panel_startup_verification_failed` | 新进程启动校验失败并触发回滚 |
 
-排查时可查看任务详情和服务日志：
+启动脚本环境排查：
+
+```bash
+ls -la /home/container/palworld_win/app/bin/.palpanel-update-*
+tail -n 200 /home/container/palworld_win/logs/palpanel-console.log
+```
+
+systemd 环境排查：
 
 ```bash
 sudo /opt/palpanel/current/palpanelctl status
-sudo /opt/palpanel/current/palpanelctl logs -f
-sudo journalctl -u palpanel.service --no-pager -n 200
+sudo journalctl -u palpanel.service -u palpanel-update.service --no-pager -n 200
 ```

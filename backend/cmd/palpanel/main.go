@@ -38,6 +38,9 @@ import (
 
 func main() {
 	if err := runWithIO(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
+		if rollbackErr := server.RollbackPanelUpdateOnStartupFailure(err); rollbackErr != nil {
+			log.Printf("palpanel update startup rollback: %v", rollbackErr)
+		}
 		log.Printf("palpanel: %v", err)
 		os.Exit(1)
 	}
@@ -215,6 +218,7 @@ func runWithIO(args []string, input io.Reader, output, errorOutput io.Writer) er
 	go func() {
 		errCh <- httpServer.ListenAndServe()
 	}()
+	server.StartPanelUpdateStartupVerification(cfg, store)
 	select {
 	case err := <-errCh:
 		if !errors.Is(err, http.ErrServerClosed) {

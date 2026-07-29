@@ -147,6 +147,19 @@ build_linux() {
   cp "$staging_dir/palcalc-linux/palcalc-bridge" "$package_dir/bin/palcalc-bridge"
   chmod 755 "$package_dir/bin/palpanel" "$package_dir/bin/palpanel-updater" "$package_dir/bin/sav-cli" "$package_dir/bin/palcalc-bridge" "$package_dir/bin/palworld-uid-remap"
 
+  cat >"$package_dir/panel-update.json" <<EOF_PANEL_UPDATE
+{
+  "schema_version": 1,
+  "version": "$version",
+  "exec_hot_update": {
+    "supported": true,
+    "required_files": ["bin/palpanel"],
+    "health_paths": ["/api/ready", "/api/patch/info"],
+    "success_threshold": 3
+  }
+}
+EOF_PANEL_UPDATE
+
   (cd "$package_dir" && find . -type f ! -name checksums.txt -print0 | sort -z | xargs -0 sha256sum) >"$checksum_tmp"
   mv "$checksum_tmp" "$package_dir/checksums.txt"
   tar --sort=name --owner=0 --group=0 --numeric-owner -czf "$archive" -C "$staging_dir" "$package_name"

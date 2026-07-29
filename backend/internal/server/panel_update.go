@@ -30,6 +30,13 @@ const (
 	panelUpdateMaxMetadataBytes = 8 << 20
 	panelUpdateMaxArchiveBytes  = 512 << 20
 	panelUpdateRepository       = "ninhua/palworld-panel"
+
+	panelUpdateModeAuto     = "auto"
+	panelUpdateModeExternal = "external"
+	panelUpdateModeExec     = "exec"
+
+	panelExecManifestName     = "panel-update.json"
+	panelExecSuccessThreshold = 3
 )
 
 var (
@@ -50,6 +57,8 @@ type PanelUpdateStatus struct {
 	ReleaseTag      string `json:"release_tag"`
 	ReleaseURL      string `json:"release_url"`
 	UpdateAvailable bool   `json:"update_available"`
+	UpdateMode      string `json:"update_mode"`
+	UpdateModeNote  string `json:"update_mode_note"`
 	CheckedAt       string `json:"checked_at"`
 	Message         string `json:"message"`
 }
@@ -75,11 +84,27 @@ type panelReleaseSelection struct {
 }
 
 type panelRestartMarker struct {
+	SchemaVersion  int    `json:"schema_version,omitempty"`
 	JobID          string `json:"job_id"`
 	BinaryPath     string `json:"binary_path"`
 	BackupPath     string `json:"backup_path"`
+	PreviousSHA256 string `json:"previous_sha256,omitempty"`
 	ExpectedSHA256 string `json:"expected_sha256"`
+	CurrentVersion string `json:"current_version,omitempty"`
+	TargetVersion  string `json:"target_version,omitempty"`
+	HealthPort     int    `json:"health_port,omitempty"`
 	CreatedAt      string `json:"created_at"`
+}
+
+type panelExecPackageManifest struct {
+	SchemaVersion int    `json:"schema_version"`
+	Version       string `json:"version"`
+	ExecHotUpdate struct {
+		Supported        bool     `json:"supported"`
+		RequiredFiles    []string `json:"required_files"`
+		HealthPaths      []string `json:"health_paths"`
+		SuccessThreshold int      `json:"success_threshold"`
+	} `json:"exec_hot_update"`
 }
 
 func normalizePanelUpdateRequest(request PanelUpdateRequest) (PanelUpdateRequest, error) {
@@ -115,10 +140,21 @@ func (m Manager) PanelUpdateStatus(ctx context.Context, request PanelUpdateReque
 	if available {
 		message = "发现面板新版本 " + selection.Release.TagName
 	}
+	mode, modeErr := resolvePanelUpdateMode(m.cfg)
+	modeNote := ""
+	if modeErr != nil {
+		mode = "unavailable"
+		modeNote = modeErr.Error()
+	} else if mode == panelUpdateModeExternal {
+		modeNote = "完整 Release 由外部 root 更新器切换并执行健康回滚"
+	} else {
+		modeNote = "主进程通过 syscall.Exec 原地热更新，PID 保持不变并执行启动健康回滚"
+	}
 	return PanelUpdateStatus{
 		CurrentVersion: request.CurrentVersion, LatestVersion: selection.Release.TagName,
 		ReleaseTag: selection.Release.TagName, ReleaseURL: selection.Release.HTMLURL,
-		UpdateAvailable: available, CheckedAt: time.Now().UTC().Format(time.RFC3339Nano), Message: message,
+		UpdateAvailable: available, UpdateMode: mode, UpdateModeNote: modeNote,
+		CheckedAt: time.Now().UTC().Format(time.RFC3339Nano), Message: message,
 	}, nil
 }
 
@@ -155,11 +191,16 @@ func (m Manager) runPanelUpdate(ctx context.Context, jobID string, request Panel
 		}
 		_ = m.jobs.UpdateWithCode(jobID, "failed", progress, message, detail, code)
 	}
-	if err := externalPanelUpdaterReady(m.cfg); err != nil {
-		fail(5, "panel_external_updater_unavailable", "external panel updater is unavailable", err)
+	mode, err := resolvePanelUpdateMode(m.cfg)
+	if err != nil {
+		fail(5, "panel_update_mode_unavailable", "no usable panel update mode is available", err)
 		return
 	}
-	_ = m.jobs.Update(jobID, "running", 5, "checking PalPanel releases", "")
+	modeLabel := "exec hot update"
+	if mode == panelUpdateModeExternal {
+		modeLabel = "external full-package update"
+	}
+	_ = m.jobs.Update(jobID, "running", 5, "checking PalPanel releases for "+modeLabel, "")
 	selection, err := m.resolvePanelRelease(ctx, request)
 	if err != nil {
 		fail(15, "panel_release_lookup_failed", "panel release lookup failed", err)
@@ -212,7 +253,12 @@ func (m Manager) runPanelUpdate(ctx context.Context, jobID string, request Panel
 		return
 	}
 	candidate := filepath.Join(operationDir, "candidate-palpanel")
-	if err := extractPanelBinary(archivePath, candidate); err != nil {
+	if mode == panelUpdateModeExec {
+		if err := extractPanelExecCandidate(archivePath, candidate, selection.Release.TagName); err != nil {
+			fail(60, "panel_exec_package_incompatible", "release package does not permit safe exec hot update", err)
+			return
+		}
+	} else if err := extractPanelBinary(archivePath, candidate); err != nil {
 		fail(60, "panel_archive_invalid", "cannot extract panel binary", err)
 		return
 	}
@@ -235,6 +281,15 @@ func (m Manager) runPanelUpdate(ctx context.Context, jobID string, request Panel
 		fail(75, "panel_health_port_invalid", "cannot determine panel health port", err)
 		return
 	}
+	if mode == panelUpdateModeExec {
+		_ = m.jobs.Update(jobID, "running", 85, "verified package permits PID-preserving exec hot update", "")
+		if err := activatePanelExecUpdate(jobID, request.CurrentVersion, selection.Release.TagName, healthPort, candidate); err != nil {
+			fail(95, "panel_exec_update_failed", "cannot activate exec hot update", err)
+			return
+		}
+		return
+	}
+
 	proxyURL, err := networkproxy.New(m.cfg).InstallProxyURL()
 	if err != nil {
 		fail(75, "panel_update_proxy_invalid", "cannot read panel update proxy", err)
@@ -259,6 +314,70 @@ func (m Manager) runPanelUpdate(ctx context.Context, jobID string, request Panel
 	cleanup = false
 	startPanelUpdateResultWatcher(m.cfg, m.store)
 	_ = m.jobs.Update(jobID, "running", 95, "PalPanel "+selection.Release.TagName+" package verified; external updater is switching the full release", "")
+}
+
+func activatePanelExecUpdate(jobID, currentVersion, targetVersion string, healthPort int, candidate string) error {
+	executable, err := executablePath()
+	if err != nil {
+		return err
+	}
+	previousSHA, err := sha256PanelFile(executable)
+	if err != nil {
+		return fmt.Errorf("hash current panel binary: %w", err)
+	}
+	expectedSHA, err := sha256PanelFile(candidate)
+	if err != nil {
+		return fmt.Errorf("hash candidate panel binary: %w", err)
+	}
+	backupDir := filepath.Join(filepath.Dir(executable), ".palpanel-update-backups")
+	if err := os.MkdirAll(backupDir, 0o700); err != nil {
+		return fmt.Errorf("create panel update backup directory: %w", err)
+	}
+	backup := filepath.Join(backupDir, fmt.Sprintf("palpanel-%s-%s", currentVersion, time.Now().UTC().Format("20060102T150405.000000000Z")))
+	if err := copyPanelFile(executable, backup, 0o755); err != nil {
+		return fmt.Errorf("back up current panel binary: %w", err)
+	}
+	replacement := filepath.Join(filepath.Dir(executable), ".palpanel-update-replacement")
+	_ = os.Remove(replacement)
+	if err := copyPanelFile(candidate, replacement, 0o755); err != nil {
+		return fmt.Errorf("prepare panel replacement: %w", err)
+	}
+	marker := panelRestartMarker{
+		SchemaVersion:  2,
+		JobID:          jobID,
+		BinaryPath:     executable,
+		BackupPath:     backup,
+		PreviousSHA256: previousSHA,
+		ExpectedSHA256: expectedSHA,
+		CurrentVersion: currentVersion,
+		TargetVersion:  targetVersion,
+		HealthPort:     healthPort,
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if err := writePanelRestartMarker(marker); err != nil {
+		_ = os.Remove(replacement)
+		return fmt.Errorf("write panel restart marker: %w", err)
+	}
+	if err := os.Rename(replacement, executable); err != nil {
+		_ = removePanelRestartMarker(executable)
+		return fmt.Errorf("activate panel replacement: %w", err)
+	}
+	activeSHA, err := sha256PanelFile(executable)
+	if err != nil || !strings.EqualFold(activeSHA, expectedSHA) {
+		_ = restorePanelBackup(executable, backup)
+		_ = removePanelRestartMarker(executable)
+		if err != nil {
+			return fmt.Errorf("verify activated panel binary: %w", err)
+		}
+		return fmt.Errorf("activated panel sha256 = %s, expected %s", activeSHA, expectedSHA)
+	}
+	_ = os.RemoveAll(filepath.Dir(candidate))
+	if err := replaceCurrentPanelProcess(executable); err != nil {
+		_ = restorePanelBackup(executable, backup)
+		_ = removePanelRestartMarker(executable)
+		return fmt.Errorf("exec updated panel binary: %w", err)
+	}
+	return nil
 }
 
 func (m Manager) resolvePanelRelease(ctx context.Context, request PanelUpdateRequest) (panelReleaseSelection, error) {
@@ -569,6 +688,149 @@ func extractPanelBinary(archivePath, destination string) error {
 		return fmt.Errorf("archive does not contain exactly one bin/palpanel")
 	}
 	return nil
+}
+
+func extractPanelExecCandidate(archivePath, destination, targetVersion string) error {
+	archive, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+	gzipReader, err := gzip.NewReader(archive)
+	if err != nil {
+		return err
+	}
+	defer gzipReader.Close()
+
+	reader := tar.NewReader(gzipReader)
+	var manifestBody, checksumsBody []byte
+	binaryFound := 0
+	for {
+		header, err := reader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		name := filepath.ToSlash(filepath.Clean(header.Name))
+		if filepath.IsAbs(header.Name) || name == ".." || strings.HasPrefix(name, "../") {
+			return fmt.Errorf("unsafe archive path: %s", header.Name)
+		}
+		regular := header.Typeflag == tar.TypeReg || header.Typeflag == tar.TypeRegA
+		switch {
+		case name == "bin/palpanel" || strings.HasSuffix(name, "/bin/palpanel"):
+			if !regular || header.Size <= 0 || header.Size > panelUpdateMaxArchiveBytes || binaryFound > 0 {
+				return fmt.Errorf("invalid panel binary entry")
+			}
+			file, err := os.OpenFile(destination, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+			if err != nil {
+				return err
+			}
+			_, copyErr := io.CopyN(file, reader, header.Size)
+			closeErr := file.Close()
+			if copyErr != nil {
+				return copyErr
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+			binaryFound++
+		case name == "checksums.txt" || strings.HasSuffix(name, "/checksums.txt"):
+			if !regular || header.Size <= 0 || header.Size > panelUpdateMaxMetadataBytes || checksumsBody != nil {
+				return fmt.Errorf("invalid package checksums entry")
+			}
+			checksumsBody, err = io.ReadAll(io.LimitReader(reader, panelUpdateMaxMetadataBytes+1))
+			if err != nil {
+				return fmt.Errorf("read package checksums: %w", err)
+			}
+			if int64(len(checksumsBody)) != header.Size {
+				return fmt.Errorf("package checksums length mismatch")
+			}
+		case name == panelExecManifestName || strings.HasSuffix(name, "/"+panelExecManifestName):
+			if !regular || header.Size <= 0 || header.Size > panelUpdateMaxMetadataBytes || manifestBody != nil {
+				return fmt.Errorf("invalid exec update manifest entry")
+			}
+			manifestBody, err = io.ReadAll(io.LimitReader(reader, panelUpdateMaxMetadataBytes+1))
+			if err != nil {
+				return fmt.Errorf("read exec update manifest: %w", err)
+			}
+			if int64(len(manifestBody)) != header.Size {
+				return fmt.Errorf("exec update manifest length mismatch")
+			}
+		}
+	}
+	if binaryFound != 1 {
+		return fmt.Errorf("archive does not contain exactly one bin/palpanel")
+	}
+	if len(checksumsBody) == 0 {
+		return fmt.Errorf("release package has no checksums.txt")
+	}
+	if len(manifestBody) == 0 {
+		return fmt.Errorf("release package has no %s", panelExecManifestName)
+	}
+	checksums, err := parsePanelPackageChecksums(checksumsBody)
+	if err != nil {
+		return err
+	}
+	expectedSHA, ok := checksums["bin/palpanel"]
+	if !ok {
+		return fmt.Errorf("package checksums have no bin/palpanel entry")
+	}
+	actualSHA, err := sha256PanelFile(destination)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(actualSHA, expectedSHA) {
+		return fmt.Errorf("package panel sha256 = %s, expected %s", actualSHA, expectedSHA)
+	}
+	var manifest panelExecPackageManifest
+	if err := json.Unmarshal(manifestBody, &manifest); err != nil {
+		return fmt.Errorf("decode %s: %w", panelExecManifestName, err)
+	}
+	if manifest.SchemaVersion != 1 {
+		return fmt.Errorf("unsupported exec update manifest schema: %d", manifest.SchemaVersion)
+	}
+	if manifest.Version != targetVersion {
+		return fmt.Errorf("exec update manifest version = %s, expected %s", manifest.Version, targetVersion)
+	}
+	if !manifest.ExecHotUpdate.Supported {
+		return fmt.Errorf("release requires full-package update")
+	}
+	if len(manifest.ExecHotUpdate.RequiredFiles) != 1 || filepath.ToSlash(filepath.Clean(manifest.ExecHotUpdate.RequiredFiles[0])) != "bin/palpanel" {
+		return fmt.Errorf("release requires files beyond bin/palpanel; use external full-package update")
+	}
+	if len(manifest.ExecHotUpdate.HealthPaths) != 2 || manifest.ExecHotUpdate.HealthPaths[0] != "/api/ready" || manifest.ExecHotUpdate.HealthPaths[1] != "/api/patch/info" {
+		return fmt.Errorf("release declares unsupported exec health probes")
+	}
+	if manifest.ExecHotUpdate.SuccessThreshold != panelExecSuccessThreshold {
+		return fmt.Errorf("release exec success threshold = %d, expected %d", manifest.ExecHotUpdate.SuccessThreshold, panelExecSuccessThreshold)
+	}
+	return nil
+}
+
+func parsePanelPackageChecksums(body []byte) (map[string]string, error) {
+	out := map[string]string{}
+	for _, raw := range strings.Split(string(body), "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) != 2 || len(parts[0]) != 64 {
+			return nil, fmt.Errorf("invalid package checksum line: %s", raw)
+		}
+		if _, err := hex.DecodeString(parts[0]); err != nil {
+			return nil, fmt.Errorf("invalid package checksum digest: %s", parts[0])
+		}
+		name := strings.TrimPrefix(strings.TrimPrefix(parts[1], "*"), "./")
+		clean := filepath.ToSlash(filepath.Clean(name))
+		if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || filepath.IsAbs(name) {
+			return nil, fmt.Errorf("unsafe package checksum path: %s", name)
+		}
+		out[clean] = strings.ToLower(parts[0])
+	}
+	return out, nil
 }
 
 func executablePath() (string, error) {
