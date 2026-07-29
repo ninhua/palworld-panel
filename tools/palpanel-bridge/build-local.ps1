@@ -45,6 +45,19 @@ $patchedThirdPartyCMake = $originalThirdPartyCMake.Replace(
   $oldCorrosionCommit,
   $fixedCorrosionCommit
 )
+$thirdPartyLineEnding = if ($originalThirdPartyCMake.Contains("`r`n")) { "`r`n" } else { "`n" }
+$oldTextEditorPin = "    GIT_REPOSITORY git@github.com:UE4SS-RE/ImGuiColorTextEdit.git" +
+  $thirdPartyLineEnding + "    GIT_TAG master"
+$fixedTextEditorCommit = "af7821926251feca84e35f8fa83eee84dae90424"
+if (-not $patchedThirdPartyCMake.Contains($oldTextEditorPin)) {
+  throw "Unexpected ImGuiColorTextEdit pin; refusing to patch an unknown SDK revision"
+}
+$fixedTextEditorPin = "    GIT_REPOSITORY git@github.com:UE4SS-RE/ImGuiColorTextEdit.git" +
+  $thirdPartyLineEnding + "    GIT_TAG $fixedTextEditorCommit"
+$patchedThirdPartyCMake = $patchedThirdPartyCMake.Replace(
+  $oldTextEditorPin,
+  $fixedTextEditorPin
+)
 $oldFindCall = "DispatchMap.template find<ObjectClassType>(ObjectClass)"
 $fixedFindCall = "DispatchMap.find(ObjectClass)"
 if (-not $originalVirtualFunctionHeader.Contains($oldFindCall)) {
