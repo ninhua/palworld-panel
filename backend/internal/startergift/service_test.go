@@ -299,8 +299,8 @@ func TestForgetWaitsForOfflineBeforeRearming(t *testing.T) {
 	if err := Observe(ctx, store, scope, now.Add(15*time.Second), []playerpresence.OnlinePlayer{bob}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if snapshot, err := LoadSnapshot(ctx, store, scope); err != nil || len(snapshot.Grants) != 0 {
-		t.Fatalf("still-online rearm grants=%#v err=%v", snapshot.Grants, err)
+	if snapshot, err := LoadSnapshot(ctx, store, scope); err != nil || len(snapshot.Grants) != 1 {
+		t.Fatalf("still-online rearm must retain the existing grant=%#v err=%v", snapshot.Grants, err)
 	}
 	if err := Observe(ctx, store, scope, now.Add(30*time.Second), nil, nil); err != nil {
 		t.Fatal(err)
@@ -626,6 +626,40 @@ func TestCancelNextLoginKeepsSeenAndClearsRearm(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(decisions) != 1 || decisions[0].Rearmed || decisions[0].Decision != "known_existing" || decisions[0].IsNew {
+		t.Fatalf("decision=%#v", decisions)
+	}
+}
+
+func TestNextLoginRetainsGrantAndExposesCancelState(t *testing.T) {
+	store := openTestStore(t)
+	scope := testScope("world-retain-next-login-grant")
+	config := saveTestConfig(t, store, scope)
+	ctx := context.Background()
+	player := playerpresence.OnlinePlayer{PlayerUID: "uid-retain", SteamID: "steam-retain", Nickname: "Retain"}
+	state := EmptyState()
+	state.ScopeID = scope.ID
+	state.Initialized = true
+	markSeen(&state, playerAliases(player))
+	grant := newGrantWithReason(player, config, "2026-07-29T01:00:00Z", "automatic", "original", false)
+	grant.Status = "success"
+	grant.Phase = "completed"
+	state.Grants[identity(player.SteamID)] = grant
+	if err := saveState(ctx, store, scope, state); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ApplyAction(ctx, store, scope, player, "next_login"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := mustSnapshot(t, store, scope)
+	if len(snapshot.Grants) != 1 || snapshot.Grants[0].Status != "success" {
+		t.Fatalf("existing grant was not retained: %#v", snapshot.Grants)
+	}
+	decisions, err := InspectPlayers(ctx, store, scope, []playerpresence.OnlinePlayer{player})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decisions) != 1 || !decisions[0].Rearmed || decisions[0].Decision != "marked_new_next_login" || decisions[0].GrantStatus != "success" {
 		t.Fatalf("decision=%#v", decisions)
 	}
 }

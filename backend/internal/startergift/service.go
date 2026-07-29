@@ -283,15 +283,6 @@ func InspectPlayers(ctx context.Context, store *db.Store, scope playerpresence.S
 			},
 		}
 		switch {
-		case hasGrant:
-			decision.IsNew = true
-			decision.Eligible = grant.Status != "success"
-			decision.Decision = "starter_gift_created"
-			decision.Reason = firstNonEmpty(grant.DetectionReason, "已创建初始礼包任务。")
-			decision.GrantStatus = grant.Status
-			decision.GrantPhase = grant.Phase
-			decision.LastUpdateAt = grant.UpdatedAt
-			decision.Evidence = append(decision.Evidence, "grant_key="+grantKey, "detection_source="+firstNonEmpty(grant.DetectionSource, "legacy"))
 		case rearmed:
 			decision.IsNew = true
 			decision.Eligible = !online
@@ -301,6 +292,21 @@ func InspectPlayers(ctx context.Context, store *db.Store, scope playerpresence.S
 			} else {
 				decision.Reason = "已人工标记为新玩家，等待下一次进入服务器。"
 			}
+			if hasGrant {
+				decision.GrantStatus = grant.Status
+				decision.GrantPhase = grant.Phase
+				decision.LastUpdateAt = grant.UpdatedAt
+				decision.Evidence = append(decision.Evidence, "grant_key="+grantKey, "detection_source="+firstNonEmpty(grant.DetectionSource, "legacy"))
+			}
+		case hasGrant:
+			decision.IsNew = true
+			decision.Eligible = grant.Status != "success"
+			decision.Decision = "starter_gift_created"
+			decision.Reason = firstNonEmpty(grant.DetectionReason, "已创建初始礼包任务。")
+			decision.GrantStatus = grant.Status
+			decision.GrantPhase = grant.Phase
+			decision.LastUpdateAt = grant.UpdatedAt
+			decision.Evidence = append(decision.Evidence, "grant_key="+grantKey, "detection_source="+firstNonEmpty(grant.DetectionSource, "legacy"))
 		case !seen:
 			decision.IsNew = true
 			decision.Eligible = true
@@ -447,7 +453,9 @@ func ApplyAction(ctx context.Context, store *db.Store, scope playerpresence.Scop
 	case "next_login", "mark_new", "rearm":
 		if found {
 			aliases = uniqueStrings(append(aliases, grantAliases(grant)...))
-			delete(state.Grants, key)
+			appendGrantEvent(&grant, grant.Phase, "info", "管理员已设置下次进入重新发放；当前发放记录予以保留。", nowText)
+			grant.UpdatedAt = nowText
+			state.Grants[key] = grant
 		}
 		markSeen(&state, aliases)
 		for _, alias := range aliases {
@@ -456,6 +464,9 @@ func ApplyAction(ctx context.Context, store *db.Store, scope playerpresence.Scop
 	case "cancel_next_login", "cancel_mark_new", "cancel_rearm":
 		if found {
 			aliases = uniqueStrings(append(aliases, grantAliases(grant)...))
+			appendGrantEvent(&grant, grant.Phase, "info", "管理员已取消下次进入重新发放。", nowText)
+			grant.UpdatedAt = nowText
+			state.Grants[key] = grant
 		}
 		markSeen(&state, aliases)
 		clearMarked(state.Rearm, aliases)
@@ -609,7 +620,10 @@ func Forget(ctx context.Context, store *db.Store, scope playerpresence.Scope, pl
 		state.Seen[alias] = true
 		state.Rearm[alias] = true
 	}
-	delete(state.Grants, key)
+	nowText := time.Now().UTC().Format(time.RFC3339Nano)
+	appendGrantEvent(&grant, grant.Phase, "info", "管理员已设置下次进入重新发放；当前发放记录予以保留。", nowText)
+	grant.UpdatedAt = nowText
+	state.Grants[key] = grant
 	return saveState(ctx, store, scope, state)
 }
 
@@ -693,10 +707,17 @@ func Observe(ctx context.Context, store *db.Store, scope playerpresence.Scope, n
 		if key == "" {
 			continue
 		}
-		if existing := findGrantKey(state, aliases); existing != "" {
+		existing := findGrantKey(state, aliases)
+		if existing != "" && !manual {
 			continue
 		}
-		state.Grants[key] = newGrantWithReason(player, config, nowText, detectionSource, detectionReason, manual)
+		replacement := newGrantWithReason(player, config, nowText, detectionSource, detectionReason, manual)
+		if existing != "" {
+			previous := state.Grants[existing]
+			replacement.Events = append(append([]GrantEvent(nil), previous.Events...), replacement.Events...)
+			delete(state.Grants, existing)
+		}
+		state.Grants[key] = replacement
 	}
 	state.Online = currentOnline
 	if err := saveState(ctx, store, scope, state); err != nil {
