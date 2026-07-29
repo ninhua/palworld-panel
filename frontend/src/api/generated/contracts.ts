@@ -1229,9 +1229,9 @@ export interface components {
       "item_batch_size": number;
       "items": Array<components["schemas"]["StarterGiftItem"]>;
       "pal_templates": Array<string>;
-      "template_batch_size": number;
       "technology_mode": "none" | "unlock_all" | "grant_points";
       "technology_points": number;
+      "template_batch_size": number;
     };
     "StarterGiftGrant": {
       "ancient_technology_points": number;
@@ -1248,10 +1248,10 @@ export interface components {
       "progress_percent": number;
       "status": "pending" | "running" | "success" | "failed";
       "steam_id"?: string;
-      "template_total": number;
       "technology_done": boolean;
       "technology_mode": "none" | "unlock_all" | "grant_points";
       "technology_points": number;
+      "template_total": number;
       "updated_at": string;
     };
     "StarterGiftItem": {
