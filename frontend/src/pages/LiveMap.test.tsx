@@ -85,8 +85,8 @@ describe('LiveMap', () => {
     renderPage();
 
     expect(await screen.findByText('PalOps MapLibre 离线世界地图')).toBeInTheDocument();
-    expect(screen.getByText('樱花岛快速传送 地图标记')).toBeInTheDocument();
-    expect(screen.getByText('Builder 地图标记')).toBeInTheDocument();
+    expect(await screen.findByText('樱花岛快速传送 地图标记')).toBeInTheDocument();
+    expect(await screen.findByText('Builder 地图标记')).toBeInTheDocument();
     expect(screen.queryByText('原油节点 地图标记')).not.toBeInTheDocument();
     expect(screen.queryByText('捣蛋猫 地图标记')).not.toBeInTheDocument();
 
