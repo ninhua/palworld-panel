@@ -656,6 +656,7 @@ install_system() {
       useradd --system --home-dir "$system_data_dir" --shell /usr/sbin/nologin "$service_user"
     fi
     chown root:root "$opt_root" "$version_dir"
+    chown root:"$service_user" "$version_dir/bin"
     chown root:"$service_user" "$etc_dir"
     if (( docker_access )); then
       getent group docker >/dev/null || fail "docker group does not exist"
@@ -665,6 +666,7 @@ install_system() {
   elif (( docker_access )); then
     fail "--docker is not available in test mode"
   fi
+  chmod 775 "$version_dir/bin"
   if [[ ! -f "$etc_dir/palpanel.env" ]]; then
     "$version_dir/bin/palpanel" --config "$etc_dir/palpanel.env" --init-config
   fi

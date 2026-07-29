@@ -258,6 +258,7 @@ func (m Manager) runPanelUpdate(ctx context.Context, jobID string, request Panel
 		fail(90, "panel_activation_checksum_failed", "activated panel binary checksum mismatch", hashErr)
 		return
 	}
+	_ = os.RemoveAll(stage)
 	_ = m.jobs.Update(jobID, "completed", 100, "PalPanel "+selection.Release.TagName+" installed; restarting", "")
 	if err := replaceCurrentPanelProcess(executable); err != nil {
 		_ = restorePanelBackup(executable, backup)

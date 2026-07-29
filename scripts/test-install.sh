@@ -192,6 +192,10 @@ if [[ "$(id -u)" -eq 0 ]]; then
 fi
 grep -Eq '^PALWORLD_ADMIN_PASSWORD=[A-Za-z0-9_-]{40,}$' "$PALPANEL_ETC_DIR/palpanel.env"
 installed_dir="$(readlink -f "$PALPANEL_INSTALL_ROOT/current")"
+[[ "$(stat -c '%a' "$installed_dir/bin")" == "775" ]]
+if [[ "$(id -u)" -eq 0 ]]; then
+  [[ "$(stat -c '%U:%G' "$installed_dir/bin")" == "root:$service_user" ]]
+fi
 [[ -f "$installed_dir/LICENSE" ]]
 [[ -f "$installed_dir/licenses/GPL-3.0.txt" ]]
 [[ -f "$installed_dir/licenses/sav-cli-LICENSE.txt" ]]
@@ -202,6 +206,7 @@ grep -qx 'Wants=palpanel-sav-cli.service palpanel-palcalc.service' "$PALPANEL_SY
 grep -Fxq "Environment=HOME=$PALPANEL_SYSTEM_DATA_DIR" "$PALPANEL_SYSTEMD_DIR/palpanel.service"
 grep -Fxq "Environment=DOCKER_CONFIG=$PALPANEL_SYSTEM_DATA_DIR/docker-client" "$PALPANEL_SYSTEMD_DIR/palpanel.service"
 grep -Fxq 'ProtectHome=true' "$PALPANEL_SYSTEMD_DIR/palpanel.service"
+grep -Fxq "ReadWritePaths=$PALPANEL_SYSTEM_DATA_DIR $PALPANEL_INSTALL_ROOT/current/bin" "$PALPANEL_SYSTEMD_DIR/palpanel.service"
 grep -qx 'PartOf=palpanel.service' "$PALPANEL_SYSTEMD_DIR/palpanel-sav-cli.service"
 grep -qx 'Restart=always' "$PALPANEL_SYSTEMD_DIR/palpanel-sav-cli.service"
 grep -qx 'PartOf=palpanel.service' "$PALPANEL_SYSTEMD_DIR/palpanel-palcalc.service"

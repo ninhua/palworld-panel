@@ -131,6 +131,12 @@ grep -Fxq "Environment=DOCKER_CONFIG=$PALPANEL_SYSTEM_DATA_DIR/docker-client" "$
 grep -Fxq 'ProtectHome=true' "$PALPANEL_SYSTEMD_DIR/palpanel.service"
 [[ -L "$PALPANEL_INSTALL_ROOT/current" ]]
 [[ "$(readlink -f "$PALPANEL_INSTALL_ROOT/current")" == "$PALPANEL_INSTALL_ROOT/$(basename "$candidate_dir" | sed 's/^palpanel_//; s/_linux_amd64$//')" ]]
+installed_dir="$(readlink -f "$PALPANEL_INSTALL_ROOT/current")"
+[[ "$(stat -c '%a' "$installed_dir/bin")" == "775" ]]
+if [[ "$(id -u)" -eq 0 ]]; then
+  [[ "$(stat -c '%U:%G' "$installed_dir/bin")" == "root:$PALPANEL_SERVICE_USER" ]]
+fi
+grep -Fxq "ReadWritePaths=$PALPANEL_SYSTEM_DATA_DIR $PALPANEL_INSTALL_ROOT/current/bin" "$PALPANEL_SYSTEMD_DIR/palpanel.service"
 
 "$candidate_dir/palpanelctl" uninstall --purge >/dev/null
 printf 'upgrade preservation verification passed: %s -> candidate\n' "$previous_version"
