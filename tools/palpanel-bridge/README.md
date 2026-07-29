@@ -18,7 +18,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.2-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.3-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -39,9 +39,9 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.2-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.3-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
-   `Pal/Binaries/Win64/Mods/`.
+   `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
 4. Restart PalServer and check `UE4SS.log` for `PalPanelBridge`.
 
@@ -57,9 +57,9 @@ Authorization: Bearer <token>
 ## Probe
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://127.0.0.1:18082/v1/health
-curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18082/v1/probe/game-thread
-curl -H "Authorization: Bearer <token>" http://127.0.0.1:18082/v1/jobs/<job_id>
+curl -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/health
+curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/probe/game-thread
+curl -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/jobs/<job_id>
 ```
 
 Success means the job changes from `queued` to `completed` and reports
