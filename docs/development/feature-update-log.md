@@ -17,6 +17,7 @@
 
 - 新增镜像初始化、缺失组件、篡改检测、符号链接拒绝和安全清理测试。
 - 新增 CI 执行入口、Bash 语法和 PowerShell 结构检查。
+- 修复实时地图标记异步加载完成前同步断言，导致 Linux/Windows CI 同时失败的问题。
 - 完整断网 Linux/Windows Release 构建需在镜像内容初始化后执行。
 
 ## 2026-07-30：PalPanelBridge UE4SS 只读链路实机验证

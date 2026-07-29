@@ -85,16 +85,16 @@ describe('LiveMap', () => {
     renderPage();
 
     expect(await screen.findByText('PalOps MapLibre 离线世界地图')).toBeInTheDocument();
-    expect(screen.getByText('樱花岛快速传送 地图标记')).toBeInTheDocument();
-    expect(screen.getByText('Builder 地图标记')).toBeInTheDocument();
+    expect(await screen.findByText('樱花岛快速传送 地图标记')).toBeInTheDocument();
+    expect(await screen.findByText('Builder 地图标记')).toBeInTheDocument();
     expect(screen.queryByText('原油节点 地图标记')).not.toBeInTheDocument();
     expect(screen.queryByText('捣蛋猫 地图标记')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '资源' }));
-    expect(screen.getByText('原油节点 地图标记')).toBeInTheDocument();
+    expect(await screen.findByText('原油节点 地图标记')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '帕鲁实体' }));
-    expect(screen.getByText('捣蛋猫 地图标记')).toBeInTheDocument();
+    expect(await screen.findByText('捣蛋猫 地图标记')).toBeInTheDocument();
   });
 
   it('stores fixed POI exploration state in the browser', async () => {
