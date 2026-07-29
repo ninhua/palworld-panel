@@ -8,7 +8,23 @@ localhost HTTP -> bounded job queue -> UE4SS on_update game-thread callback
 
 It does not expose arbitrary UObject calls and cannot modify players, inventory, pals, or saves.
 
-## Install the Action artifact
+## Build locally
+
+The official UE4SS v3.0.1 source tree depends on the restricted UEPseudo
+repository. Use a local checkout obtained by an account with the required
+access; the public GitHub Actions token cannot fetch that SDK.
+
+```powershell
+./build-local.ps1 -UE4SSRoot C:\src\RE-UE4SS-v3.0.1
+```
+
+The DLL is written to:
+
+```text
+build/artifact/PalPanelBridge/dlls/main.dll
+```
+
+## Install the local artifact
 
 1. Copy `PalPanelBridge` into `Pal/Binaries/Win64/Mods/`.
 2. Rename `config.ini.example` to `config.ini` and replace the token.
