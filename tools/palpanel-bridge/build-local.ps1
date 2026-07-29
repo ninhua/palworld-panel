@@ -3,7 +3,8 @@ param(
   [string]$UE4SSRoot,
   [string]$OutputDir = (Join-Path $PSScriptRoot "build"),
   [string]$RustCompiler = "",
-  [string]$BuildConfiguration = "Game__Shipping__Win64"
+  [string]$BuildConfiguration = "Game__Shipping__Win64",
+  [string]$Generator = "Ninja"
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,7 +16,8 @@ if (-not (Test-Path -LiteralPath (Join-Path $resolvedSDK "CMakeLists.txt") -Path
 $cmakeArgs = @(
   "-S", $PSScriptRoot,
   "-B", $OutputDir,
-  "-A", "x64",
+  "-G", $Generator,
+  "-DCMAKE_BUILD_TYPE=$BuildConfiguration",
   "-DPALPANEL_UE4SS_ROOT=$resolvedSDK"
 )
 if ($RustCompiler) {
@@ -26,7 +28,7 @@ if ($RustCompiler) {
 cmake @cmakeArgs
 if ($LASTEXITCODE -ne 0) { throw "PalPanelBridge CMake configure failed" }
 
-cmake --build $OutputDir --config $BuildConfiguration --target PalPanelBridge
+cmake --build $OutputDir --target PalPanelBridge
 if ($LASTEXITCODE -ne 0) { throw "PalPanelBridge build failed" }
 
 $artifact = Join-Path $OutputDir "artifact\PalPanelBridge"

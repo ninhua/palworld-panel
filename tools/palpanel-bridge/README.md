@@ -21,6 +21,8 @@ is used only by Git authentication and is not included in the artifact.
 
 ## Optional local build
 
+Run from an MSVC developer shell with CMake, Ninja, and Rust available:
+
 ```powershell
 ./build-local.ps1 -UE4SSRoot C:\src\RE-UE4SS-v3.0.1
 ```
