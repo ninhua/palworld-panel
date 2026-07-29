@@ -152,6 +152,7 @@ pub fn remap_world(
     copy_tree(&input, stage.path())?;
 
     let mut rewritten_files = Vec::new();
+    let mut warnings = Vec::new();
     let mut rewritten_fields = BTreeMap::new();
     let mut before_source_counts = CountByUid::new();
     let mut before_target_counts = CountByUid::new();
@@ -170,6 +171,19 @@ pub fn remap_world(
     )?;
     let level_report = rewrite_typed_tree(&mut level_save.root.properties, mapping, "Level.sav");
     reject_opaque_candidates(&level_report)?;
+    let ignored_custom_version_candidates = level_report
+        .opaque_candidates
+        .iter()
+        .filter(|candidate| is_ignorable_host_custom_version_candidate(candidate))
+        .count();
+    if ignored_custom_version_candidates != 0 {
+        warnings.push(format!(
+            concat!(
+                "preserved {ignored_custom_version_candidates} host UID-like byte sequence(s) ",
+                "in Level.sav ItemContainerSaveData CustomVersionData metadata"
+            )
+        ));
+    }
     for (source, _) in mapping.pairs() {
         let count = level_report
             .rewritten_by_source
@@ -247,7 +261,7 @@ pub fn remap_world(
     let mut opaque_candidates = Vec::new();
     let mut semantic_after = BTreeMap::new();
     for relative in sav_files(&stage_manifest) {
-        let path = stage.path().join(&relative);
+        let path = stage.path().join(relative.replace('/', "\\"));
         let save = parse_save(&path)?;
         reject_opaque_candidates(&scan_opaque_bytes(
             &save.extra,
@@ -305,7 +319,7 @@ pub fn remap_world(
         rewritten_fields,
         semantic_fingerprints: semantic_after,
         opaque_candidates,
-        warnings: Vec::new(),
+        warnings,
     })
 }
 
@@ -397,7 +411,7 @@ fn collect_unrelated_baseline(
         if relative == "Level.sav" || mapped_source_relative(&relative, mapping) {
             continue;
         }
-        let save = parse_save(&input.join(&relative))?;
+        let save = parse_save(&input.join(relative.replace('/', "\\")))?;
         collect_target_baseline(&save, mapping, &relative, target_counts)?;
         semantic.insert(relative, semantic_fingerprint(&save, mapping)?);
     }
@@ -435,7 +449,11 @@ fn merge_counts(target: &mut CountByUid, source: &CountByUid) {
 }
 
 fn reject_opaque_candidates(report: &RewriteReport) -> Result<(), RemapError> {
-    if let Some(candidate) = report.opaque_candidates.first() {
+    if let Some(candidate) = report
+        .opaque_candidates
+        .iter()
+        .find(|candidate| !is_ignorable_host_custom_version_candidate(candidate))
+    {
         return match candidate.kind {
             crate::CandidateKind::Source => Err(RemapError::OpaqueSourceReference {
                 file: candidate.file.clone(),
@@ -448,6 +466,25 @@ fn reject_opaque_candidates(report: &RewriteReport) -> Result<(), RemapError> {
         };
     }
     Ok(())
+}
+
+fn is_ignorable_host_custom_version_candidate(candidate: &OpaqueCandidate) -> bool {
+    if candidate.file != "Level.sav"
+        || candidate.kind != crate::CandidateKind::Source
+        || candidate.uid.as_str() != crate::host::SOURCE_HOST_UID
+    {
+        return false;
+    }
+
+    let Some(index) = candidate
+        .path
+        .strip_prefix("worldSaveData.ItemContainerSaveData[")
+        .and_then(|path| path.strip_suffix("].Value.CustomVersionData"))
+    else {
+        return false;
+    };
+
+    !index.is_empty() && index.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 fn reject_typed_target_baseline(target_baseline: &CountByUid) -> Result<(), RemapError> {

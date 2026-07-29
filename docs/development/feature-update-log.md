@@ -1,5 +1,22 @@
 # 功能移植更新记录
 
+## 2026-07-29：房主存档 UID 重映射 CustomVersionData 修复
+
+目标版本：`v1.3.0-custom.0.8.38`
+
+已完成：
+
+- 修复合作房主固定源 UID `00000000-0000-0000-0000-000000000001` 在 `Level.sav` 的 `worldSaveData.ItemContainerSaveData[n].Value.CustomVersionData` 中形成字节级误报、导致存档转移中止的问题。
+- 仅对上述精确文件、路径、候选类型和固定房主 UID 应用窄范围豁免；不修改 `CustomVersionData` 原始字节。
+- 成功迁移报告中保留 opaque candidate，并增加“版本元数据已原样保留”的验证警告。
+- 任意其他 Raw、unknown、trailing、自定义 UID、目标 UID 或相似路径仍执行原有 fail-closed 安全门。
+
+验证：
+
+- 新增精确路径允许、相似路径拒绝、任意源 UID 拒绝和目标 UID 拒绝测试。
+- 保留语义指纹和双重规范化 round-trip 校验，确保忽略的是扫描碰撞而不是跳过存档完整性验证。
+- 完整 Rust、Go、Linux/Windows 发布验证由 GitHub Actions 执行。
+
 ## 2026-07-29：通知与事件中心
 
 目标版本：`v1.3.0-custom.0.8.37`

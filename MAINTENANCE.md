@@ -27,8 +27,8 @@
 
 ```text
 上游版本：v1.3.0
-自定义版本：0.8.37
-完整标签：v1.3.0-custom.0.8.37
+自定义版本：0.8.38
+完整标签：v1.3.0-custom.0.8.38
 ```
 
 版本源位于：
@@ -450,6 +450,7 @@ frontend/src/pages/StarterGift.tsx
 - 不得把 Token、代理密码或 PalDefender REST Token 写入日志、Release 或前端响应。
 - 存档解析保持只读，不允许浏览器直接获得原始 `.sav`。
 - 更新替换必须保留备份和启动失败回滚能力。
+- 房主存档 UID 重映射只允许把 `worldSaveData.ItemContainerSaveData[n].Value.CustomVersionData` 中的固定房主 UID 哨兵视为版本元数据碰撞；必须保持原始字节不变并输出警告。其他 opaque UID 候选仍须阻止迁移。
 
 ## 17. 提交建议
 

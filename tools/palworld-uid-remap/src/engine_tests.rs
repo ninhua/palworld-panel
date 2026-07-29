@@ -35,6 +35,79 @@ fn rejects_semantic_invariant_mismatch() {
 }
 
 #[test]
+fn permits_host_uid_sentinel_only_in_item_container_custom_version_metadata() {
+    let allowed = RewriteReport {
+        opaque_candidates: vec![OpaqueCandidate {
+            file: "Level.sav".to_owned(),
+            path: "worldSaveData.ItemContainerSaveData[0].Value.CustomVersionData".to_owned(),
+            uid: crate::host::SOURCE_HOST_UID.to_owned(),
+            kind: crate::CandidateKind::Source,
+            offset: 12,
+        }],
+        ..RewriteReport::default()
+    };
+    reject_opaque_candidates(&allowed).unwrap();
+
+    let wrong_path = RewriteReport {
+        opaque_candidates: vec![OpaqueCandidate {
+            path: "worldSaveData.ItemContainerSaveData[0].Value.RawData".to_owned(),
+            ..allowed.opaque_candidates[0].clone()
+        }],
+        ..RewriteReport::default()
+    };
+    assert!(matches!(
+        reject_opaque_candidates(&wrong_path),
+        Err(RemapError::OpaqueSourceReference { .. })
+    ));
+
+    let arbitrary_source = RewriteReport {
+        opaque_candidates: vec![OpaqueCandidate {
+            uid: A.to_owned(),
+            ..allowed.opaque_candidates[0].clone()
+        }],
+        ..RewriteReport::default()
+    };
+    assert!(matches!(
+        reject_opaque_candidates(&arbitrary_source),
+        Err(RemapError::OpaqueSourceReference { .. })
+    ));
+
+    let target_candidate = RewriteReport {
+        opaque_candidates: vec![OpaqueCandidate {
+            kind: crate::CandidateKind::Target,
+            ..allowed.opaque_candidates[0].clone()
+        }],
+        ..RewriteReport::default()
+    };
+    assert!(matches!(
+        reject_opaque_candidates(&target_candidate),
+        Err(RemapError::OpaqueTargetReference { .. })
+    ));
+}
+
+#[test]
+fn custom_version_metadata_path_requires_a_numeric_item_container_index() {
+    for path in [
+        "worldSaveData.ItemContainerSaveData[].Value.CustomVersionData",
+        "worldSaveData.ItemContainerSaveData[x].Value.CustomVersionData",
+        "worldSaveData.ItemContainerSaveData[0].Value.CustomVersionData.Backup",
+        "worldSaveData.OtherData[0].Value.CustomVersionData",
+    ] {
+        let candidate = OpaqueCandidate {
+            file: "Level.sav".to_owned(),
+            path: path.to_owned(),
+            uid: crate::host::SOURCE_HOST_UID.to_owned(),
+            kind: crate::CandidateKind::Source,
+            offset: 0,
+        };
+        assert!(
+            !is_ignorable_host_custom_version_candidate(&candidate),
+            "{path}"
+        );
+    }
+}
+
+#[test]
 fn detects_input_mutation_between_manifests_and_cleans_stage() {
     let (temp, input, output) = world();
     let mutate = input.join("notes.bin");

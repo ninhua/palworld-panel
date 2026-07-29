@@ -1,5 +1,12 @@
 # 功能移植已知问题
 
+## 房主存档 UID 重映射
+
+- `ItemContainerSaveData[n].Value.CustomVersionData` 是原样保留的版本元数据。合作房主固定源 UID 的 16 字节序列可能在该字段中作为哨兵模式出现，不代表玩家引用。
+- 只有 `Level.sav`、精确 `ItemContainerSaveData` 路径、source candidate 和固定房主 UID 的组合会降级为警告；任意其他 opaque candidate 仍中止迁移。
+- 该修复不重写未知字节，也不放宽 typed UID 转移数量、玩家文件名、输入清单、语义指纹或 round-trip 验证。
+- exec 热更新后 helper 会在首次房主迁移时按嵌入 SHA-256 自动引导更新；只读安装目录或无法访问对应 GitHub Release 时需使用完整包更新。
+
 ## 通知与事件中心
 
 - Webhook 默认关闭，只能通过环境变量启用；修改 URL、密钥或超时后必须重启 PalPanel。
