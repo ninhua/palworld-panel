@@ -10,6 +10,8 @@ PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更�
 
 本仓库是基于 [`uitok/palworld-panel`](https://github.com/uitok/palworld-panel) 维护的自定义源码 Fork。实际发布源码位于 `custom-stable`，`upstream-stable` 只用于同步官方稳定版本。面板完整版本采用 `v<上游版本>-custom.<自定义版本>` 格式。
 
+维护本 Fork、同步上游或发布新版本前，请先阅读 [`MAINTENANCE.md`](MAINTENANCE.md)。其中记录了版本与分支规则、强制中文更新日志、Actions 发布流程，以及面板更新、PalDefender、玩家身份归并和新玩家礼包等高风险注意事项。
+
 <p align="center">
   <a href="https://github.com/ninhua/palworld-panel/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/ninhua/palworld-panel?display_name=tag&sort=semver"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0--or--later-356a9a"></a>
