@@ -90,12 +90,10 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.0");
+        ModVersion = STR("0.1.1");
         ModDescription = STR("Read-only localhost HTTP and UE4SS game-thread probe");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
-        config_ = load_config();
-        worker_ = std::thread([this] { serve(); });
     }
 
     ~PalPanelBridge() override
@@ -109,6 +107,14 @@ class PalPanelBridge final : public RC::CppUserModBase
     auto on_unreal_init() -> void override
     {
         unreal_initialized_.store(true);
+        bool expected = false;
+        if (!server_started_.compare_exchange_strong(expected, true)) return;
+        config_ = load_config();
+        try {
+            worker_ = std::thread([this] { serve(); });
+        } catch (...) {
+            server_started_.store(false);
+        }
     }
 
     auto on_update() -> void override
@@ -127,6 +133,7 @@ class PalPanelBridge final : public RC::CppUserModBase
   private:
     Config config_{};
     std::atomic<bool> stopping_{false};
+    std::atomic<bool> server_started_{false};
     std::atomic<bool> unreal_initialized_{false};
     std::atomic<bool> game_thread_tick_seen_{false};
     std::atomic<SOCKET> listener_{INVALID_SOCKET};
@@ -144,7 +151,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.0\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.1\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
