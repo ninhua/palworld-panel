@@ -1307,6 +1307,16 @@ export interface MapEntity {
   ping?: number;
   owner_id?: string;
   pals_count?: number;
+  location_type?: string;
+  status?: string;
+}
+
+export interface MapPalTrackingStatus {
+  available: boolean;
+  real_time: boolean;
+  source: string;
+  positions: number;
+  updated_at: string;
 }
 
 export interface MapLiveStatus {
@@ -1314,6 +1324,7 @@ export interface MapLiveStatus {
   source: string;
   online_players: number;
   refreshed_at: string;
+  pals: MapPalTrackingStatus;
 }
 
 export interface MapEntitiesResponse {

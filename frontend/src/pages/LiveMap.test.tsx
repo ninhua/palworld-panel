@@ -81,7 +81,7 @@ describe('LiveMap', () => {
       ],
       status: { enabled: true, available: true, stale: false, building: false, parser_available: true, counts: {}, warnings: [] },
       summary: { total: 3, returned: 3, limit: 100, offset: 0, truncated: false },
-      live: { available: true, source: 'paldefender', online_players: 1, refreshed_at: '2026-07-16T00:00:00Z' },
+      live: { available: true, source: 'paldefender', online_players: 1, refreshed_at: '2026-07-16T00:00:00Z', pals: { available: true, real_time: false, source: 'save_snapshot', positions: 1, updated_at: '2026-07-16T00:00:00Z' } },
     });
   });
 
@@ -95,7 +95,7 @@ describe('LiveMap', () => {
     expect(await screen.findByText('樱花岛地牢 地图标记')).toBeInTheDocument();
     expect(await screen.findByText('Builder 地图标记')).toBeInTheDocument();
     expect(screen.queryByText('原油节点 地图标记')).not.toBeInTheDocument();
-    expect(screen.queryByText('捣蛋猫 地图标记')).not.toBeInTheDocument();
+    expect(await screen.findByText('捣蛋猫 地图标记')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '地牢' }));
     expect(screen.queryByText('樱花岛地牢 地图标记')).not.toBeInTheDocument();
@@ -104,8 +104,8 @@ describe('LiveMap', () => {
     fireEvent.click(screen.getByRole('button', { name: '资源' }));
     expect(await screen.findByText('原油节点 地图标记')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '帕鲁实体' }));
-    expect(await screen.findByText('捣蛋猫 地图标记')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '帕鲁位置（存档快照）' }));
+    expect(screen.queryByText('捣蛋猫 地图标记')).not.toBeInTheDocument();
   });
 
   it('stores fixed POI exploration state in the browser', async () => {

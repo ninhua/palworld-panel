@@ -62,7 +62,7 @@ const dynamicFilters: Array<{
   { id: 'custom-marker', label: { zh: '自定义标记', en: 'Custom Markers', ja: 'カスタムマーカー' }, color: '#94a3b8' },
   { id: 'offline-player', label: { zh: '离线玩家', en: 'Offline Players', ja: 'オフラインプレイヤー' }, color: '#64748b' },
   { id: 'online-player', label: { zh: '在线玩家', en: 'Online Players', ja: 'オンラインプレイヤー' }, color: '#10b981' },
-  { id: 'pal', label: { zh: '帕鲁实体', en: 'Pal Entities', ja: 'パル実体' }, color: '#84cc16' },
+  { id: 'pal', label: { zh: '帕鲁位置（存档快照）', en: 'Pal Positions (save snapshot)', ja: 'パル位置（セーブスナップショット）' }, color: '#84cc16' },
 ];
 
 const defaultDynamicFilters: Record<DynamicFilterID, boolean> = {
@@ -70,7 +70,7 @@ const defaultDynamicFilters: Record<DynamicFilterID, boolean> = {
   'custom-marker': true,
   'offline-player': true,
   'online-player': true,
-  pal: false,
+  pal: true,
 };
 
 const defaultPoiFilters: Record<PalOpsPoiGroup, boolean> = {
@@ -79,7 +79,7 @@ const defaultPoiFilters: Record<PalOpsPoiGroup, boolean> = {
   resource: false,
   collectible: false,
   npc: false,
-  pal: false,
+  pal: true,
 };
 
 const refreshOptions = [1, 2, 3, 5, 10, 15, 30];
@@ -291,8 +291,9 @@ export const LiveMap: React.FC = () => {
     <div className="mx-auto flex w-full max-w-[1840px] flex-col gap-5 p-4 sm:p-6 lg:p-8">
       <SaveDataTabs />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <Metric label="在线玩家" value={mapQuery.data?.live.online_players ?? onlinePlayers.length} tone="blue" />
+        <Metric label="帕鲁位置" value={mapQuery.data?.live.pals.positions ?? 0} tone="green" />
         <Metric label="服务器标记" value={dynamicMarkers.length} tone="sky" />
         <Metric label="固定 POI" value={currentLayerPoiTotal} tone="terracotta" />
         <Metric label="探索进度" value={`${currentLayerExplored}/${currentLayerPoiTotal}`} tone="green" />
@@ -308,6 +309,11 @@ export const LiveMap: React.FC = () => {
       {!assetError && !tilesAvailable && (
         <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-3 text-xs font-semibold leading-5 text-sky-800">
           固定 POI 已加载，但地图瓦片未打包。请检查地图资源仓库的 <code>tiles/palpagos</code> 与 <code>tiles/world-tree</code> 是否包含完整 0–4 级金字塔。
+        </div>
+      )}
+      {(mapQuery.data?.live.pals.positions ?? 0) > 0 && (
+        <div className="rounded-2xl border border-lime-200 bg-lime-50 px-5 py-3 text-xs font-semibold leading-5 text-lime-900">
+          地图上的帕鲁位置来自最近一次成功存档索引，会随服务器自动存档和面板索引更新；它不是进程内存级实时坐标。当前快照时间：{formatMapTimestamp(mapQuery.data?.live.pals.updated_at)}。
         </div>
       )}
 
@@ -458,7 +464,11 @@ export const LiveMap: React.FC = () => {
               <div className="flex max-h-[360px] flex-col gap-2 overflow-y-auto pr-1">
                 {markers.slice(0, 100).map((marker) => (
                   <button key={marker.key} type="button" onClick={() => setSelectedKey(marker.key)} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left hover:bg-sky-50">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: marker.color }} />
+                    <span
+                      className="grid h-5 w-5 shrink-0 place-items-center border border-slate-900 text-[8px] font-black text-white"
+                      style={{ backgroundColor: marker.color, clipPath: markerShapeClipPath(marker.shape), borderRadius: marker.shape === 'circle' ? 999 : 4 }}
+                      aria-hidden="true"
+                    >{marker.glyph}</span>
                     <span className="min-w-0"><span className="block truncate text-xs font-bold text-slate-700">{marker.label}</span><span className="mt-0.5 block truncate font-mono text-[9px] text-slate-500">{formatMarkerCoordinates(marker)}</span></span>
                   </button>
                 ))}
@@ -520,15 +530,18 @@ const FilterGroupCard: React.FC<{
 
 const MarkerDetails: React.FC<{ marker: PalOpsMapMarker; locale: string; explored: boolean; onToggleExplored: () => void }> = ({ marker, locale, explored, onToggleExplored }) => (
   <div className="mt-3">
-    <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: marker.color }} /><p className="truncate text-sm font-bold text-slate-800">{marker.label}</p></div>
+    <div className="flex items-center gap-2"><span className="grid h-6 w-6 place-items-center border border-slate-900 text-[9px] font-black text-white" style={{ backgroundColor: marker.color, clipPath: markerShapeClipPath(marker.shape), borderRadius: marker.shape === 'circle' ? 999 : 4 }}>{marker.glyph}</span><p className="truncate text-sm font-bold text-slate-800">{marker.label}</p></div>
     <p className="mt-2 break-all font-mono text-[9px] text-slate-500">{marker.poi?.id ?? marker.entity?.id}</p>
     <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-semibold text-slate-500">
-      <span>来源：{marker.kind === 'poi' ? 'PalOps 固定数据' : marker.entity?.live ? '实时' : '存档'}</span>
+      <span>来源：{marker.kind === 'poi' ? 'PalOps 固定数据' : marker.entity?.type === 'pal' ? '存档快照' : marker.entity?.live ? '实时' : '存档'}</span>
       <span>图层：{marker.poi?.map ?? (marker.entity ? detectPalOpsLayer(marker.entity.x, marker.entity.y) : '')}</span>
       <span className="col-span-2 font-mono">地图：{marker.mapX.toFixed(1)}, {marker.mapY.toFixed(1)}</span>
       {marker.poi && <span className="col-span-2 font-mono">世界：{marker.poi.worldX.toFixed(0)}, {marker.poi.worldY.toFixed(0)}</span>}
       {marker.entity && <span className="col-span-2 font-mono">世界：{marker.entity.x.toFixed(0)}, {marker.entity.y.toFixed(0)}, {marker.entity.z.toFixed(0)}</span>}
       {marker.entity?.guild_name && <span className="col-span-2 truncate">公会：{marker.entity.guild_name}</span>}
+      {marker.entity?.level != null && <span>等级：{marker.entity.level}</span>}
+      {marker.entity?.location_type && <span>位置类型：{marker.entity.location_type}</span>}
+      {marker.entity?.status && <span className="col-span-2">状态：{marker.entity.status}</span>}
       {marker.poi && <span className="col-span-2">类别：{palOpsPoiGroupLabel(palOpsPoiGroup(marker.poi.category) ?? 'location', locale)} / {palOpsPoiCategoryLabel(marker.poi.category, locale)}</span>}
       {marker.poi && <span className="col-span-2">许可：{marker.poi.license}</span>}
     </div>
@@ -562,3 +575,21 @@ const loadExplored = (storageKey: string): Set<string> => {
     return new Set();
   }
 };
+
+const markerShapeClipPath = (shape: PalOpsMapMarker['shape']): string | undefined => {
+  switch (shape) {
+    case 'diamond': return 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)';
+    case 'triangle': return 'polygon(50% 0, 100% 100%, 0 100%)';
+    case 'hexagon': return 'polygon(25% 7%, 75% 7%, 100% 50%, 75% 93%, 25% 93%, 0 50%)';
+    case 'star': return 'polygon(50% 0, 61% 34%, 98% 35%, 68% 57%, 79% 93%, 50% 72%, 21% 93%, 32% 57%, 2% 35%, 39% 34%)';
+    case 'cross': return 'polygon(35% 0, 65% 0, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0 65%, 0 35%, 35% 35%)';
+    default: return undefined;
+  }
+};
+
+const formatMapTimestamp = (value?: string): string => {
+  if (!value) return '尚未生成';
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString('zh-CN') : value;
+};
+

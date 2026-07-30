@@ -35,6 +35,14 @@ describe('SaveHistory page', () => {
         items_increased: 1, items_decreased: 0,
       },
       total: 1, limit: 200, offset: 0,
+      event_total: 1,
+      events: [{
+        id: 'player:uid:Stone', category: 'items', kind: 'item_gained',
+        actor_type: 'player', actor_id: 'uid', actor_label: 'Alice',
+        subject_type: 'item', subject_id: 'Stone', subject_label: '石头',
+        target_type: '', target_id: '', target_label: '', delta: 4,
+        before: '0', after: '4', details: [], metadata: { item_id: 'Stone', equipment: 'false' }, inferred: true,
+      }],
       items: [{ category: 'items', kind: 'increased', id: 'Stone', label: 'Stone', delta: 4, fields: [{ field: 'count', before: '0', after: '4' }] }],
     });
   });
@@ -43,7 +51,8 @@ describe('SaveHistory page', () => {
     renderPage();
     expect(await screen.findByText('当前服务器存档')).toBeInTheDocument();
     await waitFor(() => expect(mocks.diff).toHaveBeenCalledWith(expect.objectContaining({ from: older.id, to: newer.id, limit: 200, offset: 0 })));
-    expect(await screen.findByText('Stone')).toBeInTheDocument();
-    expect(screen.getByText(/Δ \+4/)).toBeInTheDocument();
+    expect(await screen.findByText('Alice 获得物品')).toBeInTheDocument();
+    expect(screen.getByText(/石头 ×4/)).toBeInTheDocument();
+    expect(screen.getByText('原始字段差异')).toBeInTheDocument();
   });
 });

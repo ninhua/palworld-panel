@@ -272,3 +272,78 @@ func testHistoryManager(t *testing.T) (*Manager, string) {
 }
 
 func floatPointer(value float64) *float64 { return &value }
+
+func TestHistoryBuildsSemanticPlayerPalInventoryAndBaseEvents(t *testing.T) {
+	playerUID := "f23d556c-0000-0000-0000-000000000000"
+	before := Index{
+		Players: []Player{{PlayerUID: playerUID, Nickname: "Alice", Level: 10, GuildID: "guild-1", GuildName: "Builders"}},
+		Bases: []Base{{
+			ID: "base-1", Name: "Hill Base", GuildID: "guild-1", GuildName: "Builders",
+			StructuresCount: 12, Containers: []string{"base-box"}, Workers: []Worker{},
+		}},
+		Containers: []Container{
+			{ContainerID: "player-bag", OwnerType: "player", OwnerID: playerUID, Slots: []Slot{{ItemID: "Wood", Count: 2}}},
+			{ContainerID: "base-box", OwnerType: "map_object", OwnerID: "chest-1", Slots: []Slot{{ItemID: "Stone", Count: 10}}},
+		},
+	}
+	after := before
+	after.Players = append([]Player(nil), before.Players...)
+	after.Players[0].Level = 12
+	after.Bases = append([]Base(nil), before.Bases...)
+	after.Bases[0].StructuresCount = 15
+	after.Bases[0].Workers = []Worker{{InstanceID: "pal-1", CharacterID: "Anubis", Level: 20}}
+	after.Pals = []Pal{{
+		InstanceID: "pal-1", CharacterID: "Anubis", Level: 20, OwnerPlayerUID: playerUID,
+		ContainerID: "party-1", LocationType: "party", Status: "active",
+	}}
+	after.Containers = []Container{
+		{ContainerID: "player-bag", OwnerType: "player", OwnerID: playerUID, Slots: []Slot{{ItemID: "Wood", Count: 2}, {ItemID: "AssaultRifle", Count: 1}}},
+		{ContainerID: "base-box", OwnerType: "map_object", OwnerID: "chest-1", Slots: []Slot{{ItemID: "Stone", Count: 14}}},
+	}
+
+	diff := buildHistoryDiff(HistorySnapshot{}, before, HistorySnapshot{}, after, HistoryDiffOptions{Limit: 200})
+	for _, expected := range []string{"player_level_up", "pal_acquired", "base_structures_added", "base_worker_assigned", "item_gained"} {
+		if !historyHasEvent(diff.Events, expected) {
+			t.Fatalf("missing semantic event %q: %#v", expected, diff.Events)
+		}
+	}
+	weapon := historyFindEvent(diff.Events, "item_gained", "AssaultRifle")
+	if weapon.ActorLabel != "Alice" || weapon.Delta != 1 || weapon.Metadata["equipment"] != "true" {
+		t.Fatalf("unexpected player equipment event: %#v", weapon)
+	}
+	baseItem := historyFindEvent(diff.Events, "item_gained", "Stone")
+	if baseItem.ActorType != "base" || baseItem.ActorLabel != "Hill Base" || baseItem.Delta != 4 {
+		t.Fatalf("unexpected base inventory event: %#v", baseItem)
+	}
+	pal := historyFindEvent(diff.Events, "pal_acquired", "pal-1")
+	if pal.ActorLabel != "Alice" || pal.Metadata["character_id"] != "Anubis" || !pal.Inferred {
+		t.Fatalf("unexpected pal acquisition event: %#v", pal)
+	}
+}
+
+func TestHistorySemanticEventsRespectCategoryAndQuery(t *testing.T) {
+	before := Index{Containers: []Container{{ContainerID: "bag", OwnerType: "player", OwnerID: "uid-1", Slots: []Slot{}}}}
+	after := Index{Containers: []Container{{ContainerID: "bag", OwnerType: "player", OwnerID: "uid-1", Slots: []Slot{{ItemID: "LegendarySword", Count: 1}, {ItemID: "Stone", Count: 5}}}}}
+	diff := buildHistoryDiff(HistorySnapshot{}, before, HistorySnapshot{}, after, HistoryDiffOptions{Category: "items", Query: "sword", Limit: 10})
+	if diff.EventTotal != 1 || len(diff.Events) != 1 || diff.Events[0].SubjectID != "LegendarySword" {
+		t.Fatalf("unexpected filtered semantic events: %#v", diff.Events)
+	}
+}
+
+func historyHasEvent(events []HistoryEvent, kind string) bool {
+	for _, event := range events {
+		if event.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func historyFindEvent(events []HistoryEvent, kind, subjectID string) HistoryEvent {
+	for _, event := range events {
+		if event.Kind == kind && event.SubjectID == subjectID {
+			return event
+		}
+	}
+	return HistoryEvent{}
+}

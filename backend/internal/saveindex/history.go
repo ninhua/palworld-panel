@@ -95,14 +95,40 @@ type HistoryChange struct {
 	Fields   []HistoryFieldChange `json:"fields"`
 }
 
+// HistoryEvent is a human-oriented inference derived from two save snapshots.
+// It does not claim to be a chronological game event log: multiple actions may
+// have happened between snapshots, so each event is explicitly marked inferred.
+type HistoryEvent struct {
+	ID           string               `json:"id"`
+	Category     string               `json:"category"`
+	Kind         string               `json:"kind"`
+	ActorType    string               `json:"actor_type"`
+	ActorID      string               `json:"actor_id"`
+	ActorLabel   string               `json:"actor_label"`
+	SubjectType  string               `json:"subject_type"`
+	SubjectID    string               `json:"subject_id"`
+	SubjectLabel string               `json:"subject_label"`
+	TargetType   string               `json:"target_type"`
+	TargetID     string               `json:"target_id"`
+	TargetLabel  string               `json:"target_label"`
+	Delta        int                  `json:"delta,omitempty"`
+	Before       string               `json:"before"`
+	After        string               `json:"after"`
+	Details      []HistoryFieldChange `json:"details"`
+	Metadata     map[string]string    `json:"metadata"`
+	Inferred     bool                 `json:"inferred"`
+}
+
 type HistoryDiff struct {
-	From    HistorySnapshot    `json:"from"`
-	To      HistorySnapshot    `json:"to"`
-	Summary HistoryDiffSummary `json:"summary"`
-	Total   int                `json:"total"`
-	Limit   int                `json:"limit"`
-	Offset  int                `json:"offset"`
-	Items   []HistoryChange    `json:"items"`
+	From       HistorySnapshot    `json:"from"`
+	To         HistorySnapshot    `json:"to"`
+	Summary    HistoryDiffSummary `json:"summary"`
+	Total      int                `json:"total"`
+	Limit      int                `json:"limit"`
+	Offset     int                `json:"offset"`
+	Items      []HistoryChange    `json:"items"`
+	EventTotal int                `json:"event_total"`
+	Events     []HistoryEvent     `json:"events"`
 }
 
 type historyManifest struct {
@@ -560,6 +586,7 @@ func buildHistoryDiff(fromMeta HistorySnapshot, from Index, toMeta HistorySnapsh
 	changes = append(changes, diffPals(from.Pals, to.Pals, &summary)...)
 	changes = append(changes, diffContainers(from.Containers, to.Containers, &summary)...)
 	changes = append(changes, diffItems(from.Containers, to.Containers, &summary)...)
+	events := buildHistoryEvents(from, to)
 
 	sort.Slice(changes, func(i, j int) bool {
 		if changes[i].Category != changes[j].Category {
@@ -582,6 +609,16 @@ func buildHistoryDiff(fromMeta HistorySnapshot, from Index, toMeta HistorySnapsh
 		}
 		filtered = append(filtered, change)
 	}
+	filteredEvents := make([]HistoryEvent, 0, len(events))
+	for _, event := range events {
+		if category != "" && category != "all" && event.Category != category {
+			continue
+		}
+		if query != "" && !historyEventMatches(event, query) {
+			continue
+		}
+		filteredEvents = append(filteredEvents, event)
+	}
 	limit := options.Limit
 	if limit < 1 || limit > 500 {
 		limit = 100
@@ -597,10 +634,20 @@ func buildHistoryDiff(fromMeta HistorySnapshot, from Index, toMeta HistorySnapsh
 	if end > len(filtered) {
 		end = len(filtered)
 	}
+	eventOffset := offset
+	if eventOffset > len(filteredEvents) {
+		eventOffset = len(filteredEvents)
+	}
+	eventEnd := eventOffset + limit
+	if eventEnd > len(filteredEvents) {
+		eventEnd = len(filteredEvents)
+	}
 	return HistoryDiff{
 		From: fromMeta, To: toMeta, Summary: summary,
 		Total: len(filtered), Limit: limit, Offset: offset,
-		Items: append([]HistoryChange(nil), filtered[offset:end]...),
+		Items:      append([]HistoryChange(nil), filtered[offset:end]...),
+		EventTotal: len(filteredEvents),
+		Events:     append([]HistoryEvent(nil), filteredEvents[eventOffset:eventEnd]...),
 	}
 }
 
@@ -944,4 +991,555 @@ func historyItemCounts(containers []Container) map[string]int {
 		}
 	}
 	return counts
+}
+
+type historyEventOwner struct {
+	Type  string
+	ID    string
+	Label string
+}
+
+func buildHistoryEvents(before, after Index) []HistoryEvent {
+	events := make([]HistoryEvent, 0)
+	events = append(events, historyPlayerEvents(before, after)...)
+	events = append(events, historyGuildEvents(before, after)...)
+	events = append(events, historyBaseEvents(before, after)...)
+	events = append(events, historyPalEvents(before, after)...)
+	events = append(events, historyItemEvents(before, after)...)
+	sort.SliceStable(events, func(i, j int) bool {
+		leftRank, rightRank := historyEventCategoryRank(events[i].Category), historyEventCategoryRank(events[j].Category)
+		if leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		if events[i].ActorLabel != events[j].ActorLabel {
+			return events[i].ActorLabel < events[j].ActorLabel
+		}
+		if events[i].Kind != events[j].Kind {
+			return events[i].Kind < events[j].Kind
+		}
+		return events[i].ID < events[j].ID
+	})
+	return events
+}
+
+func historyPlayerEvents(before, after Index) []HistoryEvent {
+	left := historyPlayersByKey(before.Players)
+	right := historyPlayersByKey(after.Players)
+	keys := unionHistoryKeys(left, right)
+	events := make([]HistoryEvent, 0)
+	for _, key := range keys {
+		oldPlayer, oldFound := left[key]
+		newPlayer, newFound := right[key]
+		switch {
+		case !oldFound && newFound:
+			events = append(events, newHistoryEvent("players", "player_joined", key,
+				historyPlayerOwner(newPlayer), historyEventOwner{}, historyEventOwner{}, 0, "", "",
+				[]HistoryFieldChange{{Field: "level", After: strconv.Itoa(newPlayer.Level)}},
+				map[string]string{"player_uid": newPlayer.PlayerUID, "steam_id": newPlayer.SteamID}))
+		case oldFound && !newFound:
+			events = append(events, newHistoryEvent("players", "player_missing", key,
+				historyPlayerOwner(oldPlayer), historyEventOwner{}, historyEventOwner{}, 0, "", "", nil,
+				map[string]string{"player_uid": oldPlayer.PlayerUID, "steam_id": oldPlayer.SteamID}))
+		case oldFound && newFound:
+			actor := historyPlayerOwner(newPlayer)
+			if newPlayer.Level != oldPlayer.Level {
+				kind := "player_level_up"
+				if newPlayer.Level < oldPlayer.Level {
+					kind = "player_level_down"
+				}
+				events = append(events, newHistoryEvent("players", kind, key+":level", actor,
+					historyEventOwner{Type: "level", ID: "level", Label: "level"}, historyEventOwner{},
+					newPlayer.Level-oldPlayer.Level, strconv.Itoa(oldPlayer.Level), strconv.Itoa(newPlayer.Level), nil, nil))
+			}
+			oldGuild := firstHistoryValue(oldPlayer.GuildName, oldPlayer.GuildID)
+			newGuild := firstHistoryValue(newPlayer.GuildName, newPlayer.GuildID)
+			if oldGuild != newGuild {
+				kind := "player_guild_changed"
+				if oldGuild == "" {
+					kind = "player_joined_guild"
+				} else if newGuild == "" {
+					kind = "player_left_guild"
+				}
+				events = append(events, newHistoryEvent("players", kind, key+":guild", actor,
+					historyEventOwner{Type: "guild", ID: newPlayer.GuildID, Label: newGuild}, historyEventOwner{},
+					0, oldGuild, newGuild, nil, nil))
+			}
+			if strings.TrimSpace(oldPlayer.Nickname) != strings.TrimSpace(newPlayer.Nickname) {
+				events = append(events, newHistoryEvent("players", "player_renamed", key+":nickname", actor,
+					historyEventOwner{Type: "player", ID: actor.ID, Label: actor.Label}, historyEventOwner{}, 0,
+					oldPlayer.Nickname, newPlayer.Nickname, nil, nil))
+			}
+		}
+	}
+	return events
+}
+
+func historyGuildEvents(before, after Index) []HistoryEvent {
+	left := mapHistoryBy(before.Guilds, func(item Guild) string { return item.ID })
+	right := mapHistoryBy(after.Guilds, func(item Guild) string { return item.ID })
+	players := historyPlayerLabels(append(append([]Player(nil), before.Players...), after.Players...))
+	keys := unionHistoryKeys(left, right)
+	events := make([]HistoryEvent, 0)
+	for _, key := range keys {
+		oldGuild, oldFound := left[key]
+		newGuild, newFound := right[key]
+		switch {
+		case !oldFound && newFound:
+			events = append(events, newHistoryEvent("guilds", "guild_created", key,
+				historyEventOwner{Type: "guild", ID: key, Label: firstHistoryValue(newGuild.Name, key)}, historyEventOwner{}, historyEventOwner{},
+				0, "", "", nil, nil))
+		case oldFound && !newFound:
+			events = append(events, newHistoryEvent("guilds", "guild_removed", key,
+				historyEventOwner{Type: "guild", ID: key, Label: firstHistoryValue(oldGuild.Name, key)}, historyEventOwner{}, historyEventOwner{},
+				0, "", "", nil, nil))
+		case oldFound && newFound:
+			actor := historyEventOwner{Type: "guild", ID: key, Label: firstHistoryValue(newGuild.Name, oldGuild.Name, key)}
+			oldMembers := historyGuildMemberMap(oldGuild.Members)
+			newMembers := historyGuildMemberMap(newGuild.Members)
+			for _, memberKey := range unionHistoryKeys(oldMembers, newMembers) {
+				oldMember, wasMember := oldMembers[memberKey]
+				newMember, isMember := newMembers[memberKey]
+				if wasMember == isMember {
+					continue
+				}
+				member := newMember
+				kind := "guild_member_joined"
+				if !isMember {
+					member = oldMember
+					kind = "guild_member_left"
+				}
+				label := firstHistoryValue(member.Nickname, players[historyCanonicalID(member.PlayerUID)], member.PlayerUID)
+				events = append(events, newHistoryEvent("guilds", kind, key+":member:"+memberKey, actor,
+					historyEventOwner{Type: "player", ID: member.PlayerUID, Label: label}, historyEventOwner{}, 0, "", "", nil, nil))
+			}
+			oldBases := historyStringSet(oldGuild.BaseIDs)
+			newBases := historyStringSet(newGuild.BaseIDs)
+			for _, baseID := range unionHistoryKeys(oldBases, newBases) {
+				_, hadBase := oldBases[baseID]
+				_, hasBase := newBases[baseID]
+				if hadBase == hasBase {
+					continue
+				}
+				kind := "guild_base_added"
+				if !hasBase {
+					kind = "guild_base_removed"
+				}
+				events = append(events, newHistoryEvent("guilds", kind, key+":base:"+baseID, actor,
+					historyEventOwner{Type: "base", ID: baseID, Label: baseID}, historyEventOwner{}, 0, "", "", nil, nil))
+			}
+			if oldGuild.OwnerPlayerUID != newGuild.OwnerPlayerUID {
+				events = append(events, newHistoryEvent("guilds", "guild_owner_changed", key+":owner", actor,
+					historyEventOwner{Type: "player", ID: newGuild.OwnerPlayerUID, Label: players[historyCanonicalID(newGuild.OwnerPlayerUID)]}, historyEventOwner{},
+					0, players[historyCanonicalID(oldGuild.OwnerPlayerUID)], players[historyCanonicalID(newGuild.OwnerPlayerUID)], nil, nil))
+			}
+		}
+	}
+	return events
+}
+
+func historyBaseEvents(before, after Index) []HistoryEvent {
+	left := mapHistoryBy(before.Bases, func(item Base) string { return item.ID })
+	right := mapHistoryBy(after.Bases, func(item Base) string { return item.ID })
+	palLabels := historyPalLabels(before.Pals, after.Pals)
+	keys := unionHistoryKeys(left, right)
+	events := make([]HistoryEvent, 0)
+	for _, key := range keys {
+		oldBase, oldFound := left[key]
+		newBase, newFound := right[key]
+		switch {
+		case !oldFound && newFound:
+			events = append(events, newHistoryEvent("bases", "base_created", key, historyBaseOwner(newBase), historyEventOwner{}, historyEventOwner{},
+				0, "", "", []HistoryFieldChange{{Field: "structures", After: strconv.Itoa(newBase.StructuresCount)}, {Field: "workers", After: strconv.Itoa(len(newBase.Workers))}}, nil))
+		case oldFound && !newFound:
+			events = append(events, newHistoryEvent("bases", "base_removed", key, historyBaseOwner(oldBase), historyEventOwner{}, historyEventOwner{},
+				0, "", "", []HistoryFieldChange{{Field: "structures", Before: strconv.Itoa(oldBase.StructuresCount)}, {Field: "workers", Before: strconv.Itoa(len(oldBase.Workers))}}, nil))
+		case oldFound && newFound:
+			actor := historyBaseOwner(newBase)
+			if oldBase.StructuresCount != newBase.StructuresCount {
+				kind := "base_structures_added"
+				if newBase.StructuresCount < oldBase.StructuresCount {
+					kind = "base_structures_removed"
+				}
+				events = append(events, newHistoryEvent("bases", kind, key+":structures", actor,
+					historyEventOwner{Type: "structure", ID: "structures", Label: "structures"}, historyEventOwner{},
+					newBase.StructuresCount-oldBase.StructuresCount, strconv.Itoa(oldBase.StructuresCount), strconv.Itoa(newBase.StructuresCount), nil, nil))
+			}
+			oldWorkers := historyWorkerMap(oldBase.Workers)
+			newWorkers := historyWorkerMap(newBase.Workers)
+			for _, workerKey := range unionHistoryKeys(oldWorkers, newWorkers) {
+				oldWorker, hadWorker := oldWorkers[workerKey]
+				newWorker, hasWorker := newWorkers[workerKey]
+				if hadWorker == hasWorker {
+					continue
+				}
+				worker := newWorker
+				kind := "base_worker_assigned"
+				if !hasWorker {
+					worker = oldWorker
+					kind = "base_worker_removed"
+				}
+				label := firstHistoryValue(worker.Nickname, palLabels[historyCanonicalID(worker.InstanceID)], worker.CharacterID, worker.InstanceID)
+				events = append(events, newHistoryEvent("bases", kind, key+":worker:"+workerKey, actor,
+					historyEventOwner{Type: "pal", ID: worker.InstanceID, Label: label}, historyEventOwner{}, 0, "", "", nil,
+					map[string]string{"character_id": worker.CharacterID, "level": strconv.Itoa(worker.Level)}))
+			}
+			if len(oldBase.Containers) != len(newBase.Containers) {
+				events = append(events, newHistoryEvent("bases", "base_storage_changed", key+":containers", actor,
+					historyEventOwner{Type: "container", ID: "containers", Label: "containers"}, historyEventOwner{},
+					len(newBase.Containers)-len(oldBase.Containers), strconv.Itoa(len(oldBase.Containers)), strconv.Itoa(len(newBase.Containers)), nil, nil))
+			}
+			if oldBase.Status != newBase.Status {
+				events = append(events, newHistoryEvent("bases", "base_status_changed", key+":status", actor,
+					historyEventOwner{Type: "status", ID: "status", Label: "status"}, historyEventOwner{}, 0, oldBase.Status, newBase.Status, nil, nil))
+			}
+			if historyCoordinates(oldBase.Location) != historyCoordinates(newBase.Location) {
+				events = append(events, newHistoryEvent("bases", "base_moved", key+":location", actor,
+					historyEventOwner{Type: "location", ID: "location", Label: "location"}, historyEventOwner{}, 0,
+					historyCoordinates(oldBase.Location), historyCoordinates(newBase.Location), nil, nil))
+			}
+		}
+	}
+	return events
+}
+
+func historyPalEvents(before, after Index) []HistoryEvent {
+	left := mapHistoryBy(before.Pals, func(item Pal) string { return item.InstanceID })
+	right := mapHistoryBy(after.Pals, func(item Pal) string { return item.InstanceID })
+	players := historyPlayerLabels(append(append([]Player(nil), before.Players...), after.Players...))
+	bases := historyBaseLabels(before.Bases, after.Bases)
+	keys := unionHistoryKeys(left, right)
+	events := make([]HistoryEvent, 0)
+	for _, key := range keys {
+		oldPal, oldFound := left[key]
+		newPal, newFound := right[key]
+		switch {
+		case !oldFound && newFound:
+			actor := historyPalOwner(newPal, players, bases)
+			subject := historyPalSubject(newPal)
+			events = append(events, newHistoryEvent("pals", "pal_acquired", key, actor, subject, historyEventOwner{}, 1, "", "", nil,
+				historyPalMetadata(newPal)))
+		case oldFound && !newFound:
+			actor := historyPalOwner(oldPal, players, bases)
+			subject := historyPalSubject(oldPal)
+			events = append(events, newHistoryEvent("pals", "pal_lost", key, actor, subject, historyEventOwner{}, -1, "", "", nil,
+				historyPalMetadata(oldPal)))
+		case oldFound && newFound:
+			oldOwner := historyPalOwner(oldPal, players, bases)
+			newOwner := historyPalOwner(newPal, players, bases)
+			subject := historyPalSubject(newPal)
+			if historyOwnerKey(oldOwner) != historyOwnerKey(newOwner) {
+				events = append(events, newHistoryEvent("pals", "pal_transferred", key+":owner", oldOwner, subject, newOwner, 0,
+					oldOwner.Label, newOwner.Label, nil, historyPalMetadata(newPal)))
+			}
+			if oldPal.Level != newPal.Level || oldPal.Rank != newPal.Rank {
+				details := compactHistoryFields(
+					historyField("level", strconv.Itoa(oldPal.Level), strconv.Itoa(newPal.Level)),
+					historyField("rank", strconv.Itoa(oldPal.Rank), strconv.Itoa(newPal.Rank)),
+				)
+				events = append(events, newHistoryEvent("pals", "pal_progressed", key+":progress", newOwner, subject, historyEventOwner{},
+					newPal.Level-oldPal.Level, strconv.Itoa(oldPal.Level), strconv.Itoa(newPal.Level), details, historyPalMetadata(newPal)))
+			}
+			if oldPal.ContainerID != newPal.ContainerID || oldPal.LocationType != newPal.LocationType || oldPal.Status != newPal.Status {
+				details := compactHistoryFields(
+					historyField("container", oldPal.ContainerID, newPal.ContainerID),
+					historyField("location_type", oldPal.LocationType, newPal.LocationType),
+					historyField("status", oldPal.Status, newPal.Status),
+				)
+				events = append(events, newHistoryEvent("pals", "pal_assignment_changed", key+":assignment", newOwner, subject, historyEventOwner{}, 0,
+					oldPal.LocationType, newPal.LocationType, details, historyPalMetadata(newPal)))
+			}
+			if historySortedStrings(oldPal.Passives) != historySortedStrings(newPal.Passives) {
+				events = append(events, newHistoryEvent("pals", "pal_passives_changed", key+":passives", newOwner, subject, historyEventOwner{}, 0,
+					historySortedStrings(oldPal.Passives), historySortedStrings(newPal.Passives), nil, historyPalMetadata(newPal)))
+			}
+		}
+	}
+	return events
+}
+
+func historyItemEvents(before, after Index) []HistoryEvent {
+	left := historyOwnedItemCounts(before)
+	right := historyOwnedItemCounts(after)
+	owners := make(map[string]historyEventOwner, len(left.Owners)+len(right.Owners))
+	for key, owner := range left.Owners {
+		owners[key] = owner
+	}
+	for key, owner := range right.Owners {
+		owners[key] = owner
+	}
+	ownerKeys := unionHistoryKeys(left.Items, right.Items)
+	events := make([]HistoryEvent, 0)
+	for _, ownerKey := range ownerKeys {
+		oldItems := left.Items[ownerKey]
+		newItems := right.Items[ownerKey]
+		for _, itemID := range unionHistoryKeys(oldItems, newItems) {
+			delta := newItems[itemID] - oldItems[itemID]
+			if delta == 0 {
+				continue
+			}
+			kind := "item_gained"
+			if delta < 0 {
+				kind = "item_lost"
+			}
+			owner := owners[ownerKey]
+			events = append(events, newHistoryEvent("items", kind, ownerKey+":"+itemID, owner,
+				historyEventOwner{Type: "item", ID: itemID, Label: itemID}, historyEventOwner{}, delta,
+				strconv.Itoa(oldItems[itemID]), strconv.Itoa(newItems[itemID]), nil,
+				map[string]string{"item_id": itemID, "owner_type": owner.Type, "equipment": strconv.FormatBool(historyLikelyEquipment(itemID))}))
+		}
+	}
+	return events
+}
+
+type historyOwnedItems struct {
+	Owners map[string]historyEventOwner
+	Items  map[string]map[string]int
+}
+
+func historyOwnedItemCounts(index Index) historyOwnedItems {
+	containerOwners := historyContainerOwners(index)
+	result := historyOwnedItems{Owners: map[string]historyEventOwner{}, Items: map[string]map[string]int{}}
+	for _, container := range index.Containers {
+		owner, found := containerOwners[historyCanonicalID(container.ContainerID)]
+		if !found {
+			owner = historyEventOwner{Type: "unknown", ID: "unknown", Label: "未归属容器"}
+		}
+		ownerKey := historyOwnerKey(owner)
+		if ownerKey == "" {
+			ownerKey = "unknown:unknown"
+		}
+		result.Owners[ownerKey] = owner
+		counts := result.Items[ownerKey]
+		if counts == nil {
+			counts = map[string]int{}
+			result.Items[ownerKey] = counts
+		}
+		for _, slot := range container.Slots {
+			if itemID := strings.TrimSpace(slot.ItemID); itemID != "" {
+				counts[itemID] += slot.Count
+			}
+		}
+	}
+	return result
+}
+
+func historyContainerOwners(index Index) map[string]historyEventOwner {
+	owners := make(map[string]historyEventOwner, len(index.Containers))
+	players := historyPlayerLabels(index.Players)
+	bases := historyBaseLabels(index.Bases)
+	for _, base := range index.Bases {
+		owner := historyBaseOwner(base)
+		for _, containerID := range base.Containers {
+			if key := historyCanonicalID(containerID); key != "" {
+				owners[key] = owner
+			}
+		}
+	}
+	for _, container := range index.Containers {
+		key := historyCanonicalID(container.ContainerID)
+		if key == "" {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(container.OwnerType)) {
+		case "player":
+			label := players[historyCanonicalID(container.OwnerID)]
+			owners[key] = historyEventOwner{Type: "player", ID: container.OwnerID, Label: firstHistoryValue(label, container.OwnerID, "未知玩家")}
+		case "base":
+			label := bases[historyCanonicalID(container.OwnerID)]
+			owners[key] = historyEventOwner{Type: "base", ID: container.OwnerID, Label: firstHistoryValue(label, container.OwnerID, "未知据点")}
+		case "guild":
+			owners[key] = historyEventOwner{Type: "guild", ID: container.OwnerID, Label: firstHistoryValue(container.OwnerID, "未知公会")}
+		default:
+			if _, linked := owners[key]; !linked && strings.TrimSpace(container.OwnerID) != "" {
+				owners[key] = historyEventOwner{Type: firstHistoryValue(container.OwnerType, "unknown"), ID: container.OwnerID, Label: container.OwnerID}
+			}
+		}
+	}
+	return owners
+}
+
+func newHistoryEvent(category, kind, id string, actor, subject, target historyEventOwner, delta int, before, after string, details []HistoryFieldChange, metadata map[string]string) HistoryEvent {
+	if details == nil {
+		details = []HistoryFieldChange{}
+	}
+	return HistoryEvent{
+		ID: id, Category: category, Kind: kind,
+		ActorType: actor.Type, ActorID: actor.ID, ActorLabel: actor.Label,
+		SubjectType: subject.Type, SubjectID: subject.ID, SubjectLabel: subject.Label,
+		TargetType: target.Type, TargetID: target.ID, TargetLabel: target.Label,
+		Delta: delta, Before: before, After: after, Details: details, Metadata: metadata, Inferred: true,
+	}
+}
+
+func historyPlayerOwner(player Player) historyEventOwner {
+	return historyEventOwner{Type: "player", ID: firstHistoryValue(player.PlayerUID, player.SteamID), Label: firstHistoryValue(player.Nickname, player.SteamID, player.PlayerUID, "未知玩家")}
+}
+
+func historyBaseOwner(base Base) historyEventOwner {
+	return historyEventOwner{Type: "base", ID: base.ID, Label: firstHistoryValue(base.Name, base.ID, "未知据点")}
+}
+
+func historyPalSubject(pal Pal) historyEventOwner {
+	return historyEventOwner{Type: "pal", ID: pal.InstanceID, Label: firstHistoryValue(pal.Nickname, pal.CharacterID, pal.InstanceID, "未知帕鲁")}
+}
+
+func historyPalOwner(pal Pal, players, bases map[string]string) historyEventOwner {
+	if playerID := strings.TrimSpace(pal.OwnerPlayerUID); playerID != "" {
+		return historyEventOwner{Type: "player", ID: playerID, Label: firstHistoryValue(players[historyCanonicalID(playerID)], playerID, "未知玩家")}
+	}
+	if strings.EqualFold(strings.TrimSpace(pal.LocationType), "base") || strings.Contains(strings.ToLower(pal.LocationType), "base") {
+		if label := bases[historyCanonicalID(pal.ContainerID)]; label != "" {
+			return historyEventOwner{Type: "base", ID: pal.ContainerID, Label: label}
+		}
+	}
+	if guildID := strings.TrimSpace(pal.GuildID); guildID != "" {
+		return historyEventOwner{Type: "guild", ID: guildID, Label: guildID}
+	}
+	return historyEventOwner{Type: "world", ID: "world", Label: "世界"}
+}
+
+func historyPalMetadata(pal Pal) map[string]string {
+	return map[string]string{
+		"character_id":  pal.CharacterID,
+		"nickname":      pal.Nickname,
+		"level":         strconv.Itoa(pal.Level),
+		"rank":          strconv.Itoa(pal.Rank),
+		"location_type": pal.LocationType,
+		"status":        pal.Status,
+	}
+}
+
+func historyPlayersByKey(players []Player) map[string]Player {
+	output := make(map[string]Player, len(players))
+	for _, player := range players {
+		if key := historyPlayerKey(player); key != "" {
+			output[key] = player
+		}
+	}
+	return output
+}
+
+func historyPlayerLabels(players []Player) map[string]string {
+	labels := make(map[string]string, len(players)*2)
+	for _, player := range players {
+		label := firstHistoryValue(player.Nickname, player.SteamID, player.PlayerUID)
+		for _, value := range []string{player.PlayerUID, player.SteamID} {
+			if key := historyCanonicalID(value); key != "" {
+				labels[key] = label
+			}
+		}
+	}
+	return labels
+}
+
+func historyBaseLabels(groups ...[]Base) map[string]string {
+	labels := map[string]string{}
+	for _, bases := range groups {
+		for _, base := range bases {
+			label := firstHistoryValue(base.Name, base.ID)
+			for _, value := range append([]string{base.ID}, base.Containers...) {
+				if key := historyCanonicalID(value); key != "" {
+					labels[key] = label
+				}
+			}
+		}
+	}
+	return labels
+}
+
+func historyPalLabels(groups ...[]Pal) map[string]string {
+	labels := map[string]string{}
+	for _, pals := range groups {
+		for _, pal := range pals {
+			if key := historyCanonicalID(pal.InstanceID); key != "" {
+				labels[key] = firstHistoryValue(pal.Nickname, pal.CharacterID, pal.InstanceID)
+			}
+		}
+	}
+	return labels
+}
+
+func historyGuildMemberMap(members []GuildMember) map[string]GuildMember {
+	output := make(map[string]GuildMember, len(members))
+	for _, member := range members {
+		key := historyCanonicalID(firstHistoryValue(member.PlayerUID, member.Nickname))
+		if key != "" {
+			output[key] = member
+		}
+	}
+	return output
+}
+
+func historyWorkerMap(workers []Worker) map[string]Worker {
+	output := make(map[string]Worker, len(workers))
+	for _, worker := range workers {
+		key := historyCanonicalID(firstHistoryValue(worker.InstanceID, worker.CharacterID, worker.Nickname))
+		if key != "" {
+			output[key] = worker
+		}
+	}
+	return output
+}
+
+func historyStringSet(values []string) map[string]struct{} {
+	output := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if key := strings.TrimSpace(value); key != "" {
+			output[key] = struct{}{}
+		}
+	}
+	return output
+}
+
+func historyOwnerKey(owner historyEventOwner) string {
+	if strings.TrimSpace(owner.Type) == "" && strings.TrimSpace(owner.ID) == "" {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(owner.Type)) + ":" + historyCanonicalID(firstHistoryValue(owner.ID, owner.Label))
+}
+
+func historyCanonicalID(value string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "-", ""))
+}
+
+func historyLikelyEquipment(itemID string) bool {
+	value := strings.ToLower(strings.TrimSpace(itemID))
+	for _, token := range []string{"weapon", "armor", "armour", "helmet", "shield", "accessory", "glider", "spear", "sword", "rifle", "pistol", "shotgun", "launcher", "bow", "bat", "axe", "pickaxe"} {
+		if strings.Contains(value, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func historyEventCategoryRank(category string) int {
+	switch category {
+	case "players":
+		return 0
+	case "items":
+		return 1
+	case "pals":
+		return 2
+	case "bases":
+		return 3
+	case "guilds":
+		return 4
+	default:
+		return 5
+	}
+}
+
+func historyEventMatches(event HistoryEvent, query string) bool {
+	parts := []string{
+		event.ID, event.Category, event.Kind, event.ActorType, event.ActorID, event.ActorLabel,
+		event.SubjectType, event.SubjectID, event.SubjectLabel, event.TargetType, event.TargetID, event.TargetLabel,
+		event.Before, event.After,
+	}
+	for _, detail := range event.Details {
+		parts = append(parts, detail.Field, detail.Before, detail.After)
+	}
+	for key, value := range event.Metadata {
+		parts = append(parts, key, value)
+	}
+	return strings.Contains(strings.ToLower(strings.Join(parts, " ")), query)
 }

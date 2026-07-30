@@ -101,17 +101,20 @@ export const PalOpsRasterFallback: React.FC<Props> = ({
                 onClick={() => onSelect(marker)}
                 title={marker.label}
                 aria-label={marker.label}
-                className={`absolute z-10 rounded-full border-2 border-slate-950 shadow-md transition-transform hover:scale-125 focus:outline-none focus:ring-2 focus:ring-white ${selected ? 'ring-4 ring-white/80' : ''}`}
+                className={`absolute z-10 grid place-items-center border-2 border-slate-950 text-[9px] font-black leading-none text-white shadow-md transition-transform hover:scale-125 focus:outline-none focus:ring-2 focus:ring-white ${selected ? 'ring-4 ring-white/80' : ''}`}
                 style={{
                   left: point.x,
                   top: point.y,
-                  width: selected ? 18 : marker.online ? 15 : 12,
-                  height: selected ? 18 : marker.online ? 15 : 12,
+                  width: selected ? 24 : marker.online ? 21 : 19,
+                  height: selected ? 24 : marker.online ? 21 : 19,
                   backgroundColor: marker.color,
-                  transform: `translate(-50%, -50%) rotate(${marker.shape === 'diamond' ? '45deg' : '0deg'})`,
-                  borderRadius: marker.shape === 'square' || marker.shape === 'diamond' ? 3 : undefined,
+                  transform: 'translate(-50%, -50%)',
+                  borderRadius: marker.shape === 'circle' ? '999px' : marker.shape === 'pin' ? '999px 999px 999px 2px' : 4,
+                  clipPath: markerClipPath(marker.shape),
                 }}
-              />
+              >
+                <span aria-hidden="true">{marker.glyph}</span>
+              </button>
             );
           })}
         </div>
@@ -153,3 +156,15 @@ export const PalOpsRasterFallback: React.FC<Props> = ({
     </div>
   );
 };
+
+const markerClipPath = (shape: PalOpsMapMarker['shape']): string | undefined => {
+  switch (shape) {
+    case 'diamond': return 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)';
+    case 'triangle': return 'polygon(50% 0, 100% 100%, 0 100%)';
+    case 'hexagon': return 'polygon(25% 7%, 75% 7%, 100% 50%, 75% 93%, 25% 93%, 0 50%)';
+    case 'star': return 'polygon(50% 0, 61% 34%, 98% 35%, 68% 57%, 79% 93%, 50% 72%, 21% 93%, 32% 57%, 2% 35%, 39% 34%)';
+    case 'cross': return 'polygon(35% 0, 65% 0, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0 65%, 0 35%, 35% 35%)';
+    default: return undefined;
+  }
+};
+

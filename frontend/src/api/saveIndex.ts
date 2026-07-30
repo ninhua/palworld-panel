@@ -68,6 +68,8 @@ export const mapMapEntity = (raw: unknown): MapEntity => {
     ping: data.ping == null ? undefined : Number(data.ping),
     owner_id: data.owner_id ? String(data.owner_id) : undefined,
     pals_count: data.pals_count == null ? undefined : Number(data.pals_count),
+    location_type: data.location_type ? String(data.location_type) : undefined,
+    status: data.status ? String(data.status) : undefined,
   };
 };
 
@@ -84,6 +86,16 @@ export const mapMapEntitiesResponse = (raw: unknown): MapEntitiesResponse => {
       source: String(live.source || ''),
       online_players: Number(live.online_players || 0),
       refreshed_at: String(live.refreshed_at || ''),
+      pals: (() => {
+        const pals = live.pals && typeof live.pals === 'object' ? live.pals as Record<string, unknown> : {};
+        return {
+          available: Boolean(pals.available),
+          real_time: Boolean(pals.real_time),
+          source: String(pals.source || 'save_snapshot'),
+          positions: Number(pals.positions || 0),
+          updated_at: String(pals.updated_at || ''),
+        };
+      })(),
     },
   };
 };
@@ -110,7 +122,7 @@ export const saveIndexApi = {
         entities: [],
         status: emptySaveIndexStatus,
         summary: emptySummary,
-        live: { available: false, source: '', online_players: 0, refreshed_at: '' },
+        live: { available: false, source: '', online_players: 0, refreshed_at: '', pals: { available: false, real_time: false, source: 'save_snapshot', positions: 0, updated_at: '' } },
       },
       { map: mapMapEntitiesResponse, quiet: true },
     ),

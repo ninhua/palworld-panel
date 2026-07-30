@@ -15,6 +15,8 @@ export interface MapLibreMapInstance {
     (event: 'click' | 'mouseenter' | 'mouseleave', layerID: string, listener: (event: MapLibreLayerEvent) => void): void;
   };
   addControl: (control: unknown, position?: string) => void;
+  addImage: (id: string, image: ImageData | { width: number; height: number; data: Uint8Array | Uint8ClampedArray }, options?: Record<string, unknown>) => void;
+  hasImage: (id: string) => boolean;
   getCanvas: () => HTMLCanvasElement;
   getSource: (id: string) => MapLibreGeoJSONSource | undefined;
   resize: () => void;

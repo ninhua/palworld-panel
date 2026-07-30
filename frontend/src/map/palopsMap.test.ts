@@ -13,6 +13,8 @@ import {
   palOpsPoiCategoryRank,
   palOpsPoiGroup,
   palOpsPoiGroupLabel,
+  palOpsPoiToMarker,
+  mapEntityToMarker,
   worldToPalOpsMap,
 } from './palopsMap';
 
@@ -71,6 +73,38 @@ describe('PalOps map data helpers', () => {
       palOpsPoiCategoryRank('poi-location-special'),
     );
   });
+
+  it('assigns visibly different marker shapes and glyphs to major map categories', () => {
+    const fastTravel = palOpsPoiToMarker({
+      id: 'fast', type: 'fast-travel', category: 'poi-location-fast-travel', map: 'palpagos', name: '传送点',
+      aliases: [], keywords: [], mapX: 0, mapY: 0, worldX: 0, worldY: 0, source: 'fixture', license: 'test', version: 'test', iconId: 'fast',
+    });
+    const boss = palOpsPoiToMarker({
+      id: 'boss', type: 'boss', category: 'poi-enemy-field-boss', map: 'palpagos', name: '头目',
+      aliases: [], keywords: [], mapX: 0, mapY: 0, worldX: 0, worldY: 0, source: 'fixture', license: 'test', version: 'test', iconId: 'boss',
+    });
+    const oil = palOpsPoiToMarker({
+      id: 'oil', type: 'oil', category: 'poi-resource-oil', map: 'palpagos', name: '原油',
+      aliases: [], keywords: [], mapX: 0, mapY: 0, worldX: 0, worldY: 0, source: 'fixture', license: 'test', version: 'test', iconId: 'oil',
+    });
+    const chest = palOpsPoiToMarker({
+      id: 'chest', type: 'chest', category: 'poi-collectible-chest', map: 'palpagos', name: '宝箱',
+      aliases: [], keywords: [], mapX: 0, mapY: 0, worldX: 0, worldY: 0, source: 'fixture', license: 'test', version: 'test', iconId: 'chest',
+    });
+    const merchant = palOpsPoiToMarker({
+      id: 'merchant', type: 'merchant', category: 'poi-npc-wandering-merchant', map: 'palpagos', name: '商人',
+      aliases: [], keywords: [], mapX: 0, mapY: 0, worldX: 0, worldY: 0, source: 'fixture', license: 'test', version: 'test', iconId: 'merchant',
+    });
+    const base = mapEntityToMarker({ type: 'base', id: 'base', label: '据点', x: 1, y: 1, z: 0, source: 'save' });
+    const pal = mapEntityToMarker({ type: 'pal', id: 'pal', label: '帕鲁', x: 1, y: 1, z: 0, source: 'save' });
+    expect(fastTravel).toMatchObject({ shape: 'diamond', glyph: '↯', icon: 'poi-fast-travel' });
+    expect(boss).toMatchObject({ shape: 'star', glyph: '★', icon: 'poi-boss' });
+    expect(new Set([oil.icon, chest.icon, merchant.icon])).toHaveLength(3);
+    expect(new Set([oil.shape, chest.shape, merchant.shape])).toHaveLength(3);
+    expect(base.shape).not.toBe(pal.shape);
+    expect(base.icon).not.toBe(pal.icon);
+  });
+
   it('rejects malformed localized POI arrays before spreading aliases', () => {
     expect(isPalOpsPoi({
       id: 'poi-1', type: 'location', category: 'poi-location-special', map: 'palpagos', name: '测试',

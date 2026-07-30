@@ -10,6 +10,8 @@ const marker = {
   mapY: 0,
   color: '#ffffff',
   shape: 'circle' as const,
+  icon: 'poi-generic',
+  glyph: '•',
 };
 
 describe('PalOpsRasterFallback', () => {

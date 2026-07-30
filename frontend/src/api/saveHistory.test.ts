@@ -25,6 +25,7 @@ describe('save history API', () => {
       from: null,
       to: null,
       summary: null,
+      events: [{ id: 'event-1', category: 'items', kind: 'item_gained', details: null, metadata: null }],
       items: [{ id: 'player-1', category: 'players', kind: 'added', fields: null }],
     });
 
@@ -32,6 +33,8 @@ describe('save history API', () => {
     expect(history.items).toEqual([]);
     expect(diff.items).toHaveLength(1);
     expect(diff.items[0].fields).toEqual([]);
+    expect(diff.events[0].details).toEqual([]);
+    expect(diff.events[0].metadata).toEqual({});
     expect(diff.summary.players_added).toBe(0);
   });
 });

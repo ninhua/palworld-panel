@@ -1401,6 +1401,7 @@ paths:
             schema: {$ref: '#/components/schemas/SaveImportCommitRequest'}
       responses:
         '200': *success
+        '202': *accepted
         '400': *error
         '401': *error
         '403': *error
@@ -1844,6 +1845,29 @@ components:
         label: {type: string}
         delta: {type: integer}
         fields: {type: array, items: {$ref: '#/components/schemas/SaveHistoryFieldChange'}}
+    SaveHistoryEvent:
+      type: object
+      additionalProperties: false
+      required: [id, category, kind, actor_type, actor_id, actor_label, subject_type, subject_id, subject_label, target_type, target_id, target_label, before, after, details, metadata, inferred]
+      properties:
+        id: {type: string}
+        category: {type: string, enum: [players, guilds, bases, pals, containers, items]}
+        kind: {type: string}
+        actor_type: {type: string}
+        actor_id: {type: string}
+        actor_label: {type: string}
+        subject_type: {type: string}
+        subject_id: {type: string}
+        subject_label: {type: string}
+        target_type: {type: string}
+        target_id: {type: string}
+        target_label: {type: string}
+        delta: {type: integer}
+        before: {type: string}
+        after: {type: string}
+        details: {type: array, items: {$ref: '#/components/schemas/SaveHistoryFieldChange'}}
+        metadata: {type: object, additionalProperties: {type: string}}
+        inferred: {type: boolean, const: true}
     SaveHistoryDiffSummary:
       type: object
       additionalProperties: false
@@ -1869,7 +1893,7 @@ components:
     SaveHistoryDiff:
       type: object
       additionalProperties: false
-      required: [from, to, summary, total, limit, offset, items]
+      required: [from, to, summary, total, limit, offset, items, event_total, events]
       properties:
         from: {$ref: '#/components/schemas/SaveHistorySnapshot'}
         to: {$ref: '#/components/schemas/SaveHistorySnapshot'}
@@ -1878,6 +1902,8 @@ components:
         limit: {type: integer, minimum: 1, maximum: 500}
         offset: {type: integer, minimum: 0}
         items: {type: array, items: {$ref: '#/components/schemas/SaveHistoryChange'}}
+        event_total: {type: integer, minimum: 0}
+        events: {type: array, items: {$ref: '#/components/schemas/SaveHistoryEvent'}}
     SaveHistoryDiffEnvelope:
       type: object
       required: [ok, data]
@@ -3832,7 +3858,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.49}
+            version: {type: string, const: 0.8.50}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

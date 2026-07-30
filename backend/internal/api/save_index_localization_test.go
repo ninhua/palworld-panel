@@ -278,7 +278,7 @@ func TestBuildMapEntitiesPreservesStaticEntities(t *testing.T) {
 	index := saveindex.Index{
 		Players: []saveindex.Player{{PlayerUID: "player", Nickname: "玩家", Location: saveindex.Coordinates{X: 1}}},
 		Bases:   []saveindex.Base{{ID: "base", Name: "基地", Location: saveindex.Coordinates{X: 2}}},
-		Pals:    []saveindex.Pal{{InstanceID: "pal", CharacterID: "PinkCat", Location: saveindex.Coordinates{X: 3}}},
+		Pals:    []saveindex.Pal{{InstanceID: "pal", CharacterID: "PinkCat", Level: 17, LocationType: "base", Status: "working", Location: saveindex.Coordinates{X: 3}}},
 		MapEntities: []saveindex.MapEntity{{
 			Type: "map_object", ID: "object", Label: "PalBoxV2", Location: saveindex.Coordinates{X: 4},
 		}},
@@ -291,6 +291,14 @@ func TestBuildMapEntitiesPreservesStaticEntities(t *testing.T) {
 		if entity["source"] != "save" {
 			t.Fatalf("unexpected static entity source: %#v", entity)
 		}
+		if entity["type"] == "pal" {
+			if entity["live"] != false || entity["level"] != 17 || entity["location_type"] != "base" || entity["status"] != "working" {
+				t.Fatalf("pal snapshot metadata was lost: %#v", entity)
+			}
+		}
+	}
+	if countPalMapEntities(entities) != 1 {
+		t.Fatalf("pal map entity count = %d, want 1", countPalMapEntities(entities))
 	}
 }
 

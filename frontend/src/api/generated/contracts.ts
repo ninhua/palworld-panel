@@ -1206,7 +1206,7 @@ export interface components {
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/palworld-panel";
-        "version": "0.8.49";
+        "version": "0.8.50";
       };
       "upstream": {
         "commit": string;
@@ -1309,7 +1309,31 @@ export interface components {
       "kind": "added" | "removed" | "changed" | "increased" | "decreased";
       "label": string;
     };
+    "SaveHistoryEvent": {
+      "actor_id": string;
+      "actor_label": string;
+      "actor_type": string;
+      "after": string;
+      "before": string;
+      "category": "players" | "guilds" | "bases" | "pals" | "containers" | "items";
+      "delta"?: number;
+      "details": Array<components["schemas"]["SaveHistoryFieldChange"]>;
+      "id": string;
+      "inferred": true;
+      "kind": string;
+      "metadata": {
+        [key: string]: string;
+      };
+      "subject_id": string;
+      "subject_label": string;
+      "subject_type": string;
+      "target_id": string;
+      "target_label": string;
+      "target_type": string;
+    };
     "SaveHistoryDiff": {
+      "event_total": number;
+      "events": Array<components["schemas"]["SaveHistoryEvent"]>;
       "from": components["schemas"]["SaveHistorySnapshot"];
       "items": Array<components["schemas"]["SaveHistoryChange"]>;
       "limit": number;

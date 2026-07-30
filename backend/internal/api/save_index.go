@@ -394,6 +394,13 @@ func (s Server) listMapEntities(c *gin.Context) {
 			"source":         liveSource,
 			"online_players": countOnlineMapEntities(entities),
 			"refreshed_at":   time.Now().UTC().Format(time.RFC3339),
+			"pals": gin.H{
+				"available":  countPalMapEntities(entities) > 0,
+				"real_time":  false,
+				"source":     "save_snapshot",
+				"positions":  countPalMapEntities(entities),
+				"updated_at": status.UpdatedAt,
+			},
 		},
 	})
 }
@@ -736,18 +743,21 @@ func buildMapEntities(index saveindex.Index, online map[string]onlinePlayer) []g
 		}
 		speciesName := pallocalize.PalName(pal.CharacterID)
 		entities = append(entities, gin.H{
-			"type":      "pal",
-			"id":        pal.InstanceID,
-			"label":     firstNonEmpty(pal.Nickname, speciesName, pal.CharacterID),
-			"raw_label": firstNonEmpty(pal.Nickname, pal.CharacterID),
-			"location":  pal.Location,
-			"x":         pal.Location.X,
-			"y":         pal.Location.Y,
-			"z":         pal.Location.Z,
-			"source":    "save",
-			"level":     pal.Level,
-			"owner_id":  pal.OwnerPlayerUID,
-			"guild_id":  pal.GuildID,
+			"type":          "pal",
+			"id":            pal.InstanceID,
+			"label":         firstNonEmpty(pal.Nickname, speciesName, pal.CharacterID),
+			"raw_label":     firstNonEmpty(pal.Nickname, pal.CharacterID),
+			"location":      pal.Location,
+			"x":             pal.Location.X,
+			"y":             pal.Location.Y,
+			"z":             pal.Location.Z,
+			"source":        "save",
+			"live":          false,
+			"level":         pal.Level,
+			"owner_id":      pal.OwnerPlayerUID,
+			"guild_id":      pal.GuildID,
+			"location_type": pal.LocationType,
+			"status":        pal.Status,
 		})
 	}
 	for _, entity := range flattenMapEntities(index.MapEntities) {
@@ -769,6 +779,16 @@ func mapEntitySource(live bool) string {
 		return "live"
 	}
 	return "save"
+}
+
+func countPalMapEntities(entities []gin.H) int {
+	count := 0
+	for _, entity := range entities {
+		if entity["type"] == "pal" {
+			count++
+		}
+	}
+	return count
 }
 
 func countOnlineMapEntities(entities []gin.H) int {

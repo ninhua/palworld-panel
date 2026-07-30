@@ -42,6 +42,28 @@ export interface SaveHistoryChange {
   fields: SaveHistoryFieldChange[];
 }
 
+
+export interface SaveHistoryEvent {
+  id: string;
+  category: string;
+  kind: string;
+  actor_type: string;
+  actor_id: string;
+  actor_label: string;
+  subject_type: string;
+  subject_id: string;
+  subject_label: string;
+  target_type: string;
+  target_id: string;
+  target_label: string;
+  delta?: number;
+  before: string;
+  after: string;
+  details: SaveHistoryFieldChange[];
+  metadata: Record<string, string>;
+  inferred: boolean;
+}
+
 export interface SaveHistoryDiffSummary {
   players_added: number;
   players_removed: number;
@@ -70,6 +92,8 @@ export interface SaveHistoryDiff {
   limit: number;
   offset: number;
   items: SaveHistoryChange[];
+  event_total: number;
+  events: SaveHistoryEvent[];
 }
 
 export interface SaveHistoryDiffParams {
@@ -177,6 +201,34 @@ const mapChange = (value: unknown): SaveHistoryChange => {
   };
 };
 
+const mapEvent = (value: unknown): SaveHistoryEvent => {
+  const data = record(value);
+  const metadata = record(data.metadata);
+  return {
+    id: text(data.id),
+    category: text(data.category),
+    kind: text(data.kind),
+    actor_type: text(data.actor_type),
+    actor_id: text(data.actor_id),
+    actor_label: text(data.actor_label),
+    subject_type: text(data.subject_type),
+    subject_id: text(data.subject_id),
+    subject_label: text(data.subject_label),
+    target_type: text(data.target_type),
+    target_id: text(data.target_id),
+    target_label: text(data.target_label),
+    ...(data.delta == null ? {} : { delta: number(data.delta) }),
+    before: text(data.before),
+    after: text(data.after),
+    details: Array.isArray(data.details) ? data.details.map((detail) => {
+      const item = record(detail);
+      return { field: text(item.field), before: text(item.before), after: text(item.after) };
+    }).filter((detail) => detail.field) : [],
+    metadata: Object.fromEntries(Object.entries(metadata).map(([key, item]) => [key, text(item)])),
+    inferred: data.inferred !== false,
+  };
+};
+
 export const mapSaveHistoryDiff = (value: unknown, fallbackLimit = 100, fallbackOffset = 0): SaveHistoryDiff => {
   const data = record(value);
   return {
@@ -187,6 +239,8 @@ export const mapSaveHistoryDiff = (value: unknown, fallbackLimit = 100, fallback
     limit: number(data.limit, fallbackLimit),
     offset: number(data.offset, fallbackOffset),
     items: Array.isArray(data.items) ? data.items.map(mapChange).filter((item) => item.id) : [],
+    event_total: number(data.event_total),
+    events: Array.isArray(data.events) ? data.events.map(mapEvent).filter((item) => item.id) : [],
   };
 };
 
@@ -209,6 +263,8 @@ export const saveHistoryApi = {
         limit: params.limit || 100,
         offset: params.offset || 0,
         items: [],
+        event_total: 0,
+        events: [],
       },
       {
         quiet: true,

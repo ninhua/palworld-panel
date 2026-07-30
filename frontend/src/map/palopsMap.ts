@@ -70,6 +70,15 @@ export interface PalOpsPoi {
   iconId: string;
 }
 
+export type PalOpsMarkerShape = 'circle' | 'diamond' | 'square' | 'triangle' | 'hexagon' | 'star' | 'pin' | 'cross';
+
+export interface PalOpsMarkerVisual {
+  icon: string;
+  glyph: string;
+  color: string;
+  shape: PalOpsMarkerShape;
+}
+
 export interface PalOpsMapMarker {
   key: string;
   kind: 'poi' | 'entity';
@@ -77,7 +86,9 @@ export interface PalOpsMapMarker {
   mapX: number;
   mapY: number;
   color: string;
-  shape: 'circle' | 'diamond' | 'square';
+  shape: PalOpsMarkerShape;
+  icon: string;
+  glyph: string;
   online?: boolean;
   entity?: MapEntity;
   poi?: PalOpsPoi;
@@ -357,10 +368,94 @@ export const palOpsPoiGroup = (category: string): PalOpsPoiGroup | null => {
   return null;
 };
 
-export const palOpsPoiColor = (category: string): string => {
+export const palOpsPoiColor = (category: string): string => palOpsPoiVisual(category).color;
+
+export const palOpsPoiVisual = (category: string): PalOpsMarkerVisual => {
   const group = palOpsPoiGroup(category);
-  return palOpsPoiGroups.find((item) => item.id === group)?.color ?? '#94a3b8';
+  const slug = palOpsPoiCategorySlug(category, group);
+  if (['fast-travel', 'waypoint'].includes(slug)) return { icon: 'poi-fast-travel', glyph: '↯', color: '#2563eb', shape: 'diamond' };
+  if (slug === 'dungeon') return { icon: 'poi-dungeon', glyph: 'D', color: '#7c3aed', shape: 'square' };
+  if (['tower', 'tower-boss'].includes(slug)) return { icon: 'poi-tower', glyph: 'T', color: '#dc2626', shape: 'triangle' };
+  if (['field-boss', 'alpha-pal', 'boss'].includes(slug)) return { icon: 'poi-boss', glyph: '★', color: '#e11d48', shape: 'star' };
+  if (['enemy-camp', 'camp'].includes(slug)) return { icon: 'poi-enemy-camp', glyph: 'C', color: '#ea580c', shape: 'triangle' };
+  if (['raid', 'encounter', 'event'].includes(slug)) return { icon: 'poi-event', glyph: '!', color: '#f97316', shape: 'triangle' };
+  if (['ore', 'mining', 'resource'].includes(slug)) return { icon: 'poi-resource-ore', glyph: 'O', color: '#78716c', shape: 'hexagon' };
+  if (slug === 'coal') return { icon: 'poi-resource-coal', glyph: 'C', color: '#334155', shape: 'hexagon' };
+  if (slug === 'sulfur') return { icon: 'poi-resource-sulfur', glyph: 'S', color: '#ca8a04', shape: 'hexagon' };
+  if (['pure-quartz', 'quartz'].includes(slug)) return { icon: 'poi-resource-quartz', glyph: 'Q', color: '#0891b2', shape: 'diamond' };
+  if (['oil', 'crude-oil'].includes(slug)) return { icon: 'poi-resource-oil', glyph: 'OIL', color: '#92400e', shape: 'pin' };
+  if (slug === 'meteorite') return { icon: 'poi-resource-meteorite', glyph: 'M', color: '#7c3aed', shape: 'star' };
+  if (group === 'resource') return { icon: 'poi-resource', glyph: '◆', color: '#d97706', shape: 'hexagon' };
+  if (['chest', 'treasure-chest'].includes(slug)) return { icon: 'poi-collectible-chest', glyph: 'C', color: '#b45309', shape: 'square' };
+  if (['effigy', 'lifmunk-effigy'].includes(slug)) return { icon: 'poi-collectible-effigy', glyph: 'E', color: '#16a34a', shape: 'star' };
+  if (['journal', 'memo', 'note'].includes(slug)) return { icon: 'poi-collectible-note', glyph: 'N', color: '#2563eb', shape: 'square' };
+  if (['egg', 'pal-egg'].includes(slug)) return { icon: 'poi-collectible-egg', glyph: 'E', color: '#db2777', shape: 'circle' };
+  if (group === 'collectible') return { icon: 'poi-collectible', glyph: '✦', color: '#ca8a04', shape: 'star' };
+  if (slug === 'black-marketeer') return { icon: 'poi-npc-black-market', glyph: 'B', color: '#1e293b', shape: 'pin' };
+  if (slug === 'pal-merchant') return { icon: 'poi-npc-pal-merchant', glyph: 'P', color: '#059669', shape: 'pin' };
+  if (['wandering-merchant', 'merchant', 'vendor'].includes(slug)) return { icon: 'poi-npc-merchant', glyph: '$', color: '#0d9488', shape: 'pin' };
+  if (group === 'npc') return { icon: 'poi-npc', glyph: 'N', color: '#0f766e', shape: 'pin' };
+  if (['pal-spawn', 'spawn'].includes(slug)) return { icon: 'poi-pal-spawn', glyph: 'P', color: '#65a30d', shape: 'hexagon' };
+  if (slug === 'habitat') return { icon: 'poi-pal-habitat', glyph: 'H', color: '#15803d', shape: 'circle' };
+  if (slug === 'lucky-pal') return { icon: 'poi-pal-lucky', glyph: '★', color: '#a3e635', shape: 'star' };
+  if (group === 'pal') return { icon: 'poi-pal', glyph: 'P', color: '#65a30d', shape: 'hexagon' };
+  if (['region-name', 'region'].includes(slug)) return { icon: 'poi-region', glyph: 'R', color: '#475569', shape: 'circle' };
+  if (['special', 'special-location'].includes(slug)) return { icon: 'poi-special', glyph: '◎', color: '#0e7490', shape: 'diamond' };
+  if (slug === 'landmark') return { icon: 'poi-landmark', glyph: 'L', color: '#0369a1', shape: 'pin' };
+  if (group === 'location') return { icon: 'poi-location', glyph: '•', color: '#0284c7', shape: 'pin' };
+  return { icon: 'poi-generic', glyph: '•', color: '#64748b', shape: 'circle' };
 };
+
+export const palOpsEntityVisual = (entity: MapEntity): PalOpsMarkerVisual => {
+  if (entity.type === 'player' && entity.is_online) return { icon: 'entity-player-online', glyph: 'P', color: '#0ea5e9', shape: 'circle' };
+  if (entity.type === 'player') return { icon: 'entity-player-offline', glyph: 'P', color: '#64748b', shape: 'circle' };
+  if (entity.type === 'base') return { icon: 'entity-base', glyph: '⌂', color: '#f59e0b', shape: 'diamond' };
+  if (entity.type === 'pal') return { icon: 'entity-pal', glyph: 'P', color: '#84cc16', shape: 'hexagon' };
+  return { icon: 'entity-marker', glyph: '+', color: '#94a3b8', shape: 'square' };
+};
+
+const palOpsMarkerVisualList: PalOpsMarkerVisual[] = [
+  { icon: 'poi-fast-travel', glyph: '↯', color: '#2563eb', shape: 'diamond' },
+  { icon: 'poi-dungeon', glyph: 'D', color: '#7c3aed', shape: 'square' },
+  { icon: 'poi-tower', glyph: 'T', color: '#dc2626', shape: 'triangle' },
+  { icon: 'poi-boss', glyph: '★', color: '#e11d48', shape: 'star' },
+  { icon: 'poi-enemy-camp', glyph: 'C', color: '#ea580c', shape: 'triangle' },
+  { icon: 'poi-event', glyph: '!', color: '#f97316', shape: 'triangle' },
+  { icon: 'poi-resource-ore', glyph: 'O', color: '#78716c', shape: 'hexagon' },
+  { icon: 'poi-resource-coal', glyph: 'C', color: '#334155', shape: 'hexagon' },
+  { icon: 'poi-resource-sulfur', glyph: 'S', color: '#ca8a04', shape: 'hexagon' },
+  { icon: 'poi-resource-quartz', glyph: 'Q', color: '#0891b2', shape: 'diamond' },
+  { icon: 'poi-resource-oil', glyph: 'OIL', color: '#92400e', shape: 'pin' },
+  { icon: 'poi-resource-meteorite', glyph: 'M', color: '#7c3aed', shape: 'star' },
+  { icon: 'poi-resource', glyph: '◆', color: '#d97706', shape: 'hexagon' },
+  { icon: 'poi-collectible-chest', glyph: 'C', color: '#b45309', shape: 'square' },
+  { icon: 'poi-collectible-effigy', glyph: 'E', color: '#16a34a', shape: 'star' },
+  { icon: 'poi-collectible-note', glyph: 'N', color: '#2563eb', shape: 'square' },
+  { icon: 'poi-collectible-egg', glyph: 'E', color: '#db2777', shape: 'circle' },
+  { icon: 'poi-collectible', glyph: '✦', color: '#ca8a04', shape: 'star' },
+  { icon: 'poi-npc-black-market', glyph: 'B', color: '#1e293b', shape: 'pin' },
+  { icon: 'poi-npc-pal-merchant', glyph: 'P', color: '#059669', shape: 'pin' },
+  { icon: 'poi-npc-merchant', glyph: '$', color: '#0d9488', shape: 'pin' },
+  { icon: 'poi-npc', glyph: 'N', color: '#0f766e', shape: 'pin' },
+  { icon: 'poi-pal-spawn', glyph: 'P', color: '#65a30d', shape: 'hexagon' },
+  { icon: 'poi-pal-habitat', glyph: 'H', color: '#15803d', shape: 'circle' },
+  { icon: 'poi-pal-lucky', glyph: '★', color: '#a3e635', shape: 'star' },
+  { icon: 'poi-pal', glyph: 'P', color: '#65a30d', shape: 'hexagon' },
+  { icon: 'poi-region', glyph: 'R', color: '#475569', shape: 'circle' },
+  { icon: 'poi-special', glyph: '◎', color: '#0e7490', shape: 'diamond' },
+  { icon: 'poi-landmark', glyph: 'L', color: '#0369a1', shape: 'pin' },
+  { icon: 'poi-location', glyph: '•', color: '#0284c7', shape: 'pin' },
+  { icon: 'poi-generic', glyph: '•', color: '#64748b', shape: 'circle' },
+  { icon: 'entity-player-online', glyph: 'P', color: '#0ea5e9', shape: 'circle' },
+  { icon: 'entity-player-offline', glyph: 'P', color: '#64748b', shape: 'circle' },
+  { icon: 'entity-base', glyph: '⌂', color: '#f59e0b', shape: 'diamond' },
+  { icon: 'entity-pal', glyph: 'P', color: '#84cc16', shape: 'hexagon' },
+  { icon: 'entity-marker', glyph: '+', color: '#94a3b8', shape: 'square' },
+];
+
+export const palOpsMarkerVisuals: Record<string, PalOpsMarkerVisual> = Object.fromEntries(
+  palOpsMarkerVisualList.map((visual) => [visual.icon, visual]),
+);
 
 export const worldToPalOpsMap = (worldX: number, worldY: number): PalOpsMapPoint => {
   const transform = palOpsMapLayers.palpagos.worldToMap;
@@ -416,36 +511,37 @@ export const mapPointToPixel = (
 
 export const mapEntityToMarker = (entity: MapEntity): PalOpsMapMarker => {
   const point = worldToPalOpsMap(entity.x, entity.y);
-  const color = entity.type === 'player'
-    ? (entity.is_online ? '#0ea5e9' : '#64748b')
-    : entity.type === 'base'
-      ? '#f59e0b'
-      : entity.type === 'pal'
-        ? '#84cc16'
-        : '#94a3b8';
+  const visual = palOpsEntityVisual(entity);
   return {
     key: `entity:${entity.type}:${entity.id}`,
     kind: 'entity',
     label: entity.label,
     mapX: point.x,
     mapY: point.y,
-    color,
-    shape: entity.type === 'base' ? 'diamond' : entity.type === 'map_object' ? 'square' : 'circle',
+    color: visual.color,
+    shape: visual.shape,
+    icon: visual.icon,
+    glyph: visual.glyph,
     online: entity.is_online,
     entity,
   };
 };
 
-export const palOpsPoiToMarker = (poi: PalOpsPoi): PalOpsMapMarker => ({
-  key: `poi:${poi.id}`,
-  kind: 'poi',
-  label: poi.name,
-  mapX: poi.mapX,
-  mapY: poi.mapY,
-  color: palOpsPoiColor(poi.category),
-  shape: poi.category === 'poi-location-fast-travel' ? 'diamond' : 'circle',
-  poi,
-});
+export const palOpsPoiToMarker = (poi: PalOpsPoi): PalOpsMapMarker => {
+  const visual = palOpsPoiVisual(poi.category);
+  return {
+    key: `poi:${poi.id}`,
+    kind: 'poi',
+    label: poi.name,
+    mapX: poi.mapX,
+    mapY: poi.mapY,
+    color: visual.color,
+    shape: visual.shape,
+    icon: visual.icon,
+    glyph: visual.glyph,
+    poi,
+  };
+};
 
 export const palOpsTileURL = (layer: PalOpsMapLayerID, zoom: number, x: number, y: number): string => (
   `/map/palops/tiles/${layer}/${zoom}/${x}/${y}.webp`

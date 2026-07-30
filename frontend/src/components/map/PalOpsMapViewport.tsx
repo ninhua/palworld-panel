@@ -2,8 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   mapPointToLngLat,
   palOpsMapLayers,
+  palOpsMarkerVisuals,
   type PalOpsMapLayerID,
   type PalOpsMapMarker,
+  type PalOpsMarkerShape,
+  type PalOpsMarkerVisual,
 } from '../../map/palopsMap';
 import {
   loadMapLibreRuntime,
@@ -21,7 +24,8 @@ interface Props {
 }
 
 const markerSourceID = 'palops-markers';
-const markerLayerID = 'palops-marker-circles';
+const markerLayerID = 'palops-marker-icons';
+const markerHaloLayerID = 'palops-marker-halo';
 const mapLibreMaxCanvasSize: [number, number] = [4096, 4096];
 
 export const PalOpsMapViewport: React.FC<Props> = ({ layerID, markers, selectedKey, tilesAvailable, onSelect }) => {
@@ -58,6 +62,7 @@ export const PalOpsMapViewport: React.FC<Props> = ({ layerID, markers, selectedK
       mapRef.current = map;
       map.addControl(new runtime.NavigationControl({ showCompass: false, visualizePitch: false }), 'bottom-left');
       map.on('load', () => {
+        registerPalOpsMarkerImages(map);
         map.getSource(markerSourceID)?.setData(
           markerFeatureCollection(markersRef.current, selectedKeyRef.current, layerID),
         );
@@ -177,15 +182,27 @@ const createStyle = (layerID: PalOpsMapLayerID, tilesAvailable: boolean, data: R
     });
   }
   layers.push({
-    id: markerLayerID,
+    id: markerHaloLayerID,
     type: 'circle',
     source: markerSourceID,
+    filter: ['==', ['get', 'selected'], true],
     paint: {
-      'circle-color': ['get', 'color'],
-      'circle-radius': ['case', ['boolean', ['get', 'selected'], false], 10, ['boolean', ['get', 'online'], false], 8, 6],
-      'circle-stroke-width': ['case', ['boolean', ['get', 'selected'], false], 4, 2],
-      'circle-stroke-color': ['case', ['boolean', ['get', 'selected'], false], '#ffffff', '#0f172a'],
-      'circle-opacity': 0.96,
+      'circle-color': 'rgba(255,255,255,0.22)',
+      'circle-radius': 17,
+      'circle-stroke-width': 3,
+      'circle-stroke-color': '#ffffff',
+    },
+  });
+  layers.push({
+    id: markerLayerID,
+    type: 'symbol',
+    source: markerSourceID,
+    layout: {
+      'icon-image': ['get', 'icon'],
+      'icon-size': ['case', ['boolean', ['get', 'selected'], false], 1.25, ['boolean', ['get', 'online'], false], 1.05, 0.9],
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      'icon-anchor': 'center',
     },
   });
   return { version: 8, sources, layers };
@@ -210,11 +227,135 @@ const markerFeatureCollection = (
         key: marker.key,
         label: marker.label,
         color: marker.color,
+        icon: marker.icon,
+        shape: marker.shape,
+        glyph: marker.glyph,
         online: Boolean(marker.online),
         selected: marker.key === selectedKey,
         kind: marker.kind,
       },
     })),
   };
+};
+
+export const registerPalOpsMarkerImages = (map: MapLibreMapInstance): void => {
+  for (const visual of Object.values(palOpsMarkerVisuals)) {
+    if (map.hasImage(visual.icon)) continue;
+    map.addImage(visual.icon, createPalOpsMarkerImage(visual), { pixelRatio: 2 });
+  }
+};
+
+export const createPalOpsMarkerImage = (visual: PalOpsMarkerVisual): ImageData => {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('2D canvas is unavailable for map marker icons');
+  context.clearRect(0, 0, size, size);
+  context.save();
+  context.translate(size / 2, size / 2);
+  drawMarkerShape(context, visual.shape, 23);
+  context.fillStyle = visual.color;
+  context.fill();
+  context.lineWidth = 5;
+  context.strokeStyle = '#0f172a';
+  context.stroke();
+  context.fillStyle = '#ffffff';
+  context.strokeStyle = 'rgba(15,23,42,0.55)';
+  context.lineWidth = 2;
+  context.font = `900 ${visual.glyph.length > 1 ? 22 : 28}px ui-sans-serif, system-ui, sans-serif`;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  const glyphY = visual.shape === 'pin' ? -4 : 1;
+  context.strokeText(visual.glyph, 0, glyphY);
+  context.fillText(visual.glyph, 0, glyphY);
+  context.restore();
+  return context.getImageData(0, 0, size, size);
+};
+
+const drawMarkerShape = (context: CanvasRenderingContext2D, shape: PalOpsMarkerShape, radius: number): void => {
+  context.beginPath();
+  switch (shape) {
+    case 'diamond':
+      context.moveTo(0, -radius);
+      context.lineTo(radius, 0);
+      context.lineTo(0, radius);
+      context.lineTo(-radius, 0);
+      context.closePath();
+      return;
+    case 'square': {
+      const corner = 6;
+      const left = -radius;
+      const top = -radius;
+      const right = radius;
+      const bottom = radius;
+      context.moveTo(left + corner, top);
+      context.lineTo(right - corner, top);
+      context.quadraticCurveTo(right, top, right, top + corner);
+      context.lineTo(right, bottom - corner);
+      context.quadraticCurveTo(right, bottom, right - corner, bottom);
+      context.lineTo(left + corner, bottom);
+      context.quadraticCurveTo(left, bottom, left, bottom - corner);
+      context.lineTo(left, top + corner);
+      context.quadraticCurveTo(left, top, left + corner, top);
+      context.closePath();
+      return;
+    }
+    case 'triangle':
+      context.moveTo(0, -radius - 2);
+      context.lineTo(radius + 2, radius);
+      context.lineTo(-radius - 2, radius);
+      context.closePath();
+      return;
+    case 'hexagon':
+      drawRegularPolygon(context, 6, radius, -Math.PI / 2);
+      return;
+    case 'star':
+      for (let index = 0; index < 10; index += 1) {
+        const angle = -Math.PI / 2 + index * Math.PI / 5;
+        const pointRadius = index % 2 === 0 ? radius + 2 : radius * 0.48;
+        const x = Math.cos(angle) * pointRadius;
+        const y = Math.sin(angle) * pointRadius;
+        if (index === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      }
+      context.closePath();
+      return;
+    case 'pin':
+      context.arc(0, -5, radius - 3, Math.PI * 0.18, Math.PI * 0.82, true);
+      context.quadraticCurveTo(-radius + 2, 8, 0, radius + 5);
+      context.quadraticCurveTo(radius - 2, 8, radius - 3, -5);
+      context.closePath();
+      return;
+    case 'cross':
+      context.moveTo(-7, -radius);
+      context.lineTo(7, -radius);
+      context.lineTo(7, -7);
+      context.lineTo(radius, -7);
+      context.lineTo(radius, 7);
+      context.lineTo(7, 7);
+      context.lineTo(7, radius);
+      context.lineTo(-7, radius);
+      context.lineTo(-7, 7);
+      context.lineTo(-radius, 7);
+      context.lineTo(-radius, -7);
+      context.lineTo(-7, -7);
+      context.closePath();
+      return;
+    default:
+      context.arc(0, 0, radius, 0, Math.PI * 2);
+  }
+};
+
+const drawRegularPolygon = (context: CanvasRenderingContext2D, sides: number, radius: number, rotation: number): void => {
+  for (let index = 0; index < sides; index += 1) {
+    const angle = rotation + index * Math.PI * 2 / sides;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    if (index === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  }
+  context.closePath();
 };
 

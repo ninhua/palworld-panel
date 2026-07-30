@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"palpanel/internal/pallocalize"
 	"palpanel/internal/saveindex"
 )
 
@@ -37,13 +38,15 @@ type saveHistoryStateView struct {
 }
 
 type saveHistoryDiffView struct {
-	From    saveHistorySnapshotView      `json:"from"`
-	To      saveHistorySnapshotView      `json:"to"`
-	Summary saveindex.HistoryDiffSummary `json:"summary"`
-	Total   int                          `json:"total"`
-	Limit   int                          `json:"limit"`
-	Offset  int                          `json:"offset"`
-	Items   []saveindex.HistoryChange    `json:"items"`
+	From       saveHistorySnapshotView      `json:"from"`
+	To         saveHistorySnapshotView      `json:"to"`
+	Summary    saveindex.HistoryDiffSummary `json:"summary"`
+	Total      int                          `json:"total"`
+	Limit      int                          `json:"limit"`
+	Offset     int                          `json:"offset"`
+	Items      []saveindex.HistoryChange    `json:"items"`
+	EventTotal int                          `json:"event_total"`
+	Events     []saveindex.HistoryEvent     `json:"events"`
 }
 
 func (s Server) listSaveHistory(c *gin.Context) {
@@ -126,7 +129,52 @@ func (s Server) diffSaveHistory(c *gin.Context) {
 	ok(c, saveHistoryDiffView{
 		From: saveHistorySnapshotViewFor(diff.From), To: saveHistorySnapshotViewFor(diff.To),
 		Summary: diff.Summary, Total: diff.Total, Limit: diff.Limit, Offset: diff.Offset, Items: saveHistoryChanges(diff.Items),
+		EventTotal: diff.EventTotal, Events: saveHistoryEvents(diff.Events),
 	})
+}
+
+func saveHistoryEvents(items []saveindex.HistoryEvent) []saveindex.HistoryEvent {
+	events := make([]saveindex.HistoryEvent, len(items))
+	copy(events, items)
+	for index := range events {
+		event := &events[index]
+		if event.Details == nil {
+			event.Details = []saveindex.HistoryFieldChange{}
+		}
+		if event.Metadata == nil {
+			event.Metadata = map[string]string{}
+		}
+		switch event.ActorType {
+		case "base":
+			event.ActorLabel = pallocalize.BaseName(event.ActorLabel)
+		case "guild":
+			event.ActorLabel = pallocalize.GuildName(event.ActorLabel)
+		}
+		switch event.SubjectType {
+		case "item":
+			event.SubjectLabel = pallocalize.ItemName(firstNonEmpty(event.Metadata["item_id"], event.SubjectID, event.SubjectLabel))
+		case "pal":
+			characterID := event.Metadata["character_id"]
+			species := pallocalize.PalName(characterID)
+			nickname := strings.TrimSpace(event.Metadata["nickname"])
+			if nickname != "" && species != "" && !strings.EqualFold(nickname, species) {
+				event.SubjectLabel = nickname + "（" + species + "）"
+			} else {
+				event.SubjectLabel = firstNonEmpty(species, nickname, event.SubjectLabel, event.SubjectID)
+			}
+		case "base":
+			event.SubjectLabel = pallocalize.BaseName(event.SubjectLabel)
+		case "guild":
+			event.SubjectLabel = pallocalize.GuildName(event.SubjectLabel)
+		}
+		switch event.TargetType {
+		case "base":
+			event.TargetLabel = pallocalize.BaseName(event.TargetLabel)
+		case "guild":
+			event.TargetLabel = pallocalize.GuildName(event.TargetLabel)
+		}
+	}
+	return events
 }
 
 func saveHistoryChanges(items []saveindex.HistoryChange) []saveindex.HistoryChange {
