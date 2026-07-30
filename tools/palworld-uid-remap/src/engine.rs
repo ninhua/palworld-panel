@@ -262,7 +262,7 @@ pub fn remap_world(
     let mut opaque_candidates = Vec::new();
     let mut semantic_after = BTreeMap::new();
     for relative in sav_files(&stage_manifest) {
-        let path = stage.path().join(relative.replace('/', "\\"));
+        let path = manifest_path(stage.path(), &relative);
         let save = parse_save(&path)?;
         reject_opaque_candidates(&scan_opaque_bytes(
             &save.extra,
@@ -412,7 +412,7 @@ fn collect_unrelated_baseline(
         if relative == "Level.sav" || mapped_source_relative(&relative, mapping) {
             continue;
         }
-        let save = parse_save(&input.join(relative.replace('/', "\\")))?;
+        let save = parse_save(&manifest_path(input, &relative))?;
         collect_target_baseline(&save, mapping, &relative, target_counts)?;
         semantic.insert(relative, semantic_fingerprint(&save, mapping)?);
     }
@@ -762,6 +762,12 @@ fn verify_names(players: &Path, mapping: &MappingSet) -> Result<(), RemapError> 
         }
     }
     Ok(())
+}
+
+fn manifest_path(root: &Path, relative: &str) -> PathBuf {
+    relative
+        .split('/')
+        .fold(root.to_path_buf(), |path, component| path.join(component))
 }
 
 fn sav_files(manifest: &Manifest) -> Vec<String> {
