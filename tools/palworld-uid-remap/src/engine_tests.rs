@@ -86,6 +86,84 @@ fn permits_host_uid_sentinel_only_in_item_container_custom_version_metadata() {
 }
 
 #[test]
+fn permits_uid_like_bytes_only_in_local_map_mask_texture() {
+    let source = OpaqueCandidate {
+        file: "LocalData.sav".to_owned(),
+        path: "SaveData.WorldMapMaskTextureV4".to_owned(),
+        uid: A.to_owned(),
+        kind: crate::CandidateKind::Source,
+        offset: 128,
+    };
+    let target = OpaqueCandidate {
+        uid: B.to_owned(),
+        kind: crate::CandidateKind::Target,
+        ..source.clone()
+    };
+    let allowed = RewriteReport {
+        opaque_candidates: vec![source.clone(), target],
+        ..RewriteReport::default()
+    };
+    reject_opaque_candidates(&allowed).unwrap();
+
+    for (file, path) in [
+        ("Level.sav", "SaveData.WorldMapMaskTextureV4"),
+        ("LocalData.sav", "SaveData.WorldMapMaskTextureV4.Backup"),
+        ("LocalData.sav", "SaveData.WorldMapMaskTextureVersion4"),
+        ("LocalData.sav", "SaveData.OtherTextureV4"),
+    ] {
+        let rejected = RewriteReport {
+            opaque_candidates: vec![OpaqueCandidate {
+                file: file.to_owned(),
+                path: path.to_owned(),
+                ..source.clone()
+            }],
+            ..RewriteReport::default()
+        };
+        assert!(
+            matches!(
+                reject_opaque_candidates(&rejected),
+                Err(RemapError::OpaqueSourceReference { .. })
+            ),
+            "{file}:{path}"
+        );
+    }
+}
+
+#[test]
+fn local_map_mask_versions_require_an_optional_numeric_suffix() {
+    for path in [
+        "SaveData.WorldMapMaskTexture",
+        "SaveData.WorldMapMaskTextureV2",
+        "SaveData.WorldMapMaskTextureV4",
+        "SaveData.WorldMapMaskTextureV10",
+    ] {
+        let candidate = OpaqueCandidate {
+            file: "LocalData.sav".to_owned(),
+            path: path.to_owned(),
+            uid: A.to_owned(),
+            kind: crate::CandidateKind::Source,
+            offset: 0,
+        };
+        assert!(is_ignorable_local_map_mask_candidate(&candidate), "{path}");
+    }
+
+    for path in [
+        "SaveData.WorldMapMaskTextureV",
+        "SaveData.WorldMapMaskTextureVX",
+        "SaveData.WorldMapMaskTexture4",
+    ] {
+        let candidate = OpaqueCandidate {
+            file: "LocalData.sav".to_owned(),
+            path: path.to_owned(),
+            uid: A.to_owned(),
+            kind: crate::CandidateKind::Source,
+            offset: 0,
+        };
+        assert!(!is_ignorable_local_map_mask_candidate(&candidate), "{path}");
+    }
+}
+
+#[test]
 fn custom_version_metadata_path_requires_a_numeric_item_container_index() {
     for path in [
         "worldSaveData.ItemContainerSaveData[].Value.CustomVersionData",

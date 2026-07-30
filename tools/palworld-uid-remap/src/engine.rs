@@ -273,6 +273,20 @@ pub fn remap_world(
         let mut source_probe = save.root.properties.clone();
         let source_report = rewrite_typed_tree(&mut source_probe, mapping, &relative);
         reject_opaque_candidates(&source_report)?;
+        let ignored_map_mask_candidates = source_report
+            .opaque_candidates
+            .iter()
+            .filter(|candidate| is_ignorable_local_map_mask_candidate(candidate))
+            .count();
+        if ignored_map_mask_candidates != 0 {
+            warnings.push(format!(
+                concat!(
+                    "preserved {} UID-like byte sequence(s) in LocalData.sav ",
+                    "world map mask texture data"
+                ),
+                ignored_map_mask_candidates
+            ));
+        }
         if !source_report.rewritten_fields.is_empty() {
             return Err(RemapError::Gate(format!(
                 "source UID typed reference remains in {relative}"
@@ -453,7 +467,7 @@ fn reject_opaque_candidates(report: &RewriteReport) -> Result<(), RemapError> {
     if let Some(candidate) = report
         .opaque_candidates
         .iter()
-        .find(|candidate| !is_ignorable_host_custom_version_candidate(candidate))
+        .find(|candidate| !is_ignorable_opaque_candidate(candidate))
     {
         return match candidate.kind {
             crate::CandidateKind::Source => Err(RemapError::OpaqueSourceReference {
@@ -467,6 +481,29 @@ fn reject_opaque_candidates(report: &RewriteReport) -> Result<(), RemapError> {
         };
     }
     Ok(())
+}
+
+fn is_ignorable_opaque_candidate(candidate: &OpaqueCandidate) -> bool {
+    is_ignorable_host_custom_version_candidate(candidate)
+        || is_ignorable_local_map_mask_candidate(candidate)
+}
+
+fn is_ignorable_local_map_mask_candidate(candidate: &OpaqueCandidate) -> bool {
+    if candidate.file.replace('\\', "/") != "LocalData.sav" {
+        return false;
+    }
+
+    let Some(version) = candidate
+        .path
+        .strip_prefix("SaveData.WorldMapMaskTexture")
+    else {
+        return false;
+    };
+
+    version.is_empty()
+        || version.strip_prefix('V').is_some_and(|digits| {
+            !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+        })
 }
 
 fn is_ignorable_host_custom_version_candidate(candidate: &OpaqueCandidate) -> bool {
