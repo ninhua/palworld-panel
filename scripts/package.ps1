@@ -75,6 +75,26 @@ function Invoke-External {
   }
 }
 
+function Invoke-CargoWithTargetDirectory {
+  param(
+    [string[]]$Arguments,
+    [string]$WorkingDirectory,
+    [string]$TargetDirectory
+  )
+
+  $cargoCommand = Get-Command cargo.exe -ErrorAction SilentlyContinue
+  if ($null -eq $cargoCommand) {
+    throw "cargo.exe is required to build palworld-uid-remap.exe"
+  }
+  $previousCargoTargetDir = $env:CARGO_TARGET_DIR
+  try {
+    $env:CARGO_TARGET_DIR = $TargetDirectory
+    Invoke-External $cargoCommand.Source $Arguments $WorkingDirectory
+  } finally {
+    $env:CARGO_TARGET_DIR = $previousCargoTargetDir
+  }
+}
+
 function Invoke-GoTestsWithWindowsLockRetry {
   param([string]$WorkingDirectory, [int]$MaxAttempts = 3)
 
@@ -330,6 +350,11 @@ if (-not $SkipTests) {
     $env:CXX = $oldCxx
     $env:PATH = $oldPath
   }
+  Write-Host "[palpanel] Running UID remapper tests"
+  Invoke-CargoWithTargetDirectory `
+    -Arguments @("test", "--locked") `
+    -WorkingDirectory (Join-Path $RootDir "tools\palworld-uid-remap") `
+    -TargetDirectory (Join-Path $PackageTemp "uid-remapper-tests")
   Invoke-External "npm.cmd" $NpmCiArguments (Join-Path $RootDir "frontend")
   # CI checks that generated contracts are committed. Local packaging must also
   # work before a commit, so run the same validation without diffing against HEAD.
@@ -365,7 +390,26 @@ Copy-Item -Force (Join-Path $RootDir "third_party\palcalc\LICENSE.txt") (Join-Pa
 Copy-Item -Force (Join-Path $RootDir "backend\internal\pallocalize\LICENSE.apache-2.0") (Join-Path $PackageDir "licenses\pallocalize-Apache-2.0.txt")
 Copy-Item -Force (Join-Path $RootDir "backend\internal\paldefender\assets\LICENSE.txt") (Join-Path $PackageDir "licenses\PalDefender-MIT.txt")
 
+$uidRemapperTarget = "x86_64-pc-windows-msvc"
+$uidRemapperBuildDir = Join-Path $PackageTemp "uid-remapper-windows-amd64"
+Write-Host "[palpanel] Building UID remapper windows-amd64"
+Invoke-CargoWithTargetDirectory `
+  -Arguments @("build", "--locked", "--release", "--target", $uidRemapperTarget) `
+  -WorkingDirectory (Join-Path $RootDir "tools\palworld-uid-remap") `
+  -TargetDirectory $uidRemapperBuildDir
+$uidRemapperSource = Join-Path $uidRemapperBuildDir "$uidRemapperTarget\release\palworld-uid-remap.exe"
+if (-not (Test-Path -LiteralPath $uidRemapperSource -PathType Leaf)) {
+  throw "UID remapper build output is missing: $uidRemapperSource"
+}
+$uidRemapperDestination = Join-Path $PackageDir "palworld-uid-remap.exe"
+Copy-Item -Force $uidRemapperSource $uidRemapperDestination
+$uidRemapperSHA256 = Get-FileSHA256WithWindowsLockRetry -Path $uidRemapperDestination
+if ($uidRemapperSHA256 -notmatch '^[0-9a-f]{64}$') {
+  throw "Unable to calculate UID remapper SHA-256"
+}
+
 $backendLdflags = "-s -w -X palpanel/internal/buildinfo.Version=$Version -X palpanel/internal/buildinfo.Commit=$Commit -X palpanel/internal/buildinfo.BuildTime=$BuildTime"
+$palpanelLdflags = "$backendLdflags -X palpanel/internal/api.hostMigrationHelperSHA256=$uidRemapperSHA256"
 $savLdflags = "-s -w -X palpanel/sav-cli/internal/buildinfo.Version=$Version -X palpanel/sav-cli/internal/buildinfo.Commit=$Commit -X palpanel/sav-cli/internal/buildinfo.BuildTime=$BuildTime"
 $oldGoos = $env:GOOS
 $oldGoarch = $env:GOARCH
@@ -382,7 +426,7 @@ try {
   $env:GOOS = "windows"
   $env:GOARCH = "amd64"
   $env:CGO_ENABLED = "0"
-  Invoke-GoBuildWithWindowsLockRetry -Arguments @("build", "-tags", "embed_webui", "-trimpath", "-ldflags", $backendLdflags, "-o", (Join-Path $PackageDir "palpanel-server.exe"), "./cmd/palpanel") -WorkingDirectory (Join-Path $RootDir "backend")
+  Invoke-GoBuildWithWindowsLockRetry -Arguments @("build", "-tags", "embed_webui", "-trimpath", "-ldflags", $palpanelLdflags, "-o", (Join-Path $PackageDir "palpanel-server.exe"), "./cmd/palpanel") -WorkingDirectory (Join-Path $RootDir "backend")
   Invoke-GoBuildWithWindowsLockRetry -Arguments @("build", "-trimpath", "-ldflags", "$backendLdflags -H windowsgui", "-o", (Join-Path $PackageDir "PalPanel.exe"), "./cmd/palpanel-launcher") -WorkingDirectory (Join-Path $RootDir "backend")
 
   $env:CGO_ENABLED = "1"

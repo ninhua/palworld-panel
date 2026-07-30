@@ -27,6 +27,34 @@ func TestTypeForAnyOfIncludingNull(t *testing.T) {
 	}
 }
 
+func TestLiteralNumericTypes(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{name: "int", value: int(1), want: "1"},
+		{name: "int8", value: int8(-2), want: "-2"},
+		{name: "int16", value: int16(-3), want: "-3"},
+		{name: "int32", value: int32(-4), want: "-4"},
+		{name: "int64", value: int64(-5), want: "-5"},
+		{name: "uint", value: uint(6), want: "6"},
+		{name: "uint8", value: uint8(7), want: "7"},
+		{name: "uint16", value: uint16(8), want: "8"},
+		{name: "uint32", value: uint32(9), want: "9"},
+		{name: "uint64", value: uint64(10), want: "10"},
+		{name: "float32", value: float32(1.25), want: "1.25"},
+		{name: "float64", value: float64(2.5), want: "2.5"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := literal(test.value); got != test.want {
+				t.Fatalf("literal(%T(%v)) = %q, want %q", test.value, test.value, got, test.want)
+			}
+		})
+	}
+}
+
 func TestOpenAPIGeneratesMonitorDiagnosticContracts(t *testing.T) {
 	output := filepath.Join(t.TempDir(), "contracts.ts")
 	if err := run(filepath.Join("..", "..", "..", "docs", "openapi.yaml"), output); err != nil {
@@ -46,6 +74,8 @@ func TestOpenAPIGeneratesMonitorDiagnosticContracts(t *testing.T) {
 		`"lifecycle_available": boolean`,
 		`"risk_reasons": Array<components["schemas"]["MonitorRiskReason"]>`,
 		`"MonitorSnapshot":`,
+		`"SupportBundleStatus":`,
+		`"schema_version": 1;`,
 	} {
 		if !strings.Contains(contract, want) {
 			t.Fatalf("generated monitor contract does not contain %q", want)

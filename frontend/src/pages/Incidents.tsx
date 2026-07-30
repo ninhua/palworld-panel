@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BellRing, CheckCircle2, CircleDot, RefreshCw, RotateCcw, Search, ShieldAlert, Webhook, X } from 'lucide-react';
 import { getErrorMessage } from '../api/client';
 import { incidentsApi } from '../api/incidents';
@@ -38,25 +38,25 @@ export const Incidents: React.FC = () => {
   const [acting, setActing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const queryRef = useRef(query);
 
-  const load = async () => {
+  useEffect(() => { queryRef.current = query; }, [query]);
+
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const next = await incidentsApi.list({ status, severity, source, q: query.trim(), limit: 100 });
+      const next = await incidentsApi.list({ status, severity, source, q: queryRef.current.trim(), limit: 100 });
       setData(next);
       setError(null);
-      if (selected) {
-        const stillExists = next.items.some((item) => item.id === selected.incident.id);
-        if (!stillExists) setSelected(null);
-      }
+      setSelected((current) => current && !next.items.some((item) => item.id === current.incident.id) ? null : current);
     } catch (loadError) {
       setError(getErrorMessage(loadError, '读取事件中心失败'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [severity, source, status]);
 
-  useEffect(() => { void load(); }, [status, severity, source]);
+  useEffect(() => { void load(); }, [load]);
 
   const openDetail = async (item: Incident) => {
     try {

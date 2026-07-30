@@ -147,6 +147,13 @@ try {
     throw "checksums.txt covers $verified files, package contains $($packagedFiles.Count) files"
   }
 
+  $uidRemapperPath = Join-Path $Package "palworld-uid-remap.exe"
+  $uidRemapperSHA256 = (Get-FileHash -LiteralPath $uidRemapperPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  $serverBinaryText = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes((Join-Path $Package "palpanel-server.exe")))
+  if (-not $serverBinaryText.Contains($uidRemapperSHA256)) {
+    throw "palpanel-server.exe does not embed the packaged UID remapper SHA-256"
+  }
+
   if ($ObjdumpPath) {
     $ObjdumpPath = Resolve-PalPanelPath -Path $ObjdumpPath -BasePath $RepositoryRoot
     if (-not (Test-Path -LiteralPath $ObjdumpPath -PathType Leaf)) {

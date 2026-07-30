@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronUp, History, RefreshCw, RotateCcw } from 'lucide-react';
 import { getErrorMessage } from '../api/client';
 import { settingsApi } from '../api/settings';
@@ -21,17 +21,21 @@ export const ConfigRevisionHistory: React.FC<{
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const diffRequest = useRef(0);
+  const selectedRef = useRef(selected);
+
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
 
   const selectedRevision = useMemo(() => items.find((item) => item.id === selected), [items, selected]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setBusy(true);
     setMessage('');
     try {
       const result = await settingsApi.listRevisions();
       setItems(result.items);
       setRetention(result.retention);
-      if (selected && !result.items.some((item) => item.id === selected)) {
+      const currentSelected = selectedRef.current;
+      if (currentSelected && !result.items.some((item) => item.id === currentSelected)) {
         setSelected('');
         setDiff(null);
       }
@@ -40,9 +44,9 @@ export const ConfigRevisionHistory: React.FC<{
     } finally {
       setBusy(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [load]);
 
   const toggleDiff = async (revision: PalworldConfigRevision) => {
     const request = ++diffRequest.current;
