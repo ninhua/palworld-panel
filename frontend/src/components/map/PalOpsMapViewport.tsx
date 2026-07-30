@@ -21,6 +21,7 @@ interface Props {
 
 const markerSourceID = 'palops-markers';
 const markerLayerID = 'palops-marker-circles';
+const mapLibreMaxCanvasSize: [number, number] = [4096, 4096];
 
 export const PalOpsMapViewport: React.FC<Props> = ({ layerID, markers, selectedKey, tilesAvailable, onSelect }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -94,7 +95,7 @@ export const PalOpsMapViewport: React.FC<Props> = ({ layerID, markers, selectedK
       {runtimeError && (
         <div className="absolute inset-0 z-20 grid place-items-center bg-slate-950 px-6 text-center">
           <div className="max-w-md rounded-2xl border border-rose-800/70 bg-rose-950/50 px-6 py-5 text-xs font-semibold leading-5 text-rose-200">
-            MapLibre 运行时加载失败：{runtimeError}
+            MapLibre 地图初始化失败：{runtimeError}
           </div>
         </div>
       )}
@@ -112,10 +113,17 @@ const createMap = (
   layerID: PalOpsMapLayerID,
   tilesAvailable: boolean,
   data: Record<string, unknown>,
-): MapLibreMapInstance => {
+): MapLibreMapInstance => new runtime.Map(createPalOpsMapOptions(container, layerID, tilesAvailable, data));
+
+export const createPalOpsMapOptions = (
+  container: HTMLDivElement,
+  layerID: PalOpsMapLayerID,
+  tilesAvailable: boolean,
+  data: Record<string, unknown>,
+): Record<string, unknown> => {
   const layer = palOpsMapLayers[layerID];
   const style = createStyle(layerID, tilesAvailable, data);
-  return new runtime.Map({
+  return {
     container,
     style,
     center: [0, 0],
@@ -124,12 +132,15 @@ const createMap = (
     maxZoom: layer.maximumZoom,
     renderWorldCopies: false,
     maxBounds: [[-180, -85.0511287798066], [180, 85.0511287798066]],
+    // MapLibre 6 reads both entries synchronously during the constructor's first resize.
+    // Pass an explicit tuple so a missing/null runtime default cannot crash initialization.
+    maxCanvasSize: [...mapLibreMaxCanvasSize],
     attributionControl: false,
     dragRotate: false,
     pitchWithRotate: false,
     touchPitch: false,
     cooperativeGestures: false,
-  });
+  };
 };
 
 const createStyle = (layerID: PalOpsMapLayerID, tilesAvailable: boolean, data: Record<string, unknown>) => {
