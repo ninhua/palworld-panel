@@ -102,8 +102,8 @@ def archive_map_root(archive: Path, extract_root: Path, *, include_tiles: bool) 
             if stat.S_ISLNK(mode):
                 raise ValueError(f"symlinks are forbidden in map assets: {relative}")
             suffix = Path(relative.name).suffix.lower()
-            if suffix not in ALLOWED_EXTENSIONS:
-                raise ValueError(f"unexpected map asset extension: {relative}")
+            if not suffix or suffix not in ALLOWED_EXTENSIONS:
+                continue
             destination = extract_root.joinpath(*relative.parts)
             destination.parent.mkdir(parents=True, exist_ok=True)
             with bundle.open(info) as source, destination.open("wb") as output:
@@ -137,7 +137,7 @@ def copy_tree(source: Path, destination: Path, *, include_tiles: bool) -> None:
         if path.is_dir():
             continue
         if path.suffix.lower() not in ALLOWED_EXTENSIONS:
-            raise ValueError(f"unexpected map asset extension: {relative}")
+            continue
         size = path.stat().st_size
         if size > MAX_FILE_BYTES:
             raise ValueError(f"map asset exceeds per-file limit: {relative}")
