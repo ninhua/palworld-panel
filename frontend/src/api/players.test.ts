@@ -102,6 +102,8 @@ describe('save player detail mappers', () => {
     expect(mapSaveInventoryContainers({
       containers: [{
         container_id: 'bag_1',
+        container_type: 'items',
+        container_name: '普通背包',
         owner_type: 'player',
         owner_id: 'uid_1',
         slots: [
@@ -109,7 +111,7 @@ describe('save player detail mappers', () => {
           { slot: 1, item_id: '', count: 1 },
         ],
       }],
-    })).toEqual([{ container_id: 'bag_1', owner_type: 'player', owner_id: 'uid_1', slots: [{ slot: 0, item_id: 'Money', item_name: '金币', count: 25, durability: 0 }] }]);
+    })).toEqual([{ container_id: 'bag_1', container_type: 'items', container_name: '普通背包', owner_type: 'player', owner_id: 'uid_1', slots: [{ slot: 0, item_id: 'Money', item_name: '金币', count: 25, durability: 0 }] }]);
   });
 });
 

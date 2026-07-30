@@ -131,6 +131,8 @@ export const mapSaveInventoryContainers = (raw: unknown): SaveInventoryContainer
       : [];
     return [{
       container_id: containerId,
+      container_type: String(container.container_type || 'player'),
+      container_name: String(container.container_name || '玩家背包'),
       owner_type: String(container.owner_type || 'player'),
       owner_id: String(container.owner_id || ''),
       slots,

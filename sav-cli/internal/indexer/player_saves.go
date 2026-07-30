@@ -11,13 +11,23 @@ import (
 	"palpanel/sav-cli/internal/sav"
 )
 
-var playerInventoryContainerFields = []string{
-	"CommonContainerId",
-	"DropSlotContainerId",
-	"EssentialContainerId",
-	"FoodEquipContainerId",
-	"PlayerEquipArmorContainerId",
-	"WeaponLoadOutContainerId",
+type playerInventoryContainerField struct {
+	Name string
+	Type string
+}
+
+type playerInventoryContainerRef struct {
+	ID   string
+	Type string
+}
+
+var playerInventoryContainerFields = []playerInventoryContainerField{
+	{Name: "CommonContainerId", Type: "items"},
+	{Name: "DropSlotContainerId", Type: "drop_slot"},
+	{Name: "EssentialContainerId", Type: "key_items"},
+	{Name: "FoodEquipContainerId", Type: "food"},
+	{Name: "PlayerEquipArmorContainerId", Type: "armor"},
+	{Name: "WeaponLoadOutContainerId", Type: "weapons"},
 }
 
 func normalizePlayerSaves(index *Index, playersDir string) {
@@ -36,7 +46,7 @@ func normalizePlayerSaves(index *Index, playersDir string) {
 	}
 
 	type result struct {
-		containerIDs  []string
+		containerRefs []playerInventoryContainerRef
 		partyID       string
 		palboxID      string
 		auxiliaryPals []Pal
@@ -57,7 +67,7 @@ func normalizePlayerSaves(index *Index, playersDir string) {
 				if err != nil {
 					inventory.err = fmt.Errorf("%s could not be parsed: %w", filepath.Base(path), err)
 				} else {
-					inventory.containerIDs, inventory.err = playerInventoryContainerIDs(file)
+					inventory.containerRefs, inventory.err = playerInventoryContainerIDs(file)
 					if inventory.err == nil {
 						inventory.partyID, inventory.palboxID = playerPalContainerIDs(file)
 						dpsPath := strings.TrimSuffix(path, filepath.Ext(path)) + "_dps.sav"
@@ -78,12 +88,14 @@ func normalizePlayerSaves(index *Index, playersDir string) {
 		if inventory.err != nil {
 			continue
 		}
-		for _, containerID := range inventory.containerIDs {
-			if position, ok := containers[canonicalSaveID(containerID)]; ok {
+		for _, reference := range inventory.containerRefs {
+			if position, ok := containers[canonicalSaveID(reference.ID)]; ok {
 				index.Containers[position].OwnerType = "player"
 				index.Containers[position].OwnerID = player.PlayerUID
+				index.Containers[position].ContainerType = reference.Type
 			}
 		}
+		player.InventorySummary = playerInventorySummary(index.Containers, player.PlayerUID)
 		for palPosition := range index.Pals {
 			pal := &index.Pals[palPosition]
 			if pal.OwnerPlayerUID != player.PlayerUID {
@@ -142,17 +154,25 @@ func readAuxiliaryPals(path, ownerUID, locationType, containerID string) ([]Pal,
 		if strings.Contains(strings.ToLower(asString(getField(saveParam, "Gender"))), "female") {
 			gender = "female"
 		}
+		health, sanity, fullStomach, isSick, status, workSuitability := palRuntimeState(saveParam, locationType)
 		result = append(result, Pal{
 			InstanceID: instanceID, CharacterID: characterID, Nickname: asString(getField(saveParam, "NickName")),
 			Level: asIntDefault(getField(saveParam, "Level"), 1), OwnerPlayerUID: ownerUID,
 			OldOwnerUIDs: stringSlice(firstNonEmptyAny(getField(saveParam, "OldOwnerPlayerUIds"), getField(saveParam, "OldOwnerPlayerUIDs"))),
 			ContainerID:  containerID, SlotIndex: slotIndex, LocationType: locationType, Gender: gender,
 			Rank: asIntDefault(getField(saveParam, "Rank"), 1), IVHP: asInt(getField(saveParam, "Talent_HP")),
-			IVAttack:       asInt(firstNonEmptyAny(getField(saveParam, "Talent_Shot"), getField(saveParam, "Talent_Attack"))),
-			IVDefense:      asInt(getField(saveParam, "Talent_Defense")),
-			Skills:         stringSlice(firstNonEmptyAny(getField(saveParam, "MasteredWaza"), getField(saveParam, "SkillList"))),
-			EquippedSkills: stringSlice(getField(saveParam, "EquipWaza")), Passives: stringSlice(getField(saveParam, "PassiveSkillList")),
-			OnExpedition: asString(getField(saveParam, "MapObjectConcreteInstanceIdAssignedToExpedition")) != "", Status: "Healthy",
+			IVAttack:        asInt(firstNonEmptyAny(getField(saveParam, "Talent_Shot"), getField(saveParam, "Talent_Attack"))),
+			IVDefense:       asInt(getField(saveParam, "Talent_Defense")),
+			Skills:          stringSlice(firstNonEmptyAny(getField(saveParam, "MasteredWaza"), getField(saveParam, "SkillList"))),
+			EquippedSkills:  stringSlice(getField(saveParam, "EquipWaza")),
+			Passives:        stringSlice(getField(saveParam, "PassiveSkillList")),
+			WorkSuitability: workSuitability,
+			Health:          health,
+			Sanity:          sanity,
+			FullStomach:     fullStomach,
+			IsSick:          isSick,
+			OnExpedition:    asString(getField(saveParam, "MapObjectConcreteInstanceIdAssignedToExpedition")) != "",
+			Status:          status,
 		})
 	}
 	return result, nil
@@ -201,35 +221,69 @@ func readPlayerSave(path string) (*gvas.File, error) {
 	return file, nil
 }
 
-func playerInventoryContainerIDs(file *gvas.File) ([]string, error) {
+func playerInventoryContainerIDs(file *gvas.File) ([]playerInventoryContainerRef, error) {
 	saveData, ok := asMap(getField(file.Properties, "SaveData"))
 	if !ok {
 		return nil, fmt.Errorf("SaveData is missing or has an unexpected shape")
 	}
 	inventoryValue := getField(saveData, "InventoryInfo")
 	if inventoryValue == nil {
-		return []string{}, nil
+		return []playerInventoryContainerRef{}, nil
 	}
 	inventory, ok := asMap(inventoryValue)
 	if !ok {
 		return nil, fmt.Errorf("InventoryInfo has an unexpected shape")
 	}
 
-	unique := map[string]string{}
+	unique := map[string]playerInventoryContainerRef{}
 	for _, field := range playerInventoryContainerFields {
-		containerID := containerIDFromAny(getField(inventory, field))
+		containerID := containerIDFromAny(getField(inventory, field.Name))
 		canonical := canonicalSaveID(containerID)
 		if canonical == "" || isZeroGUID(canonical) {
 			continue
 		}
-		unique[canonical] = containerID
+		unique[canonical] = playerInventoryContainerRef{ID: containerID, Type: field.Type}
 	}
-	containerIDs := make([]string, 0, len(unique))
-	for _, containerID := range unique {
-		containerIDs = append(containerIDs, containerID)
+	keys := make([]string, 0, len(unique))
+	for key := range unique {
+		keys = append(keys, key)
 	}
-	sort.Strings(containerIDs)
-	return containerIDs, nil
+	sort.Strings(keys)
+	containerRefs := make([]playerInventoryContainerRef, 0, len(keys))
+	for _, key := range keys {
+		containerRefs = append(containerRefs, unique[key])
+	}
+	return containerRefs, nil
+}
+
+func playerInventorySummary(containers []Container, playerUID string) map[string]any {
+	containerCount := 0
+	usedSlots := 0
+	totalItems := 0
+	itemTypes := map[string]struct{}{}
+	byType := map[string]int{}
+	for _, container := range containers {
+		if !strings.EqualFold(container.OwnerType, "player") || canonicalSaveID(container.OwnerID) != canonicalSaveID(playerUID) {
+			continue
+		}
+		containerCount++
+		for _, slot := range container.Slots {
+			if strings.TrimSpace(slot.ItemID) == "" || slot.Count <= 0 {
+				continue
+			}
+			usedSlots++
+			totalItems += slot.Count
+			itemTypes[strings.ToLower(strings.TrimSpace(slot.ItemID))] = struct{}{}
+			byType[firstNonEmpty(container.ContainerType, "unknown")] += slot.Count
+		}
+	}
+	return map[string]any{
+		"container_count": containerCount,
+		"used_slots":      usedSlots,
+		"total_items":     totalItems,
+		"item_types":      len(itemTypes),
+		"by_container":    byType,
+	}
 }
 
 func playerSaveFilename(playerUID string) string {

@@ -111,13 +111,31 @@ func (s Server) getSavePlayerInventory(c *gin.Context) {
 		return
 	}
 	id := c.Param("id")
-	items := make([]saveindex.Container, 0)
-	for _, container := range index.Containers {
-		if strings.EqualFold(strings.TrimSpace(container.OwnerType), "player") && matchesID(id, container.OwnerID) {
-			items = append(items, container)
+	items := playerInventoryContainers(index, id)
+	ok(c, gin.H{"containers": flattenContainers(items), "status": status, "view": view})
+}
+
+func playerInventoryContainers(index saveindex.Index, id string) []saveindex.Container {
+	identities := []string{id}
+	for _, player := range index.Players {
+		if matchesID(id, player.PlayerUID, player.SteamID) {
+			identities = append(identities, player.PlayerUID, player.SteamID)
+			break
 		}
 	}
-	ok(c, gin.H{"containers": flattenContainers(items), "status": status, "view": view})
+	items := make([]saveindex.Container, 0)
+	for _, container := range index.Containers {
+		if !strings.EqualFold(strings.TrimSpace(container.OwnerType), "player") {
+			continue
+		}
+		for _, identity := range identities {
+			if matchesID(identity, container.OwnerID) {
+				items = append(items, container)
+				break
+			}
+		}
+	}
+	return items
 }
 
 type playerDataView struct {
@@ -569,8 +587,15 @@ func flattenPals(pals []saveindex.Pal, players []saveindex.Player) []gin.H {
 
 func flattenPal(pal saveindex.Pal, lookup map[string]saveindex.Player) gin.H {
 	owner := lookupPlayer(lookup, pal.OwnerPlayerUID)
-	status := firstNonEmpty(pal.Status, "Healthy")
+	status := normalizedPalStatus(pal.Status)
 	speciesName := pallocalize.PalName(pal.CharacterID)
+	workSuitability := make([]gin.H, 0, len(pal.WorkSuitability))
+	for _, work := range pal.WorkSuitability {
+		if strings.TrimSpace(work.Type) == "" || work.Level <= 0 {
+			continue
+		}
+		workSuitability = append(workSuitability, gin.H{"type": work.Type, "level": work.Level})
+	}
 	return gin.H{
 		"id":                pal.InstanceID,
 		"instance_id":       pal.InstanceID,
@@ -606,12 +631,30 @@ func flattenPal(pal saveindex.Pal, lookup map[string]saveindex.Player) gin.H {
 		"z":                 pal.Location.Z,
 		"skills":            []gin.H{},
 		"passives":          localizeStrings(pal.Passives, pallocalize.PassiveName),
-		"raw_passives":      pal.Passives,
-		"raw_skills":        pal.Skills,
-		"work_suitability":  []gin.H{},
-		"health":            0,
-		"max_health":        0,
+		"raw_passives":      append([]string(nil), pal.Passives...),
+		"raw_skills":        append([]string(nil), pal.Skills...),
+		"work_suitability":  workSuitability,
+		"health":            pal.Health,
+		"max_health":        nil,
+		"sanity":            pal.Sanity,
+		"full_stomach":      pal.FullStomach,
+		"is_sick":           pal.IsSick,
 		"status":            status,
+	}
+}
+
+func normalizedPalStatus(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "working":
+		return "Working"
+	case "battling":
+		return "Battling"
+	case "injured":
+		return "Injured"
+	case "dead":
+		return "Dead"
+	default:
+		return "Healthy"
 	}
 }
 
@@ -666,14 +709,38 @@ func flattenContainers(containers []saveindex.Container) []gin.H {
 				"durability": slot.Durability,
 			})
 		}
+		containerType := firstNonEmpty(container.ContainerType, container.OwnerType, "unknown")
 		out = append(out, gin.H{
-			"container_id": container.ContainerID,
-			"owner_type":   container.OwnerType,
-			"owner_id":     container.OwnerID,
-			"slots":        slots,
+			"container_id":   container.ContainerID,
+			"container_type": containerType,
+			"container_name": playerInventoryContainerName(containerType),
+			"owner_type":     container.OwnerType,
+			"owner_id":       container.OwnerID,
+			"slots":          slots,
 		})
 	}
 	return out
+}
+
+func playerInventoryContainerName(containerType string) string {
+	switch strings.ToLower(strings.TrimSpace(containerType)) {
+	case "items":
+		return "普通背包"
+	case "drop_slot":
+		return "丢弃栏"
+	case "key_items":
+		return "重要物品"
+	case "food":
+		return "食物栏"
+	case "armor":
+		return "装备栏"
+	case "weapons":
+		return "武器栏"
+	case "player":
+		return "玩家背包"
+	default:
+		return "存储容器"
+	}
 }
 
 func flattenMapEntities(entities []saveindex.MapEntity) []gin.H {

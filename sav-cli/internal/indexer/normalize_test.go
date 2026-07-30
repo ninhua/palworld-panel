@@ -145,3 +145,40 @@ func workerDirectorFixture() []byte {
 	body.Write(fixtureContainerBytes())
 	return body.Bytes()
 }
+
+func TestPalRuntimeStateReadsHealthNeedsSicknessAndWorkSuitability(t *testing.T) {
+	saveParameter := map[string]any{
+		"Hp":             int64(123000),
+		"SanityValue":    72.5,
+		"FullStomach":    44.0,
+		"WorkerSick":     map[string]any{"State": "Sprain"},
+		"PalReviveTimer": 0.0,
+		"GotWorkSuitabilityAddRankList": []any{
+			map[string]any{"WorkSuitability": "EPalWorkSuitability::Mining", "Rank": 2},
+			map[string]any{"WorkSuitability": "EPalWorkSuitability::Mining", "Rank": 3},
+			map[string]any{"WorkSuitability": "EPalWorkSuitability::EmitFlame", "Rank": 1},
+		},
+	}
+
+	health, sanity, stomach, sick, status, work := palRuntimeState(saveParameter, "palbox")
+	if health == nil || *health != 123000 || sanity == nil || *sanity != 72.5 || stomach == nil || *stomach != 44 {
+		t.Fatalf("unexpected runtime values: health=%v sanity=%v stomach=%v", health, sanity, stomach)
+	}
+	if !sick || status != "Injured" {
+		t.Fatalf("expected injured/sick state, got sick=%v status=%q", sick, status)
+	}
+	if len(work) != 2 || work[0] != (WorkSuitability{Type: "Mining", Level: 3}) || work[1] != (WorkSuitability{Type: "Kindling", Level: 1}) {
+		t.Fatalf("unexpected work suitability: %#v", work)
+	}
+}
+
+func TestPalRuntimeStateTreatsZeroReviveTimerAsHealthy(t *testing.T) {
+	health := int64(1000)
+	parsedHealth, _, _, sick, status, _ := palRuntimeState(map[string]any{
+		"Hp":             health,
+		"PalReviveTimer": 0.0,
+	}, "palbox")
+	if parsedHealth == nil || *parsedHealth != health || sick || status != "Healthy" {
+		t.Fatalf("zero revive timer must not mark the Pal sick/dead: health=%v sick=%v status=%q", parsedHealth, sick, status)
+	}
+}

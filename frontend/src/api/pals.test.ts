@@ -28,6 +28,29 @@ describe('Pal DTO mapping', () => {
     });
   });
 
+  it('maps save snapshot state, passive traits, and work suitability', () => {
+    expect(mapPal({
+      id: 'pal-state',
+      status: 'Injured',
+      health: 123000,
+      sanity: 72.5,
+      full_stomach: 44,
+      is_sick: true,
+      passives: ['传说'],
+      raw_passives: ['Legend'],
+      work_suitability: [{ type: 'Mining', level: 3 }],
+    })).toMatchObject({
+      status: 'Injured',
+      health: 123000,
+      sanity: 72.5,
+      full_stomach: 44,
+      is_sick: true,
+      passives: ['传说'],
+      raw_passives: ['Legend'],
+      work_suitability: [{ type: 'Mining', level: 3 }],
+    });
+  });
+
   it('keeps the existing fallback for unknown Pal IDs', () => {
     expect(mapPal({ character_id: 'FuturePal_1' }).name).toBe('FuturePal_1');
   });

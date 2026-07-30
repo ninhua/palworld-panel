@@ -46,8 +46,11 @@ export const mapPal = (raw: unknown): Pal => {
     raw_passives: Array.isArray(data.raw_passives) ? data.raw_passives.map(String) : [],
     raw_skills: Array.isArray(data.raw_skills) ? data.raw_skills.map(String) : [],
     work_suitability: Array.isArray(data.work_suitability) ? (data.work_suitability as Pal['work_suitability']) : [],
-    health: Number(data.health || 0),
-    max_health: Number(data.max_health || data.health || 0),
+    health: data.health == null ? undefined : Number(data.health),
+    max_health: data.max_health == null ? undefined : Number(data.max_health),
+    sanity: data.sanity == null ? undefined : Number(data.sanity),
+    full_stomach: data.full_stomach == null ? undefined : Number(data.full_stomach),
+    is_sick: data.is_sick == null ? undefined : Boolean(data.is_sick),
     status:
       data.status === 'Healthy' ||
       data.status === 'Injured' ||

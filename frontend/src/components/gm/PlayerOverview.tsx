@@ -72,8 +72,9 @@ export const PlayerOverview: React.FC<{
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-bold text-slate-700">{pal.nickname || pal.name}</span>
                   <span className="mt-0.5 block truncate font-mono text-[10px] text-slate-400">{pal.character_id || pal.id}</span>
+                  <span className="mt-1 flex flex-wrap gap-1">{(pal.passives ?? []).slice(0, 2).map((passive) => <span key={passive} className="max-w-28 truncate rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-700" title={passive}>{passive}</span>)}{(pal.passives?.length ?? 0) > 2 && <span className="text-[9px] font-bold text-slate-400">+{(pal.passives?.length ?? 0) - 2}</span>}</span>
                 </span>
-                <span className="rounded-lg bg-white px-2 py-1 text-[10px] font-bold text-slate-500">Lv.{pal.level}</span>
+                <span className="flex shrink-0 flex-col items-end gap-1"><span className="rounded-lg bg-white px-2 py-1 text-[10px] font-bold text-slate-500">Lv.{pal.level}</span><span className={`text-[9px] font-bold ${pal.status === 'Dead' ? 'text-rose-600' : pal.status === 'Injured' ? 'text-amber-600' : pal.status === 'Working' ? 'text-sky-600' : 'text-emerald-600'}`}>{pal.status === 'Dead' ? '死亡' : pal.status === 'Injured' ? '异常' : pal.status === 'Working' ? '工作中' : '正常'}</span></span>
               </div>
             ))}
           </div>

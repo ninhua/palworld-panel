@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Hammer, HeartPulse, MapPin, RefreshCw, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Hammer, HeartPulse, LoaderCircle, MapPin, RefreshCw, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { getErrorMessage } from '../api/client';
 import { palsApi } from '../api/pals';
+import { palDefenderGMApi } from '../api/paldefenderGM';
 import { saveIndexApi } from '../api/saveIndex';
 import { useServerStore } from '../store/useServerStore';
 import type { Pal } from '../types';
@@ -24,6 +25,19 @@ const suitabilityText: Record<string, string> = {
   Cooling: '冷却',
   Farming: '牧场',
   Medicine: '制药',
+  Kindling: '生火',
+  OilExtraction: '采油',
+  BaseCampBattle: '基地战斗',
+  Anyone: '任意工作',
+  EmitFlame: '生火',
+  Seeding: '播种',
+  GenerateElectricity: '发电',
+  Handcraft: '手工作业',
+  Collection: '采集',
+  Deforest: '伐木',
+  ProductMedicine: '制药',
+  Cool: '冷却',
+  MonsterFarm: '牧场',
 };
 
 const pageSize = 50;
@@ -41,7 +55,8 @@ const statusFilterByTab: Record<string, string | undefined> = {
 };
 
 export const Pals: React.FC = () => {
-  const { refreshKey } = useServerStore();
+  const { refreshKey, session } = useServerStore();
+  const canRelease = Boolean(session?.permissions.includes('players:write'));
   const queryClient = useQueryClient();
   const [searchText, setSearchText] = useState('');
   const [activeFilterTab, setActiveFilterTab] = useState('all');
@@ -55,6 +70,8 @@ export const Pals: React.FC = () => {
   const [sort, setSort] = useState<'level_desc' | 'iv_desc' | 'stars_desc' | 'name_asc'>('level_desc');
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [releaseTarget, setReleaseTarget] = useState<Pal | null>(null);
+  const [releaseConfirmation, setReleaseConfirmation] = useState('');
   const debouncedSearch = useDebouncedValue(searchText, 250);
   const debouncedPassive = useDebouncedValue(passive, 250);
   const statusFilter = statusFilterByTab[activeFilterTab];
@@ -80,6 +97,18 @@ export const Pals: React.FC = () => {
         sort,
       }),
     placeholderData: (previous) => previous,
+  });
+
+  const gmStatusQuery = useQuery({
+    queryKey: ['paldefender-gm', 'status'],
+    queryFn: palDefenderGMApi.status,
+    retry: false,
+  });
+  const gmPlayersQuery = useQuery({
+    queryKey: ['paldefender-gm', 'players'],
+    queryFn: palDefenderGMApi.players,
+    enabled: Boolean(gmStatusQuery.data?.available),
+    retry: false,
   });
 
   const rebuildMutation = useMutation({
@@ -118,11 +147,40 @@ export const Pals: React.FC = () => {
     setNotice(result.message);
   };
 
+  const releaseMutation = useMutation({
+    mutationFn: async (pal: Pal) => {
+      const identifier = resolveGMPlayerIdentifier(pal, gmPlayersQuery.data?.Players ?? []);
+      if (!identifier) throw new Error('无法确定所属玩家，不能安全调用 PalDefender 放生接口');
+      if (!pal.character_id) throw new Error('存档索引没有提供 PalID，不能执行放生');
+      return palDefenderGMApi.releasePal(identifier, {
+        PalID: pal.character_id,
+        ...(pal.level > 0 ? { Level: pal.level } : {}),
+        ...(pal.gender === 'male' || pal.gender === 'female' ? { Gender: pal.gender } : {}),
+        ...(pal.rank != null ? { Rank: pal.rank } : {}),
+      });
+    },
+    onSuccess: async () => {
+      setNotice('已通过 PalDefender 提交放生操作；正在刷新存档索引数据');
+      setActionError(null);
+      setReleaseTarget(null);
+      setReleaseConfirmation('');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['pals'] }),
+        queryClient.invalidateQueries({ queryKey: ['player-center', 'save-pals'] }),
+      ]);
+    },
+    onError: (releaseError) => {
+      setNotice(null);
+      setActionError(getErrorMessage(releaseError));
+    },
+  });
+
   const headers = [
     { key: 'name', label: '帕鲁 / 稀有度' },
     { key: 'level', label: '等级' },
     { key: 'quality', label: '星级 / 个体值' },
     { key: 'health', label: '生命值' },
+    { key: 'passives', label: '被动词条' },
     { key: 'suitability', label: '工作适应性' },
     { key: 'owner', label: '所属玩家' },
     { key: 'location', label: '终端位置' },
@@ -247,11 +305,12 @@ export const Pals: React.FC = () => {
                 key={pal.id}
                 pal={pal}
                 onHeal={() => unsupported(palsApi.heal(pal.id))}
-                onDelete={() => unsupported(palsApi.delete(pal.id))}
+                onDelete={() => { setReleaseTarget(pal); setReleaseConfirmation(''); }}
+                releaseDisabled={!canRelease || !gmStatusQuery.data?.available || !pal.character_id}
               />
             )}
             renderRow={(pal) => {
-              const hpPercent = Math.min(100, Math.max(0, (pal.health / Math.max(1, pal.max_health)) * 100));
+              const hpPercent = healthPercent(pal);
               return (
                 <tr key={pal.id} className="hover:bg-slate-50/50">
                   <td className="px-6 py-4">
@@ -263,6 +322,9 @@ export const Pals: React.FC = () => {
                   </td>
                   <td className="px-6 py-4">
                     <HealthBar pal={pal} hpPercent={hpPercent} />
+                  </td>
+                  <td className="px-6 py-4">
+                    <PalPassives pal={pal} />
                   </td>
                   <td className="px-6 py-4">
                     <Suitability pal={pal} />
@@ -291,9 +353,11 @@ export const Pals: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        onClick={() => unsupported(palsApi.delete(pal.id))}
-                        className="rounded-lg border border-rose-200 p-2 text-rose-500 hover:bg-rose-50"
+                        onClick={() => { setReleaseTarget(pal); setReleaseConfirmation(''); }}
+                        disabled={!canRelease || !gmStatusQuery.data?.available || !pal.character_id}
+                        className="rounded-lg border border-rose-200 p-2 text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-35"
                         aria-label="释放帕鲁"
+                        title={!canRelease ? '需要 players:write 权限' : !gmStatusQuery.data?.available ? 'PalDefender 当前不可用' : !pal.character_id ? '存档没有 PalID' : '通过 PalDefender 放生'}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -305,6 +369,47 @@ export const Pals: React.FC = () => {
           />
         )}
       </section>
+
+      {releaseTarget && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-100/85 p-4 backdrop-blur-sm"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !releaseMutation.isPending) setReleaseTarget(null);
+          }}
+        >
+          <section role="dialog" aria-modal="true" aria-labelledby="release-pal-title" className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl ring-1 ring-slate-900/5">
+            <h3 id="release-pal-title" className="flex items-center gap-2 text-base font-black text-rose-700"><AlertTriangle size={18} />确认放生帕鲁</h3>
+            <p className="mt-3 text-xs font-semibold leading-5 text-slate-600">
+              将通过 PalDefender 从 <strong>{releaseTarget.owner_nickname || '未知玩家'}</strong> 删除最多一只匹配帕鲁：
+              <strong>{releaseTarget.nickname || releaseTarget.name}</strong>，{releaseTarget.character_id || 'PalID 缺失'}，Lv.{releaseTarget.level}。
+            </p>
+            <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2.5 text-[11px] font-semibold leading-5 text-amber-800">
+              接口按 PalID、等级、性别和 Rank 匹配，不按实例 ID 精确删除。存在完全相同的帕鲁时，可能删除其中任意一只。
+            </p>
+            <label className="mt-4 block text-xs font-bold text-slate-600">
+              输入“{releaseTarget.owner_nickname || '确认放生'}”确认
+              <input
+                aria-label="确认放生"
+                value={releaseConfirmation}
+                onChange={(event) => setReleaseConfirmation(event.target.value)}
+                className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-700"
+              />
+            </label>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setReleaseTarget(null)} disabled={releaseMutation.isPending} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 disabled:opacity-40">取消</button>
+              <button
+                type="button"
+                onClick={() => { if (releaseTarget) releaseMutation.mutate(releaseTarget); }}
+                disabled={releaseMutation.isPending || releaseConfirmation !== (releaseTarget.owner_nickname || '确认放生')}
+                className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40"
+              >
+                {releaseMutation.isPending && <LoaderCircle size={14} className="animate-spin" />}确认放生
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 };
@@ -345,22 +450,40 @@ const PalIdentity: React.FC<{ pal: Pal }> = ({ pal }) => (
   </div>
 );
 
-const HealthBar: React.FC<{ pal: Pal; hpPercent: number }> = ({ pal, hpPercent }) => (
-  <div className="flex w-32 max-w-full flex-col gap-1.5">
-    <div className="flex justify-between text-[10px] font-bold text-slate-500">
-      <span>
-        {pal.health} / {pal.max_health}
-      </span>
-      <span>{hpPercent.toFixed(0)}%</span>
+const displayHealth = (value?: number) => {
+  if (value == null || !Number.isFinite(value)) return null;
+  return value >= 1000 ? Math.round(value / 1000) : Math.round(value);
+};
+
+const healthPercent = (pal: Pal) => {
+  if (pal.health == null || pal.max_health == null || pal.max_health <= 0) return null;
+  return Math.min(100, Math.max(0, (pal.health / pal.max_health) * 100));
+};
+
+const HealthBar: React.FC<{ pal: Pal; hpPercent: number | null }> = ({ pal, hpPercent }) => {
+  const health = displayHealth(pal.health);
+  const maxHealth = displayHealth(pal.max_health);
+  return (
+    <div className="flex w-36 max-w-full flex-col gap-1.5">
+      <div className="flex justify-between text-[10px] font-bold text-slate-500">
+        <span>{health == null ? '存档未提供' : maxHealth == null || maxHealth <= 0 ? `HP ${health}` : `${health} / ${maxHealth}`}</span>
+        <span>{hpPercent == null ? '快照值' : `${hpPercent.toFixed(0)}%`}</span>
+      </div>
+      {hpPercent != null && <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100"><div style={{ width: `${hpPercent}%` }} className={`h-full rounded-full ${pal.status === 'Dead' ? 'bg-slate-300' : hpPercent < 30 ? 'bg-rose-500' : hpPercent < 60 ? 'bg-amber-500' : 'bg-emerald-500'}`} /></div>}
+      <div className="flex flex-wrap gap-1 text-[9px] font-semibold text-slate-400">
+        {pal.sanity != null && <span>理智 {Math.round(pal.sanity)}</span>}
+        {pal.full_stomach != null && <span>饱食 {Math.round(pal.full_stomach)}</span>}
+        {pal.is_sick && <span className="text-amber-600">异常状态</span>}
+      </div>
     </div>
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-      <div
-        style={{ width: `${hpPercent}%` }}
-        className={`h-full rounded-full ${pal.status === 'Dead' ? 'bg-slate-300' : hpPercent < 30 ? 'bg-rose-500' : hpPercent < 60 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-      />
-    </div>
-  </div>
-);
+  );
+};
+
+const PalPassives: React.FC<{ pal: Pal }> = ({ pal }) => {
+  const passives = pal.passives ?? [];
+  if (passives.length === 0) return <span className="text-[10px] font-semibold text-slate-300">无词条数据</span>;
+  return <div className="flex max-w-[240px] flex-wrap gap-1">{passives.slice(0, 4).map((passive) => <span key={passive} title={passive} className="max-w-32 truncate rounded-full bg-violet-50 px-2 py-1 text-[9px] font-bold text-violet-700">{passive}</span>)}{passives.length > 4 && <span className="px-1 py-1 text-[9px] font-bold text-slate-400">+{passives.length - 4}</span>}</div>;
+};
 
 const Suitability: React.FC<{ pal: Pal }> = ({ pal }) => (
   <div className="flex max-w-[220px] flex-wrap gap-1">
@@ -405,33 +528,29 @@ const PalLocation: React.FC<{ pal: Pal }> = ({ pal }) => (
   </div>
 );
 
-const PalCard: React.FC<{ pal: Pal; onHeal: () => void; onDelete: () => void }> = ({ pal, onHeal, onDelete }) => {
-  const hpPercent = Math.min(100, Math.max(0, (pal.health / Math.max(1, pal.max_health)) * 100));
+const PalCard: React.FC<{ pal: Pal; onHeal: () => void; onDelete: () => void; releaseDisabled: boolean }> = ({ pal, onHeal, onDelete, releaseDisabled }) => {
+  const hpPercent = healthPercent(pal);
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <PalIdentity pal={pal} />
-        <StatusBadge status={pal.status} />
-      </div>
-      <div className="mt-4">
-        <HealthBar pal={pal} hpPercent={hpPercent} />
-      </div>
-      <div className="mt-4">
-        <Suitability pal={pal} />
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3">
-        <PalQuality pal={pal} />
-        <PalLocation pal={pal} />
-      </div>
+      <div className="flex items-start justify-between gap-3"><PalIdentity pal={pal} /><StatusBadge status={pal.status} /></div>
+      <div className="mt-4"><HealthBar pal={pal} hpPercent={hpPercent} /></div>
+      <div className="mt-4"><PalPassives pal={pal} /></div>
+      <div className="mt-4"><Suitability pal={pal} /></div>
+      <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3"><PalQuality pal={pal} /><PalLocation pal={pal} /></div>
       <p className="mt-3 truncate text-[11px] font-semibold text-slate-500">所属玩家: {pal.owner_nickname}</p>
       <div className="mt-4 grid grid-cols-2 gap-2">
-        <button type="button" onClick={onHeal} className="rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600">
-          治疗
-        </button>
-        <button type="button" onClick={onDelete} className="rounded-xl border border-rose-200 py-2 text-xs font-bold text-rose-600">
-          释放
-        </button>
+        <button type="button" onClick={onHeal} className="rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600">治疗</button>
+        <button type="button" onClick={onDelete} disabled={releaseDisabled} className="rounded-xl border border-rose-200 py-2 text-xs font-bold text-rose-600 disabled:cursor-not-allowed disabled:opacity-35">释放</button>
       </div>
     </div>
   );
+};
+
+const normalizePlayerIdentifier = (value?: string) => String(value || '').trim().toLowerCase().replace(/^steam_/, '').replace(/[^a-z0-9]/g, '');
+
+const resolveGMPlayerIdentifier = (pal: Pal, players: Array<{ PlayerUID: string; UserId: string }>) => {
+  const candidates = [pal.owner_steam_id, pal.owner_player_uid].filter(Boolean) as string[];
+  const normalized = new Set(candidates.map(normalizePlayerIdentifier).filter(Boolean));
+  const player = players.find((candidate) => normalized.has(normalizePlayerIdentifier(candidate.UserId)) || normalized.has(normalizePlayerIdentifier(candidate.PlayerUID)));
+  return player?.UserId || player?.PlayerUID || candidates[0] || '';
 };

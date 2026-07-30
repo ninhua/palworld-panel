@@ -8,7 +8,7 @@ import (
 
 var escapedBytePattern = regexp.MustCompile(`\\[xX][0-9A-Fa-f]{2}`)
 
-const IndexVersion = 1
+const IndexVersion = 2
 
 type Coordinates struct {
 	X float64 `json:"x"`
@@ -66,29 +66,39 @@ type Base struct {
 	Raw             any         `json:"-"`
 }
 
+type WorkSuitability struct {
+	Type  string `json:"type"`
+	Level int    `json:"level"`
+}
+
 type Pal struct {
-	InstanceID     string      `json:"instance_id"`
-	CharacterID    string      `json:"character_id"`
-	Nickname       string      `json:"nickname"`
-	Level          int         `json:"level"`
-	OwnerPlayerUID string      `json:"owner_player_uid"`
-	OldOwnerUIDs   []string    `json:"old_owner_uids"`
-	GuildID        string      `json:"guild_id"`
-	ContainerID    string      `json:"container_id"`
-	SlotIndex      int         `json:"slot_index"`
-	LocationType   string      `json:"location_type"`
-	Location       Coordinates `json:"location"`
-	Gender         string      `json:"gender"`
-	Rank           int         `json:"rank"`
-	IVHP           int         `json:"iv_hp"`
-	IVAttack       int         `json:"iv_attack"`
-	IVDefense      int         `json:"iv_defense"`
-	Skills         []string    `json:"skills"`
-	EquippedSkills []string    `json:"equipped_skills"`
-	Passives       []string    `json:"passives"`
-	OnExpedition   bool        `json:"on_expedition"`
-	Status         string      `json:"status"`
-	Raw            any         `json:"-"`
+	InstanceID      string            `json:"instance_id"`
+	CharacterID     string            `json:"character_id"`
+	Nickname        string            `json:"nickname"`
+	Level           int               `json:"level"`
+	OwnerPlayerUID  string            `json:"owner_player_uid"`
+	OldOwnerUIDs    []string          `json:"old_owner_uids"`
+	GuildID         string            `json:"guild_id"`
+	ContainerID     string            `json:"container_id"`
+	SlotIndex       int               `json:"slot_index"`
+	LocationType    string            `json:"location_type"`
+	Location        Coordinates       `json:"location"`
+	Gender          string            `json:"gender"`
+	Rank            int               `json:"rank"`
+	IVHP            int               `json:"iv_hp"`
+	IVAttack        int               `json:"iv_attack"`
+	IVDefense       int               `json:"iv_defense"`
+	Skills          []string          `json:"skills"`
+	EquippedSkills  []string          `json:"equipped_skills"`
+	Passives        []string          `json:"passives"`
+	WorkSuitability []WorkSuitability `json:"work_suitability"`
+	Health          *int64            `json:"health,omitempty"`
+	Sanity          *float64          `json:"sanity,omitempty"`
+	FullStomach     *float64          `json:"full_stomach,omitempty"`
+	IsSick          bool              `json:"is_sick"`
+	OnExpedition    bool              `json:"on_expedition"`
+	Status          string            `json:"status"`
+	Raw             any               `json:"-"`
 }
 
 type Slot struct {
@@ -99,10 +109,11 @@ type Slot struct {
 }
 
 type Container struct {
-	ContainerID string `json:"container_id"`
-	OwnerType   string `json:"owner_type"`
-	OwnerID     string `json:"owner_id"`
-	Slots       []Slot `json:"slots"`
+	ContainerID   string `json:"container_id"`
+	ContainerType string `json:"container_type,omitempty"`
+	OwnerType     string `json:"owner_type"`
+	OwnerID       string `json:"owner_id"`
+	Slots         []Slot `json:"slots"`
 }
 
 type MapEntity struct {

@@ -936,6 +936,8 @@ export interface SaveInventorySlot {
 
 export interface SaveInventoryContainer {
   container_id: string;
+  container_type: string;
+  container_name: string;
   owner_type: string;
   owner_id: string;
   slots: SaveInventorySlot[];
@@ -983,7 +985,11 @@ export interface WorkSuitability {
     | 'Mining'
     | 'Cooling'
     | 'Farming'
-    | 'Medicine';
+    | 'Medicine'
+    | 'Kindling'
+    | 'OilExtraction'
+    | 'BaseCampBattle'
+    | 'Anyone';
   level: number;
 }
 
@@ -1021,8 +1027,11 @@ export interface Pal {
   raw_passives?: string[];
   raw_skills?: string[];
   work_suitability: WorkSuitability[];
-  health: number;
-  max_health: number;
+  health?: number;
+  max_health?: number;
+  sanity?: number;
+  full_stomach?: number;
+  is_sick?: boolean;
   status: 'Healthy' | 'Injured' | 'Working' | 'Battling' | 'Dead';
   x: number;
   y: number;

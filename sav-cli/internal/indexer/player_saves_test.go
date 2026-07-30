@@ -37,6 +37,12 @@ func TestNormalizePlayerSavesAssociatesInventoryContainers(t *testing.T) {
 			t.Fatalf("inventory container was not associated with player: %#v", container)
 		}
 	}
+	if index.Containers[0].ContainerType != "items" || index.Containers[1].ContainerType != "food" {
+		t.Fatalf("inventory container types were not retained: %#v", index.Containers[:2])
+	}
+	if summary := index.Players[0].InventorySummary; summary["container_count"] != 2 || summary["used_slots"] != 0 {
+		t.Fatalf("player inventory summary was not populated: %#v", summary)
+	}
 	if container := index.Containers[2]; container.OwnerType != "base" || container.OwnerID != fixtureBaseID {
 		t.Fatalf("unreferenced container ownership changed: %#v", container)
 	}
@@ -237,11 +243,11 @@ func playerGVASFixture(t *testing.T, containers map[string]string) []byte {
 		})
 		writeStructProperty(t, &body, "InventoryInfo", "PalPlayerInventoryInfo", func() {
 			for _, field := range playerInventoryContainerFields {
-				containerID, ok := containers[field]
+				containerID, ok := containers[field.Name]
 				if !ok {
 					continue
 				}
-				writeStructProperty(t, &body, field, "PalContainerId", func() {
+				writeStructProperty(t, &body, field.Name, "PalContainerId", func() {
 					writeGUIDProperty(t, &body, "ID", containerID)
 					writeFString(t, &body, "None")
 				})

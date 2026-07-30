@@ -250,33 +250,130 @@ func normalizeCharacters(index *Index, world map[string]any, memberGuild map[str
 		if strings.Contains(strings.ToLower(asString(getField(saveParam, "Gender"))), "female") {
 			gender = "female"
 		}
+		health, sanity, fullStomach, isSick, status, workSuitability := palRuntimeState(saveParam, "palbox")
 		pal := Pal{
-			InstanceID:     instanceID,
-			CharacterID:    asString(firstNonEmptyAny(getField(saveParam, "CharacterID"), getField(saveParam, "CharacterId"))),
-			Nickname:       asString(getField(saveParam, "NickName")),
-			Level:          asIntDefault(getField(saveParam, "Level"), 1),
-			OwnerPlayerUID: ownerUID,
-			OldOwnerUIDs:   stringSlice(firstNonEmptyAny(getField(saveParam, "OldOwnerPlayerUIds"), getField(saveParam, "OldOwnerPlayerUIDs"))),
-			GuildID:        guild.ID,
-			ContainerID:    containerID,
-			SlotIndex:      asInt(firstNonEmptyAny(getField(slot, "SlotIndex"), getField(saveParam, "SlotIndex"))),
-			LocationType:   "palbox",
-			Location:       location,
-			Gender:         gender,
-			Rank:           asIntDefault(getField(saveParam, "Rank"), 1),
-			IVHP:           asInt(getField(saveParam, "Talent_HP")),
-			IVAttack:       asInt(firstNonEmptyAny(getField(saveParam, "Talent_Shot"), getField(saveParam, "Talent_Attack"))),
-			IVDefense:      asInt(getField(saveParam, "Talent_Defense")),
-			Skills:         stringSlice(firstNonEmptyAny(getField(saveParam, "MasteredWaza"), getField(saveParam, "SkillList"))),
-			EquippedSkills: stringSlice(getField(saveParam, "EquipWaza")),
-			Passives:       stringSlice(getField(saveParam, "PassiveSkillList")),
-			OnExpedition:   asString(getField(saveParam, "MapObjectConcreteInstanceIdAssignedToExpedition")) != "",
-			Status:         "Healthy",
-			Raw:            map[string]any{"key": key, "save_parameter": saveParam},
+			InstanceID:      instanceID,
+			CharacterID:     asString(firstNonEmptyAny(getField(saveParam, "CharacterID"), getField(saveParam, "CharacterId"))),
+			Nickname:        asString(getField(saveParam, "NickName")),
+			Level:           asIntDefault(getField(saveParam, "Level"), 1),
+			OwnerPlayerUID:  ownerUID,
+			OldOwnerUIDs:    stringSlice(firstNonEmptyAny(getField(saveParam, "OldOwnerPlayerUIds"), getField(saveParam, "OldOwnerPlayerUIDs"))),
+			GuildID:         guild.ID,
+			ContainerID:     containerID,
+			SlotIndex:       asInt(firstNonEmptyAny(getField(slot, "SlotIndex"), getField(saveParam, "SlotIndex"))),
+			LocationType:    "palbox",
+			Location:        location,
+			Gender:          gender,
+			Rank:            asIntDefault(getField(saveParam, "Rank"), 1),
+			IVHP:            asInt(getField(saveParam, "Talent_HP")),
+			IVAttack:        asInt(firstNonEmptyAny(getField(saveParam, "Talent_Shot"), getField(saveParam, "Talent_Attack"))),
+			IVDefense:       asInt(getField(saveParam, "Talent_Defense")),
+			Skills:          stringSlice(firstNonEmptyAny(getField(saveParam, "MasteredWaza"), getField(saveParam, "SkillList"))),
+			EquippedSkills:  stringSlice(getField(saveParam, "EquipWaza")),
+			Passives:        stringSlice(getField(saveParam, "PassiveSkillList")),
+			WorkSuitability: workSuitability,
+			Health:          health,
+			Sanity:          sanity,
+			FullStomach:     fullStomach,
+			IsSick:          isSick,
+			OnExpedition:    asString(getField(saveParam, "MapObjectConcreteInstanceIdAssignedToExpedition")) != "",
+			Status:          status,
+			Raw:             map[string]any{"key": key, "save_parameter": saveParam},
 		}
 		index.Pals = append(index.Pals, pal)
 	}
 	_, _ = rawDecoded, saveParams
+}
+
+var workSuitabilityNames = map[string]string{
+	"BaseCampBattle":      "BaseCampBattle",
+	"EmitFlame":           "Kindling",
+	"Watering":            "Watering",
+	"Seeding":             "Planting",
+	"GenerateElectricity": "Generating",
+	"Handcraft":           "Handiwork",
+	"Collection":          "Gathering",
+	"Deforest":            "Lumbering",
+	"Mining":              "Mining",
+	"OilExtraction":       "OilExtraction",
+	"ProductMedicine":     "Medicine",
+	"Cool":                "Cooling",
+	"Transport":           "Transport",
+	"MonsterFarm":         "Farming",
+	"Anyone":              "Anyone",
+}
+
+func palRuntimeState(saveParam any, locationType string) (*int64, *float64, *float64, bool, string, []WorkSuitability) {
+	var health *int64
+	if raw, found := fieldValue(saveParam, "Hp", "HP"); found {
+		value := asInt64(raw)
+		health = &value
+	}
+	var sanity *float64
+	if raw, found := fieldValue(saveParam, "SanityValue"); found {
+		value := asFloat(raw)
+		sanity = &value
+	}
+	var fullStomach *float64
+	if raw, found := fieldValue(saveParam, "FullStomach"); found {
+		value := asFloat(raw)
+		fullStomach = &value
+	}
+
+	_, physicalHealth := fieldValue(saveParam, "PhysicalHealth")
+	_, workerSick := fieldValue(saveParam, "WorkerSick")
+	reviveValue, revivePresent := fieldValue(saveParam, "PalReviveTimer")
+	reviveActive := revivePresent && asFloat(reviveValue) > 0
+	isSick := physicalHealth || workerSick || reviveActive
+	status := "Healthy"
+	if (health != nil && *health <= 0) || reviveActive {
+		status = "Dead"
+	} else if physicalHealth || workerSick {
+		status = "Injured"
+	} else if strings.EqualFold(strings.TrimSpace(locationType), "base") {
+		status = "Working"
+	}
+	return health, sanity, fullStomach, isSick, status, palWorkSuitability(saveParam)
+}
+
+func palWorkSuitability(saveParam any) []WorkSuitability {
+	values := asList(getField(saveParam, "GotWorkSuitabilityAddRankList"))
+	out := make([]WorkSuitability, 0, len(values))
+	seen := map[string]int{}
+	for _, value := range values {
+		rawName := strings.TrimPrefix(asString(getField(value, "WorkSuitability")), "EPalWorkSuitability::")
+		name := workSuitabilityNames[rawName]
+		if name == "" {
+			continue
+		}
+		level := asInt(getField(value, "Rank"))
+		if level <= 0 {
+			continue
+		}
+		if position, found := seen[name]; found {
+			if level > out[position].Level {
+				out[position].Level = level
+			}
+			continue
+		}
+		seen[name] = len(out)
+		out = append(out, WorkSuitability{Type: name, Level: level})
+	}
+	return out
+}
+
+func fieldValue(data any, keys ...string) (any, bool) {
+	values, ok := asMap(data)
+	if !ok {
+		return nil, false
+	}
+	for _, key := range keys {
+		value, found := values[key]
+		if found {
+			return unwrap(value), true
+		}
+	}
+	return nil, false
 }
 
 func normalizeBases(index *Index, world map[string]any) {
@@ -336,6 +433,9 @@ func normalizeBases(index *Index, world map[string]any) {
 					for palPosition := range index.Pals {
 						if index.Pals[palPosition].InstanceID == instanceID {
 							index.Pals[palPosition].LocationType = "base"
+							if index.Pals[palPosition].Status == "Healthy" {
+								index.Pals[palPosition].Status = "Working"
+							}
 							break
 						}
 					}
