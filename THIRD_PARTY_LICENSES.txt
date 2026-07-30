@@ -103,20 +103,17 @@ MapLibre map renderer
 - The synchronized license is embedded at
   `/vendor/maplibre-gl/LICENSE.txt` in the web UI release assets.
 
-PalOps world map data and implementation reference
---------------------------------------------------
-- CoderYiXin/PalOpsWeb 1.3.2, pinned at commit
+PalPanel world map assets and PalOps implementation reference
+-----------------------------------------------------------
+- ninhua/palpanel-assets: dedicated map-resource repository used by release builds.
+  The build resolves the selected ref to an immutable commit, validates the
+  optional file manifest, and embeds its tiles, localized POIs, icons, metadata
+  and license files into the PalPanel web assets. Per-file and per-record licenses
+  from that repository remain authoritative.
+- CoderYiXin/PalOpsWeb 1.3.2, commit
   dc2ec173c77e759482e59d9b63d228c88132061c: GPL-3.0-or-later. PalPanel
-  reimplements the map adapter in React and retains source/version attribution.
-- PalOps fixed POI records declare per-record licenses. The pinned 1,251-record
-  baseline includes CC-BY-SA-4.0 curated data plus MIT/Apache-2.0 coordinate and
-  implementation references documented by PalOps. The synchronized map license
-  and source files are copied into the embedded web assets.
-- PalOps metadata identifies the current Palpagos and World Tree raster tiles as
-  sourced from The Hidden Gaming Lair and marks `redistributionAllowed=false`.
-  PalPanel therefore does not download or redistribute those tiles by default.
-  Operators may import a local tile set only after confirming they have the
-  necessary rights; otherwise the map uses a dark no-basemap background while preserving marker layers.
+  retains the compatible Palpagos/World Tree projection and React map adapter
+  derived from the previously pinned implementation reference.
 - Palworld, its map imagery, names, and artwork remain property of Pocketpair,
   Inc. They are not relicensed under PalPanel's GPL.
 

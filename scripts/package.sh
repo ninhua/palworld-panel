@@ -85,24 +85,31 @@ setup_dependency_mode() {
 }
 
 sync_palops_map_assets() {
+  local source_dir="${PALPANEL_MAP_ASSETS_SOURCE_DIR:-${PALPANEL_PALOPS_MAP_SOURCE_DIR:-}}"
+  local archive="${PALPANEL_MAP_ASSETS_ARCHIVE:-${PALPANEL_PALOPS_MAP_ARCHIVE:-}}"
+  local tile_source="${PALPANEL_MAP_ASSETS_TILE_SOURCE_DIR:-${PALPANEL_PALOPS_TILE_SOURCE_DIR:-}}"
   local args=(
     "$root_dir/scripts/sync_palops_map_assets.py"
     --destination "$palops_map_stage_dir"
+    --repository "${PALPANEL_MAP_ASSETS_REPOSITORY:-ninhua/palpanel-assets}"
+    --ref "${PALPANEL_MAP_ASSETS_REF:-main}"
   )
-  if [[ -n "${PALPANEL_PALOPS_MAP_SOURCE_DIR:-}" ]]; then
-    args+=(--source-dir "$PALPANEL_PALOPS_MAP_SOURCE_DIR")
-  elif [[ -n "${PALPANEL_PALOPS_MAP_ARCHIVE:-}" ]]; then
-    args+=(--archive "$PALPANEL_PALOPS_MAP_ARCHIVE")
+  if [[ -n "$source_dir" ]]; then
+    args+=(--source-dir "$source_dir")
+  elif [[ -n "$archive" ]]; then
+    args+=(--archive "$archive")
   else
     args+=(--allow-network)
   fi
-  if [[ -n "${PALPANEL_PALOPS_TILE_SOURCE_DIR:-}" ]]; then
-    args+=(--tiles-source-dir "$PALPANEL_PALOPS_TILE_SOURCE_DIR")
+  if [[ -n "$tile_source" ]]; then
+    args+=(--tiles-source-dir "$tile_source")
   fi
-  if [[ "${PALPANEL_INCLUDE_PALOPS_REPOSITORY_TILES:-false}" == "true" ]]; then
-    args+=(--include-repository-tiles)
+  if [[ "${PALPANEL_ALLOW_MISSING_MAP_TILES:-false}" == "true" ]]; then
+    args+=(--allow-missing-tiles)
   fi
-  printf '[palpanel] Synchronizing pinned PalOps map assets\n'
+  printf '[palpanel] Synchronizing PalPanel map assets from %s@%s\n' \
+    "${PALPANEL_MAP_ASSETS_REPOSITORY:-ninhua/palpanel-assets}" \
+    "${PALPANEL_MAP_ASSETS_REF:-main}"
   python3 "${args[@]}"
 }
 

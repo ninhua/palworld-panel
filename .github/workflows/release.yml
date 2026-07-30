@@ -39,6 +39,7 @@ jobs:
       - name: Build release assets from tag
         env:
           PALPANEL_NUGET_AUDIT: "true"
+          PALPANEL_MAP_ASSETS_TOKEN: ${{ secrets.PALPANEL_MAP_ASSETS_TOKEN }}
         run: scripts/package.sh --version "$GITHUB_REF_NAME" --targets linux-amd64 --clean
       - name: Extract package for SBOM
         run: |
@@ -103,6 +104,8 @@ jobs:
           if ((git rev-parse HEAD).Trim() -ne (git rev-list -n 1 $env:GITHUB_REF_NAME).Trim()) { throw "tag does not point at HEAD" }
       - name: Build Windows release package
         shell: pwsh
+        env:
+          PALPANEL_MAP_ASSETS_TOKEN: ${{ secrets.PALPANEL_MAP_ASSETS_TOKEN }}
         run: |
           $gcc = Join-Path $env:RUNNER_TEMP "msys64\mingw64\bin\gcc.exe"
           if (-not (Test-Path $gcc)) { throw "MinGW gcc not found: $gcc" }

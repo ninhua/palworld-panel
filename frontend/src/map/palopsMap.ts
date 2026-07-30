@@ -40,8 +40,10 @@ export interface PalOpsMapAssetsManifest {
   source: {
     repository: string;
     commit: string;
+    ref?: string;
     version: string;
   };
+  dataset_version?: string;
   maps: PalOpsMapLayerID[];
   locales: string[];
   poi_total: number;
@@ -81,10 +83,9 @@ export interface PalOpsMapMarker {
   poi?: PalOpsPoi;
 }
 
-export const PALOPS_SOURCE_REPOSITORY = 'CoderYiXin/PalOpsWeb';
-export const PALOPS_SOURCE_COMMIT = 'dc2ec173c77e759482e59d9b63d228c88132061c';
-export const PALOPS_SOURCE_VERSION = '1.3.2';
-export const PALOPS_DATASET_VERSION = '2026.07.5-extended';
+export const PALOPS_SOURCE_REPOSITORY = 'ninhua/palpanel-assets';
+export const PALOPS_SOURCE_VERSION = 'palpanel-assets';
+export const PALOPS_DATASET_VERSION = 'palpanel-assets-v1';
 export const PALOPS_POI_TOTAL = 1251;
 
 export const palOpsMapLayers: Record<PalOpsMapLayerID, PalOpsMapLayer> = {
@@ -165,10 +166,14 @@ export const loadPalOpsMapManifest = async (): Promise<PalOpsMapAssetsManifest> 
   const value = await response.json() as PalOpsMapAssetsManifest;
   if (
     value.schema_version !== 1
-    || value.source?.repository !== PALOPS_SOURCE_REPOSITORY
-    || value.source?.commit !== PALOPS_SOURCE_COMMIT
-    || value.source?.version !== PALOPS_SOURCE_VERSION
-    || value.poi_total !== PALOPS_POI_TOTAL
+    || typeof value.source?.repository !== 'string'
+    || value.source.repository.length === 0
+    || typeof value.source?.commit !== 'string'
+    || value.source.commit.length === 0
+    || typeof value.source?.version !== 'string'
+    || value.source.version.length === 0
+    || !Number.isInteger(value.poi_total)
+    || value.poi_total <= 0
     || !Array.isArray(value.maps)
     || value.maps.length !== 2
     || !value.maps.includes('palpagos')
@@ -176,12 +181,12 @@ export const loadPalOpsMapManifest = async (): Promise<PalOpsMapAssetsManifest> 
     || !Array.isArray(value.locales)
     || !['zh-CN', 'en-US', 'ja-JP'].every((locale) => value.locales.includes(locale))
   ) {
-    throw new Error('PalOps map manifest does not match the pinned source');
+    throw new Error('PalPanel map asset manifest is invalid');
   }
   return value;
 };
 
-export const loadPalOpsPois = async (locale: Locale | string): Promise<PalOpsPoi[]> => {
+export const loadPalOpsPois = async (locale: Locale | string, expectedTotal = PALOPS_POI_TOTAL): Promise<PalOpsPoi[]> => {
   const normalized = normalizePalOpsLocale(locale);
   const response = await fetch(`/map/palops/data/default-pois.${normalized}.json`, {
     cache: 'force-cache',
@@ -189,8 +194,8 @@ export const loadPalOpsPois = async (locale: Locale | string): Promise<PalOpsPoi
   });
   if (!response.ok) throw new Error(`PalOps POI data unavailable (${response.status})`);
   const value = await response.json();
-  if (!Array.isArray(value) || value.length !== PALOPS_POI_TOTAL || !value.every(isPalOpsPoi)) {
-    throw new Error('PalOps POI data failed pinned dataset validation');
+  if (!Array.isArray(value) || value.length !== expectedTotal || !value.every(isPalOpsPoi)) {
+    throw new Error('PalPanel POI data failed manifest validation');
   }
   return value;
 };

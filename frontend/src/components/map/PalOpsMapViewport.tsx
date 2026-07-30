@@ -89,7 +89,7 @@ export const PalOpsMapViewport: React.FC<Props> = ({ layerID, markers, selectedK
       {!tilesAvailable && !runtimeError && (
         <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-600 bg-slate-950/85 px-6 py-5 text-center shadow-xl backdrop-blur">
           <p className="text-sm font-bold text-slate-200">{layer.displayName}</p>
-          <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">MapLibre 与固定 POI 已加载。导入经授权的 PalOps 离线瓦片后显示完整底图。</p>
+          <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">MapLibre 与固定 POI 已加载，但资源快照缺少完整瓦片；请检查 palpanel-assets 构建输入。</p>
         </div>
       )}
       {runtimeError && (
@@ -101,7 +101,7 @@ export const PalOpsMapViewport: React.FC<Props> = ({ layerID, markers, selectedK
       )}
       <div className="pointer-events-none absolute right-4 top-4 z-10 rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-right text-[10px] font-semibold text-slate-300 backdrop-blur">
         <p>{layer.displayName}</p>
-        <p>{tilesAvailable ? 'PalOps 离线瓦片 · MapLibre' : '无底图 · MapLibre 标记层'}</p>
+        <p>{tilesAvailable ? 'PalPanel 地图资源 · MapLibre' : '无底图 · MapLibre 标记层'}</p>
       </div>
     </div>
   );

@@ -217,24 +217,31 @@ function Sync-MapLibreAssets {
 }
 
 function Sync-PalOpsMapAssets {
+  $repository = if ([string]::IsNullOrWhiteSpace($env:PALPANEL_MAP_ASSETS_REPOSITORY)) { "ninhua/palpanel-assets" } else { $env:PALPANEL_MAP_ASSETS_REPOSITORY }
+  $ref = if ([string]::IsNullOrWhiteSpace($env:PALPANEL_MAP_ASSETS_REF)) { "main" } else { $env:PALPANEL_MAP_ASSETS_REF }
+  $sourceDir = if (-not [string]::IsNullOrWhiteSpace($env:PALPANEL_MAP_ASSETS_SOURCE_DIR)) { $env:PALPANEL_MAP_ASSETS_SOURCE_DIR } else { $env:PALPANEL_PALOPS_MAP_SOURCE_DIR }
+  $archive = if (-not [string]::IsNullOrWhiteSpace($env:PALPANEL_MAP_ASSETS_ARCHIVE)) { $env:PALPANEL_MAP_ASSETS_ARCHIVE } else { $env:PALPANEL_PALOPS_MAP_ARCHIVE }
+  $tileSource = if (-not [string]::IsNullOrWhiteSpace($env:PALPANEL_MAP_ASSETS_TILE_SOURCE_DIR)) { $env:PALPANEL_MAP_ASSETS_TILE_SOURCE_DIR } else { $env:PALPANEL_PALOPS_TILE_SOURCE_DIR }
   $arguments = @(
     (Join-Path $RootDir "scripts\sync_palops_map_assets.py"),
-    "--destination", $PalOpsMapStageDir
+    "--destination", $PalOpsMapStageDir,
+    "--repository", $repository,
+    "--ref", $ref
   )
-  if (-not [string]::IsNullOrWhiteSpace($env:PALPANEL_PALOPS_MAP_SOURCE_DIR)) {
-    $arguments += @("--source-dir", $env:PALPANEL_PALOPS_MAP_SOURCE_DIR)
-  } elseif (-not [string]::IsNullOrWhiteSpace($env:PALPANEL_PALOPS_MAP_ARCHIVE)) {
-    $arguments += @("--archive", $env:PALPANEL_PALOPS_MAP_ARCHIVE)
+  if (-not [string]::IsNullOrWhiteSpace($sourceDir)) {
+    $arguments += @("--source-dir", $sourceDir)
+  } elseif (-not [string]::IsNullOrWhiteSpace($archive)) {
+    $arguments += @("--archive", $archive)
   } else {
     $arguments += "--allow-network"
   }
-  if (-not [string]::IsNullOrWhiteSpace($env:PALPANEL_PALOPS_TILE_SOURCE_DIR)) {
-    $arguments += @("--tiles-source-dir", $env:PALPANEL_PALOPS_TILE_SOURCE_DIR)
+  if (-not [string]::IsNullOrWhiteSpace($tileSource)) {
+    $arguments += @("--tiles-source-dir", $tileSource)
   }
-  if ($env:PALPANEL_INCLUDE_PALOPS_REPOSITORY_TILES -eq "true") {
-    $arguments += "--include-repository-tiles"
+  if ($env:PALPANEL_ALLOW_MISSING_MAP_TILES -eq "true") {
+    $arguments += "--allow-missing-tiles"
   }
-  Write-Host "[palpanel] Synchronizing pinned PalOps map assets"
+  Write-Host "[palpanel] Synchronizing PalPanel map assets from $repository@$ref"
   Invoke-External "python" $arguments $RootDir
 }
 

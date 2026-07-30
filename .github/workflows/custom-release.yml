@@ -94,6 +94,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
+      PALPANEL_MAP_ASSETS_TOKEN: ${{ secrets.PALPANEL_MAP_ASSETS_TOKEN }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -142,6 +143,7 @@ jobs:
     runs-on: windows-2025
     env:
       RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
+      PALPANEL_MAP_ASSETS_TOKEN: ${{ secrets.PALPANEL_MAP_ASSETS_TOKEN }}
     steps:
       - uses: actions/checkout@v6
         with:

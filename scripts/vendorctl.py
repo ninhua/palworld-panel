@@ -21,11 +21,13 @@ SCHEMA_VERSION = 1
 MANIFEST_NAME = "vendor-manifest.json"
 MANAGED_MARKER = ".palpanel-vendor-managed"
 COMPONENT_ARGS = {
-    "palops_web": "palops-web",
+    "map_assets": "palpanel-map-assets",
+    # Backward-compatible CLI aliases; both now expect the complete asset repository.
+    "palops_web": "palpanel-map-assets",
+    "map_tiles": "palpanel-map-assets",
     "maplibre": "maplibre-gl",
     "palcalc": "palcalc",
     "uesave": "uesave",
-    "map_tiles": "palops-map-tiles",
     "ue4ss_sdk": "ue4ss-sdk",
     "github_actions_bundle": "github-actions-bundle",
     "npm_cache": "npm-cache",
@@ -238,17 +240,13 @@ def cleanup(repository: Path, work_root: Path | None) -> None:
 
 def environment(root: Path, work_root: Path, fmt: str) -> str:
     values = {
-        "PALPANEL_PALOPS_MAP_SOURCE_DIR": root / "sources/palops-web",
+        "PALPANEL_MAP_ASSETS_SOURCE_DIR": root / "sources/palpanel-map-assets",
         "PALPANEL_MAPLIBRE_SOURCE_DIR": root / "sources/maplibre-gl",
         "NPM_CONFIG_CACHE": work_root / "caches/npm-cache",
         "CARGO_HOME": work_root / "caches/cargo-home",
         "GOMODCACHE": work_root / "caches/go-mod-cache",
         "NUGET_PACKAGES": work_root / "caches/nuget-packages",
     }
-    tiles = root / "assets/palops-map-tiles"
-    if tiles.is_dir():
-        values["PALPANEL_PALOPS_TILE_SOURCE_DIR"] = tiles
-        values["PALPANEL_PALOPS_TILE_RIGHTS_CONFIRMED"] = "true"
     if fmt == "json":
         return json.dumps({key: str(value) for key, value in values.items()}, indent=2) + "\n"
     if fmt == "shell":

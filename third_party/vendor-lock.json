@@ -3,13 +3,13 @@
   "layout_version": 1,
   "components": [
     {
-      "id": "palops-web",
-      "kind": "source-tree",
-      "path": "sources/palops-web",
-      "upstream": "https://github.com/CoderYiXin/PalOpsWeb",
-      "revision": "dc2ec173c77e759482e59d9b63d228c88132061c",
-      "version": "1.3.2",
-      "license": "GPL-3.0-or-later",
+      "id": "palpanel-map-assets",
+      "kind": "asset-tree",
+      "path": "sources/palpanel-map-assets",
+      "upstream": "https://github.com/ninhua/palpanel-assets",
+      "revision": "repository-manifest-pinned",
+      "version": "managed-by-palpanel-map-assets.json",
+      "license": "per-file licenses",
       "required_profiles": [
         "source",
         "build",
@@ -66,17 +66,6 @@
       "license": "MIT + dependency licenses",
       "required_profiles": [
         "bridge",
-        "full"
-      ]
-    },
-    {
-      "id": "palops-map-tiles",
-      "kind": "asset-tree",
-      "path": "assets/palops-map-tiles",
-      "upstream": "authorized-private-source",
-      "revision": "palops-2026.07.5-extended",
-      "license": "authorization-required",
-      "required_profiles": [
         "full"
       ]
     },

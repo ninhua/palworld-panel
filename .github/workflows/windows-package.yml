@@ -57,6 +57,7 @@ jobs:
           ./scripts/package.ps1 -Version $env:RELEASE_TAG -SkipTests -Clean -MingwGcc $gcc
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
+          PALPANEL_MAP_ASSETS_TOKEN: ${{ secrets.PALPANEL_MAP_ASSETS_TOKEN }}
       - name: Verify package and Launcher
         shell: pwsh
         run: |

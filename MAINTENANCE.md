@@ -27,8 +27,8 @@
 
 ```text
 上游版本：v1.3.0
-自定义版本：0.8.42
-完整标签：v1.3.0-custom.0.8.42
+自定义版本：0.8.43
+完整标签：v1.3.0-custom.0.8.43
 ```
 
 版本源位于：
@@ -313,20 +313,20 @@ backend/internal/api/incidents.go
 frontend/src/pages/Incidents.tsx
 ```
 
-## 12. PalOps 世界地图资源
+## 12. PalPanel 世界地图资源
 
-世界地图固定使用 `CoderYiXin/PalOpsWeb` 1.3.2 提交 `dc2ec173c77e759482e59d9b63d228c88132061c` 的数据模型。只迁移前端地图、固定 POI、坐标和资源清单，不引入 ASP.NET Core、SignalR 或 PalOps 账户系统。
+世界地图瓦片、固定 POI、图标、元数据和许可证统一来自 `ninhua/palpanel-assets`。浏览器只读取 PalPanel 打包后的 `/map/palops` 静态资源，不直连 GitHub 或第三方地图服务。
 
 维护规则：
 
-- `scripts/sync_palops_map_assets.py` 必须固定仓库、提交和 POI 总数，禁止跟随 `main` 或下载任意 URL。
+- `scripts/sync_palops_map_assets.py` 默认从 `ninhua/palpanel-assets@main` 解析完整提交 SHA，再按不可变提交下载归档。
+- 私有资源仓库必须使用只读 `PALPANEL_MAP_ASSETS_TOKEN`；Token 只进入构建进程，不得写入清单、日志、前端或发布包。
 - `scripts/sync_maplibre_assets.py` 必须固定 MapLibre GL JS 6.0.0，只同步 ESM、shared、worker、CSS 和 BSD 许可证；浏览器不得从 CDN 加载运行时代码。
-- 三种语言 POI 必须均为 1,251 条，ID、地图和四组坐标必须完全一致。
-- 归档提取必须拒绝路径穿越、符号链接、未知扩展名和超限文件。
-- PalOps 当前栅格瓦片元数据声明 `redistributionAllowed=false`，不得默认打包或在 CI 中静默复制。
-- 导入完整瓦片必须使用管理员提供的本地目录；每个地图层必须恰好包含 341 张 `.webp`。
-- 地图不允许 iframe、远程脚本或浏览器直连 PalOps 后端；服务器动态图层只能使用 PalPanel 自己的受认证 API。
-- PalOps 来源、提交、版本、数据集和每个 POI 的许可证必须在页面或随包说明中保留。
+- 三种语言 POI 的 ID、地图、类别和四组坐标必须完全一致；源清单声明 POI 总数时必须严格匹配，未声明时不得使用硬编码数量替代跨语言一致性校验。
+- `palpagos` 与 `world-tree` 每层必须各自包含完整 0–4 级金字塔，共 341 张 `.webp`。正式发布禁止启用缺瓦片模式。
+- 归档提取必须拒绝路径穿越、符号链接、未知扩展名和超限文件；源清单存在时必须校验大小和 SHA-256。
+- 地图不允许 iframe、远程脚本或浏览器直连资源仓库；服务器动态图层只能使用 PalPanel 自己的受认证 API。
+- 页面和随包清单必须保留资源仓库、实际提交、ref、资源版本、数据集版本和每个 POI 的许可证。
 
 关键文件：
 
@@ -336,6 +336,7 @@ frontend/src/components/map/PalOpsMapViewport.tsx
 frontend/src/map/palopsMap.ts
 scripts/sync_palops_map_assets.py
 scripts/sync_maplibre_assets.py
+docs/palops-map-migration.md
 ```
 
 ## 13. PalDefender 与 GM 命令
@@ -479,10 +480,10 @@ frontend/src/pages/StarterGift.tsx
 构建模式：
 
 - `online`：使用本地源码，缺少地图资源时允许访问固定上游。
-- `mirror`：优先使用 `PALPANEL_VENDOR_ROOT` 中的 PalOps、MapLibre、PalCalc 和 uesave，缺少缓存时仍允许公共包源。
+- `mirror`：优先使用 `PALPANEL_VENDOR_ROOT` 中的完整 `palpanel-map-assets`、MapLibre、PalCalc 和 uesave，缺少包缓存时仍允许公共包源。
 - `offline`：要求完整源码和 npm/Cargo/Go/NuGet 缓存，设置包管理器离线开关并禁止 Go 代理。
 
-镜像目录不得包含符号链接、设备文件、Token 或私人授权书原件。Palpagos / World Tree 瓦片只有在授权允许再分发时才能放入 `assets/palops-map-tiles`；公开仓库只保留授权摘要和原件 SHA-256。
+镜像目录不得包含符号链接、设备文件、Token 或私人授权书原件。`sources/palpanel-map-assets` 必须保存专用资源仓库的完整快照，包括瓦片、POI、图标、元数据与许可证；不得再拆分到旧 `assets/palops-map-tiles` 目录。
 
 `vendorctl prepare` 只会创建带 `.palpanel-vendor-managed` 标记的 `third_party/palcalc` 和 `third_party/uesave`。清理时不得删除没有该标记的人工工作目录。
 

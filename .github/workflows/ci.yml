@@ -78,6 +78,7 @@ jobs:
       - name: Build and smoke Linux package
         env:
           PALPANEL_NUGET_AUDIT: "true"
+          PALPANEL_MAP_ASSETS_TOKEN: ${{ secrets.PALPANEL_MAP_ASSETS_TOKEN }}
         run: |
           scripts/package.sh --version "$CI_PACKAGE_VERSION" --targets linux-amd64 --skip-tests --clean
           scripts/verify-release-contents.sh \
@@ -129,6 +130,8 @@ jobs:
           install: mingw-w64-x86_64-gcc
       - name: Native tests and build
         shell: pwsh
+        env:
+          PALPANEL_MAP_ASSETS_TOKEN: ${{ secrets.PALPANEL_MAP_ASSETS_TOKEN }}
         run: |
           $gcc = Join-Path $env:RUNNER_TEMP "msys64\mingw64\bin\gcc.exe"
           if (-not (Test-Path $gcc)) { throw "MinGW gcc not found: $gcc" }

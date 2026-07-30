@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Layers3, Map as MapIcon, Radio, RefreshCw, Search, Undo2,
@@ -21,7 +21,7 @@ import {
   palOpsPoiGroups,
   palOpsPoiToMarker,
   PALOPS_DATASET_VERSION,
-  PALOPS_SOURCE_COMMIT,
+  PALOPS_SOURCE_REPOSITORY,
   PALOPS_SOURCE_VERSION,
   type PalOpsMapLayerID,
   type PalOpsMapMarker,
@@ -54,7 +54,7 @@ const defaultPoiFilters: Record<PalOpsPoiGroup, boolean> = {
 
 const refreshOptions = [1, 2, 3, 5, 10, 15, 30];
 const refreshStorageKey = 'palpanel-live-map-refresh-seconds';
-const exploredStorageKey = `palpanel-palops-explored:${PALOPS_DATASET_VERSION}`;
+const defaultExploredStorageKey = `palpanel-palops-explored:${PALOPS_DATASET_VERSION}`;
 
 export const LiveMap: React.FC = () => {
   const queryClient = useQueryClient();
@@ -67,7 +67,6 @@ export const LiveMap: React.FC = () => {
   const [search, setSearch] = useState('');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [onlyUndiscovered, setOnlyUndiscovered] = useState(false);
-  const [explored, setExplored] = useState<Set<string>>(() => loadExplored());
 
   const mapQuery = useQuery({
     queryKey: ['live-map'],
@@ -80,9 +79,17 @@ export const LiveMap: React.FC = () => {
     staleTime: 60 * 60 * 1000,
     retry: false,
   });
+  const exploredStorageKey = useMemo(
+    () => `palpanel-palops-explored:${manifestQuery.data?.dataset_version?.trim() || PALOPS_DATASET_VERSION}`,
+    [manifestQuery.data?.dataset_version],
+  );
+  const activeExploredStorageKey = useRef(defaultExploredStorageKey);
+  const skipExploredPersistKey = useRef<string | null>(null);
+  const [explored, setExplored] = useState<Set<string>>(() => loadExplored(defaultExploredStorageKey));
   const poisQuery = useQuery({
-    queryKey: ['palops-map-pois', locale],
-    queryFn: () => loadPalOpsPois(locale),
+    queryKey: ['palops-map-pois', locale, manifestQuery.data?.poi_total],
+    queryFn: () => loadPalOpsPois(locale, manifestQuery.data!.poi_total),
+    enabled: Boolean(manifestQuery.data?.poi_total),
     staleTime: Infinity,
     retry: false,
   });
@@ -96,8 +103,19 @@ export const LiveMap: React.FC = () => {
   }, [refreshSeconds]);
 
   useEffect(() => {
+    if (activeExploredStorageKey.current === exploredStorageKey) return;
+    activeExploredStorageKey.current = exploredStorageKey;
+    skipExploredPersistKey.current = exploredStorageKey;
+    setExplored(loadExplored(exploredStorageKey));
+  }, [exploredStorageKey]);
+
+  useEffect(() => {
+    if (skipExploredPersistKey.current === exploredStorageKey) {
+      skipExploredPersistKey.current = null;
+      return;
+    }
     localStorage.setItem(exploredStorageKey, JSON.stringify([...explored].sort()));
-  }, [explored]);
+  }, [explored, exploredStorageKey]);
 
   const normalizedSearch = search.trim().toLowerCase();
   const dynamicMarkers = useMemo(
@@ -171,12 +189,12 @@ export const LiveMap: React.FC = () => {
       {mapError && <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-3 text-xs font-semibold text-rose-700">{mapError}</div>}
       {assetError && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-xs font-semibold text-amber-800">
-          PalOps 地图数据尚未同步。发布构建需要运行 <code>scripts/sync_palops_map_assets.py</code>；当前仅显示服务器动态图层。
+          地图资源尚未同步。发布构建需要从 <code>{PALOPS_SOURCE_REPOSITORY}</code> 导入瓦片、POI 与许可证；当前仅显示服务器动态图层。
         </div>
       )}
       {!assetError && !tilesAvailable && (
         <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-3 text-xs font-semibold leading-5 text-sky-800">
-          PalOps 固定 POI 已加载，但离线栅格瓦片未打包。PalOps 元数据将其标记为不可再分发；需从管理员有权使用的本地 PalOps 安装导入后显示完整底图。
+          固定 POI 已加载，但地图瓦片未打包。请检查地图资源仓库的 <code>tiles/palpagos</code> 与 <code>tiles/world-tree</code> 是否包含完整 0–4 级金字塔。
         </div>
       )}
 
@@ -195,7 +213,7 @@ export const LiveMap: React.FC = () => {
               <MapIcon size={17} className="text-sky-600" />PalOps MapLibre 离线世界地图
             </h3>
             <p className="mt-1 text-[11px] font-medium text-slate-500">
-              Palpagos / World Tree · MapLibre · 1,251 条本地固定 POI · 玩家和据点来自 PalPanel 实时与存档索引。
+              Palpagos / World Tree · MapLibre · 瓦片和固定 POI 来自 PalPanel 地图资源仓库 · 玩家和据点来自实时与存档索引。
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -277,9 +295,10 @@ export const LiveMap: React.FC = () => {
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-[10px] font-semibold leading-5 text-slate-500">
               <p className="font-bold text-slate-700">地图来源</p>
-              <p className="mt-2">PalOps Web {PALOPS_SOURCE_VERSION}</p>
-              <p className="break-all font-mono">{PALOPS_SOURCE_COMMIT}</p>
-              <p className="mt-2">数据集：{PALOPS_DATASET_VERSION}</p>
+              <p className="mt-2">{manifestQuery.data?.source.repository ?? PALOPS_SOURCE_REPOSITORY}</p>
+              <p className="break-all font-mono">{manifestQuery.data?.source.commit ?? '未同步'}</p>
+              <p className="mt-2">资源版本：{manifestQuery.data?.source.version ?? PALOPS_SOURCE_VERSION}</p>
+              <p>数据集：{manifestQuery.data?.dataset_version ?? PALOPS_DATASET_VERSION}</p>
               <p>固定 POI：{manifestQuery.data?.poi_total ?? poisQuery.data?.length ?? 0}</p>
               <p>动态图层：PalPanel `/api/map/entities`</p>
             </div>
@@ -349,9 +368,9 @@ const loadRefreshSeconds = (): number => {
   return refreshOptions.includes(stored) ? stored : 3;
 };
 
-const loadExplored = (): Set<string> => {
+const loadExplored = (storageKey: string): Set<string> => {
   try {
-    const value = JSON.parse(localStorage.getItem(exploredStorageKey) || '[]');
+    const value = JSON.parse(localStorage.getItem(storageKey) || '[]');
     return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
   } catch {
     return new Set();

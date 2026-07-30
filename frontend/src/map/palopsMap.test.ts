@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   detectPalOpsLayer,
   isPalOpsPoi,
   lngLatToMapPoint,
+  loadPalOpsMapManifest,
+  loadPalOpsPois,
   mapPointToLngLat,
   mapPointToPixel,
   normalizePalOpsLocale,
@@ -67,4 +69,42 @@ describe('PalOps map data helpers', () => {
     })).toBe(false);
   });
 
+});
+
+
+describe('PalPanel map asset loading', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('accepts the dedicated asset repository and uses the manifest POI count', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        schema_version: 1,
+        source: {
+          repository: 'ninhua/palpanel-assets',
+          commit: '0123456789abcdef0123456789abcdef01234567',
+          ref: 'main',
+          version: 'fixture-assets-1',
+        },
+        dataset_version: 'fixture-dataset-1',
+        maps: ['palpagos', 'world-tree'],
+        locales: ['zh-CN', 'en-US', 'ja-JP'],
+        poi_total: 1,
+        category_counts: {},
+        tiles_available: true,
+        tile_policy: 'fixture',
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{
+        id: 'poi-1', type: 'location', category: 'poi-location-special', map: 'palpagos', name: '测试',
+        aliases: [], keywords: [], mapX: 0, mapY: 0, worldX: 0, worldY: 0,
+        source: 'fixture', license: 'CC-BY-SA-4.0', version: 'fixture', iconId: 'special',
+      }]), { status: 200 }));
+
+    const manifest = await loadPalOpsMapManifest();
+    const pois = await loadPalOpsPois('zh-CN', manifest.poi_total);
+
+    expect(manifest.source.repository).toBe('ninhua/palpanel-assets');
+    expect(pois).toHaveLength(1);
+  });
 });

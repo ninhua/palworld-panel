@@ -47,7 +47,8 @@ describe('LiveMap', () => {
     mocks.rebuild.mockResolvedValue({ status: 'waiting' });
     mocks.loadManifest.mockResolvedValue({
       schema_version: 1,
-      source: { repository: 'CoderYiXin/PalOpsWeb', commit: 'dc2ec173c77e759482e59d9b63d228c88132061c', version: '1.3.2' },
+      source: { repository: 'ninhua/palpanel-assets', commit: '0123456789abcdef0123456789abcdef01234567', ref: 'main', version: 'fixture-assets-1' },
+      dataset_version: 'fixture-dataset-1',
       maps: ['palpagos', 'world-tree'],
       locales: ['zh-CN', 'en-US', 'ja-JP'],
       poi_total: 2,
@@ -101,6 +102,6 @@ describe('LiveMap', () => {
     renderPage();
     fireEvent.click(await screen.findByText('樱花岛快速传送 地图标记'));
     fireEvent.click(screen.getByRole('button', { name: '标记为已发现' }));
-    expect(JSON.parse(localStorage.getItem('palpanel-palops-explored:2026.07.5-extended') || '[]')).toContain('poi-fast-travel-1');
+    expect(JSON.parse(localStorage.getItem('palpanel-palops-explored:fixture-dataset-1') || '[]')).toContain('poi-fast-travel-1');
   });
 });
