@@ -97,9 +97,10 @@ Runtime community icon references
 
 MapLibre map renderer
 ----------------------
-- MapLibre GL JS 6.0.0: BSD-3-Clause. Release builds synchronize the exact
-  ESM module, shared module, module worker, CSS and LICENSE.txt from the pinned
-  npm version and serve them from PalPanel itself; browsers do not use a CDN.
+- MapLibre GL JS 5.24.0: BSD-3-Clause. Release builds synchronize the exact
+  browser UMD bundle, CSS and LICENSE.txt from the pinned npm version and serve
+  them from PalPanel itself; browsers do not use a CDN. The v5 runtime supports
+  WebGL2 and WebGL1 instead of requiring WebGL2-only initialization.
 - The synchronized license is embedded at
   `/vendor/maplibre-gl/LICENSE.txt` in the web UI release assets.
 

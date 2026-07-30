@@ -118,7 +118,7 @@ export const PalOpsRasterFallback: React.FC<Props> = ({
       </div>
 
       <div className="pointer-events-none absolute left-4 top-4 z-20 max-w-md rounded-xl border border-amber-400/30 bg-slate-950/90 px-3 py-2 text-[10px] font-semibold leading-4 text-amber-100 shadow-lg backdrop-blur">
-        <p>兼容瓦片模式 · MapLibre/WebGL2 不可用</p>
+        <p>兼容瓦片模式 · MapLibre 回退</p>
         <p className="mt-1 text-slate-300">{reason}</p>
       </div>
 

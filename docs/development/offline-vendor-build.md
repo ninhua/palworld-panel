@@ -33,7 +33,7 @@ palpanel-vendor/
 python3 scripts/vendorctl.py init \
   --root /srv/palpanel-vendor \
   --map-assets /source/palpanel-assets \
-  --maplibre /source/maplibre-gl-6.0.0 \
+  --maplibre /source/maplibre-gl-5.24.0 \
   --palcalc third_party/palcalc \
   --uesave third_party/uesave \
   --ue4ss-sdk /source/RE-UE4SS-complete \

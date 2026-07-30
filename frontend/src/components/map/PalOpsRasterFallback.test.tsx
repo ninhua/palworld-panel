@@ -21,7 +21,7 @@ describe('PalOpsRasterFallback', () => {
         markers={[marker]}
         selectedKey={null}
         tilesAvailable
-        reason="WebGL2 unavailable"
+        reason="MapLibre initialization failed"
         onSelect={onSelect}
       />,
     );

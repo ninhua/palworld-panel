@@ -5,23 +5,24 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import shutil
 import sys
 import tempfile
 import urllib.request
 from pathlib import Path
 
-MAPLIBRE_VERSION = "6.0.0"
+# MapLibre GL JS 6.0.0 is WebGL2-only and its initial release can fail during
+# context setup on otherwise WebGL-capable browsers. Keep the latest maintained
+# v5 line, which supports both WebGL2 and WebGL1, until the v6 initialization
+# path is proven across PalPanel's browser matrix.
+MAPLIBRE_VERSION = "5.24.0"
 MAPLIBRE_BASE_URL = f"https://unpkg.com/maplibre-gl@{MAPLIBRE_VERSION}"
 FILES = {
-    "maplibre-gl.mjs": ("dist/maplibre-gl.mjs", 100_000, 3_000_000),
-    "maplibre-gl-shared.mjs": ("dist/maplibre-gl-shared.mjs", 100_000, 3_000_000),
-    "maplibre-gl-worker.mjs": ("dist/maplibre-gl-worker.mjs", 1_000, 1_000_000),
+    "maplibre-gl.js": ("dist/maplibre-gl.js", 500_000, 4_000_000),
     "maplibre-gl.css": ("dist/maplibre-gl.css", 10_000, 500_000),
     "LICENSE.txt": ("LICENSE.txt", 500, 100_000),
 }
-MAX_TOTAL_BYTES = 8 * 1024 * 1024
+MAX_TOTAL_BYTES = 6 * 1024 * 1024
 
 
 def parse_args() -> argparse.Namespace:
@@ -79,6 +80,13 @@ def validate_file(path: Path, minimum: int, maximum: int, skip_size_checks: bool
         raise ValueError(f"MapLibre asset is unexpectedly small: {path.name} ({size})")
 
 
+def validate_runtime(module: str) -> None:
+    if MAPLIBRE_VERSION not in module:
+        raise ValueError("MapLibre bundle does not report the pinned version")
+    if "maplibregl" not in module:
+        raise ValueError("MapLibre bundle does not expose the expected browser runtime")
+
+
 def main() -> int:
     args = parse_args()
     if args.source_dir is None and not args.allow_network:
@@ -106,17 +114,15 @@ def main() -> int:
                 "sha256": sha256_file(target),
             })
 
-        module = (staged / "maplibre-gl.mjs").read_text(encoding="utf-8", errors="strict")
-        if f"var br=`{MAPLIBRE_VERSION}`" not in module and f"version = '{MAPLIBRE_VERSION}'" not in module:
-            raise ValueError("MapLibre module does not report the pinned version")
-        if "./maplibre-gl-shared.mjs" not in module or "maplibre-gl-worker.mjs" not in module:
-            raise ValueError("MapLibre module does not reference the expected local shared/worker files")
+        validate_runtime((staged / "maplibre-gl.js").read_text(encoding="utf-8", errors="strict"))
 
         manifest = {
             "schema_version": 1,
             "name": "maplibre-gl",
             "version": MAPLIBRE_VERSION,
             "source": MAPLIBRE_BASE_URL,
+            "distribution": "browser-umd",
+            "webgl": [1, 2],
             "license": "BSD-3-Clause",
             "files": manifest_files,
         }
@@ -131,7 +137,7 @@ def main() -> int:
         shutil.rmtree(destination, ignore_errors=True)
         replacement.rename(destination)
 
-    print(f"[palpanel] synchronized MapLibre GL JS {MAPLIBRE_VERSION}")
+    print(f"[palpanel] synchronized MapLibre GL JS {MAPLIBRE_VERSION} (WebGL1/2 runtime)")
     return 0
 
 

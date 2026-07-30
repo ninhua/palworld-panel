@@ -61,7 +61,7 @@ PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更�
 
 ### 存档与地图
 
-- 世界地图使用自托管 MapLibre GL JS 6.0.0；固定 POI、图标和许可证从 `ninhua/palpanel-assets` 源码快照同步，瓦片优先从该仓库 GitHub Release 归档附件同步，浏览器运行时不访问 CDN 或 GitHub。
+- 世界地图使用自托管 MapLibre GL JS 5.24.0（WebGL2 / WebGL1 自动选择）；瓦片、固定 POI、图标和许可证由 `ninhua/palpanel-assets` 在构建时同步，浏览器运行时不访问 CDN 或 GitHub。
 
 - 把当前服务器世界作为内置存档源
 - 导入带有 `Level.sav` 的标准 ZIP、TAR、TAR.GZ 或 TGZ 存档

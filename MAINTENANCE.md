@@ -27,8 +27,8 @@
 
 ```text
 上游版本：v1.3.0
-自定义版本：0.8.47
-完整标签：v1.3.0-custom.0.8.47
+自定义版本：0.8.45
+完整标签：v1.3.0-custom.0.8.45
 ```
 
 版本源位于：
@@ -321,7 +321,7 @@ frontend/src/pages/Incidents.tsx
 
 - `scripts/sync_palops_map_assets.py` 默认从 `ninhua/palpanel-assets@main` 解析完整提交 SHA，再按不可变提交下载归档。
 - 私有资源仓库必须使用只读 `PALPANEL_MAP_ASSETS_TOKEN`；Token 只进入构建进程，不得写入清单、日志、前端或发布包。
-- `scripts/sync_maplibre_assets.py` 必须固定 MapLibre GL JS 6.0.0，只同步 ESM、shared、worker、CSS 和 BSD 许可证；浏览器不得从 CDN 加载运行时代码。
+- `scripts/sync_maplibre_assets.py` 必须固定 MapLibre GL JS 5.24.0，只同步浏览器 UMD bundle、CSS 和 BSD 许可证；运行时自动选择 WebGL2 / WebGL1，浏览器不得从 CDN 加载代码。
 - 三种语言 POI 的 ID、地图、类别和四组坐标必须完全一致；源清单声明 POI 总数时必须严格匹配，未声明时不得使用硬编码数量替代跨语言一致性校验。
 - `palpagos` 与 `world-tree` 每层必须各自包含完整 0–4 级金字塔，共 341 张 `.webp`。正式发布禁止启用缺瓦片模式。
 - 归档提取必须拒绝路径穿越、符号链接、未知扩展名和超限文件；源清单存在时必须校验大小和 SHA-256。

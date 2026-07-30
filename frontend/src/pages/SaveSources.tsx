@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArchiveRestore, ArrowRightLeft, CheckCircle2, Database, FileArchive, Pencil, RefreshCw, Server, Trash2, Upload } from 'lucide-react';
-import { getErrorMessage } from '../api/client';
-import { saveSourcesApi, type SaveImportInspection } from '../api/saveSources';
+import { getErrorMessage, isTemporaryBackendError } from '../api/client';
+import { saveSourcesApi, waitForSaveSourcesBackend, type SaveImportInspection } from '../api/saveSources';
 import type { SaveSource } from '../types';
 
 export const SaveSources: React.FC = () => {
@@ -85,7 +85,26 @@ export const SaveSources: React.FC = () => {
       setNotice(`迁移完成：${result.source.name}。已自动切换 GameUserSettings.ini 的 DedicatedServerName；服务器原为运行状态时已重新启动。地图探索 LocalData.sav 不在服务端迁移范围内。`);
       await refresh();
     } catch (error) {
-      setNotice(getErrorMessage(error));
+      if (isTemporaryBackendError(error)) {
+        setNotice('迁移请求已提交，PalPanel 后端正在重启。正在等待服务恢复并核对迁移结果……');
+        try {
+          const recovered = await waitForSaveSourcesBackend();
+          if (recovered) {
+            queryClient.setQueryData(['save-sources'], recovered);
+            const expectedName = `${source.name}（主机迁移）`;
+            const migrated = recovered.items.find((item) => item.name === expectedName);
+            setNotice(migrated
+              ? `迁移完成：${migrated.name}。后端重启期间网关曾返回临时错误，现已恢复并确认迁移存档存在。`
+              : 'PalPanel 后端已经恢复，但无法自动确认迁移结果。请检查可用存档和服务器状态；不要立即重复迁移。');
+          } else {
+            setNotice('迁移请求可能已执行，但 PalPanel 后端在 60 秒内仍未恢复。请检查服务日志和可用存档；不要立即重复迁移。');
+          }
+        } catch (recoveryError) {
+          setNotice(`迁移请求可能已执行，但恢复核对失败：${getErrorMessage(recoveryError)}。请检查服务日志和可用存档；不要立即重复迁移。`);
+        }
+      } else {
+        setNotice(getErrorMessage(error));
+      }
     } finally {
       setMigrationID('');
     }

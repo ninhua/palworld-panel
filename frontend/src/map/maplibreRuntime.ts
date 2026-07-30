@@ -1,6 +1,7 @@
+const runtimeVersion = '5.24.0';
 const runtimeRoot = '/vendor/maplibre-gl';
-const runtimeModuleURL = `${runtimeRoot}/maplibre-gl.mjs`;
-const runtimeStylesheetURL = `${runtimeRoot}/maplibre-gl.css`;
+const runtimeScriptURL = `${runtimeRoot}/maplibre-gl.js?v=${runtimeVersion}`;
+const runtimeStylesheetURL = `${runtimeRoot}/maplibre-gl.css?v=${runtimeVersion}`;
 
 export type MapLibreLngLat = [number, number];
 
@@ -10,7 +11,7 @@ export interface MapLibreGeoJSONSource {
 
 export interface MapLibreMapInstance {
   on: {
-    (event: 'load' | 'remove', listener: () => void): void;
+    (event: 'load' | 'remove' | 'error', listener: (event?: unknown) => void): void;
     (event: 'click' | 'mouseenter' | 'mouseleave', layerID: string, listener: (event: MapLibreLayerEvent) => void): void;
   };
   addControl: (control: unknown, position?: string) => void;
@@ -30,23 +31,66 @@ export interface MapLibreRuntimeModule {
   version?: string;
 }
 
+type MapLibreWindow = Window & { maplibregl?: unknown };
+
 let runtimePromise: Promise<MapLibreRuntimeModule> | null = null;
 
+export const validateMapLibreRuntime = (value: unknown): MapLibreRuntimeModule => {
+  if (!value || typeof value !== 'object') throw new Error('MapLibre runtime did not initialize');
+  const runtime = value as Partial<MapLibreRuntimeModule>;
+  if (typeof runtime.Map !== 'function' || typeof runtime.NavigationControl !== 'function') {
+    throw new Error('MapLibre runtime exports are incomplete');
+  }
+  if (runtime.version && runtime.version !== runtimeVersion) {
+    throw new Error(`MapLibre runtime version mismatch: expected ${runtimeVersion}, received ${runtime.version}`);
+  }
+  return runtime as MapLibreRuntimeModule;
+};
+
 export const loadMapLibreRuntime = async (): Promise<MapLibreRuntimeModule> => {
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    throw new Error('MapLibre runtime requires a browser document');
+  }
   ensureMapLibreStylesheet();
-  runtimePromise ??= import(/* @vite-ignore */ runtimeModuleURL).then((value: unknown) => {
-    if (!value || typeof value !== 'object') throw new Error('MapLibre runtime did not return a module');
-    const runtime = value as Partial<MapLibreRuntimeModule>;
-    if (typeof runtime.Map !== 'function' || typeof runtime.NavigationControl !== 'function') {
-      throw new Error('MapLibre runtime exports are incomplete');
-    }
-    return runtime as MapLibreRuntimeModule;
-  }).catch((error: unknown) => {
+  runtimePromise ??= loadMapLibreScript().catch((error: unknown) => {
     runtimePromise = null;
     throw error;
   });
   return runtimePromise;
 };
+
+const loadMapLibreScript = (): Promise<MapLibreRuntimeModule> => new Promise((resolve, reject) => {
+  const runtimeWindow = window as MapLibreWindow;
+  if (runtimeWindow.maplibregl) {
+    try {
+      resolve(validateMapLibreRuntime(runtimeWindow.maplibregl));
+    } catch (error) {
+      reject(error);
+    }
+    return;
+  }
+
+  const selector = `script[data-palpanel-maplibre="${runtimeScriptURL}"]`;
+  const existing = document.querySelector<HTMLScriptElement>(selector);
+  const script = existing ?? document.createElement('script');
+  const finish = () => {
+    try {
+      resolve(validateMapLibreRuntime(runtimeWindow.maplibregl));
+    } catch (error) {
+      reject(error);
+    }
+  };
+  const fail = () => reject(new Error(`MapLibre runtime failed to load: ${runtimeScriptURL}`));
+
+  script.addEventListener('load', finish, { once: true });
+  script.addEventListener('error', fail, { once: true });
+  if (!existing) {
+    script.src = runtimeScriptURL;
+    script.async = true;
+    script.dataset.palpanelMaplibre = runtimeScriptURL;
+    document.head.appendChild(script);
+  }
+});
 
 const ensureMapLibreStylesheet = () => {
   if (typeof document === 'undefined') return;

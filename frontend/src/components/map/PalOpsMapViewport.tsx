@@ -51,12 +51,6 @@ export const PalOpsMapViewport: React.FC<Props> = ({ layerID, markers, selectedK
     let effectMap: MapLibreMapInstance | null = null;
     setCompatibilityReason(null);
 
-    const capabilityIssue = mapLibreWebGL2CompatibilityIssue();
-    if (capabilityIssue) {
-      setCompatibilityReason(capabilityIssue);
-      return () => { cancelled = true; };
-    }
-
     void loadMapLibreRuntime().then((runtime) => {
       if (cancelled) return;
       const map = createMap(runtime, container, layerID, tilesAvailable, markerFeatureCollection(markersRef.current, selectedKeyRef.current, layerID));
@@ -117,7 +111,7 @@ export const PalOpsMapViewport: React.FC<Props> = ({ layerID, markers, selectedK
       )}
       <div className="pointer-events-none absolute right-4 top-4 z-10 rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-right text-[10px] font-semibold text-slate-300 backdrop-blur">
         <p>{layer.displayName}</p>
-        <p>{compatibilityReason ? '兼容瓦片模式 · 无 WebGL' : tilesAvailable ? 'PalPanel 地图资源 · MapLibre' : '无底图 · MapLibre 标记层'}</p>
+        <p>{compatibilityReason ? '兼容瓦片模式 · MapLibre 回退' : tilesAvailable ? 'PalPanel 地图资源 · MapLibre' : '无底图 · MapLibre 标记层'}</p>
       </div>
     </div>
   );
@@ -148,8 +142,7 @@ export const createPalOpsMapOptions = (
     maxZoom: layer.maximumZoom,
     renderWorldCopies: false,
     maxBounds: [[-180, -85.0511287798066], [180, 85.0511287798066]],
-    // MapLibre 6 reads both entries synchronously during the constructor's first resize.
-    // Pass an explicit tuple so a missing/null runtime default cannot crash initialization.
+    // Keep an explicit tuple because MapLibre reads both entries during its first resize.
     maxCanvasSize: [...mapLibreMaxCanvasSize],
     attributionControl: false,
     dragRotate: false,
@@ -225,27 +218,3 @@ const markerFeatureCollection = (
   };
 };
 
-
-export const mapLibreWebGL2CompatibilityIssue = (): string | null => {
-  if (typeof document === 'undefined') return '当前环境没有浏览器文档对象';
-  const canvas = document.createElement('canvas');
-  let context: WebGL2RenderingContext | null = null;
-  try {
-    context = canvas.getContext('webgl2');
-  } catch (error) {
-    return error instanceof Error ? `WebGL2 初始化失败：${error.message}` : 'WebGL2 初始化失败';
-  }
-  if (!context) return '浏览器未提供可用的 WebGL2 上下文';
-
-  const viewport = context.getParameter(context.MAX_VIEWPORT_DIMS) as ArrayLike<number> | null;
-  if (!viewport || viewport.length < 2 || !Number.isFinite(Number(viewport[0])) || !Number.isFinite(Number(viewport[1]))) {
-    return '浏览器返回了无效的 WebGL2 视口能力';
-  }
-  const maximumTextureSize = Number(context.getParameter(context.MAX_TEXTURE_SIZE));
-  const loseContext = context.getExtension?.('WEBGL_lose_context') as { loseContext?: () => void } | null;
-  loseContext?.loseContext?.();
-  if (!Number.isFinite(maximumTextureSize) || maximumTextureSize < 512) {
-    return '浏览器返回了无效的 WebGL2 纹理能力';
-  }
-  return null;
-};

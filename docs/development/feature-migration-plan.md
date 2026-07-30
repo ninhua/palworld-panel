@@ -56,7 +56,7 @@
 
 第 6 项包含：
 
-- 地图前端使用固定、自托管的 MapLibre GL JS 6.0.0；不通过 CDN 加载运行时代码。
+- 地图前端使用固定、自托管的 MapLibre GL JS 5.24.0，并允许 WebGL2 / WebGL1 自动回退；不通过 CDN 加载运行时代码。
 
 - 删除旧版 2048×2048 单图 SVG 投影，使用 PalOps Web 1.3.2 的 Palpagos / World Tree 双地图瓦片金字塔和仿射坐标。
 - 固定 POI 使用 PalOps 1.2.0 数据基线：三种语言、30 类、1,251 条稳定记录；PalPanel 当前只暴露中文和英文界面。

@@ -178,6 +178,11 @@ export const handleRequest = async <T, R = T>(
   }
 };
 
+
+export const isTemporaryBackendError = (error: unknown): error is ApiError => {
+  return error instanceof ApiError && [502, 503, 504].includes(error.status || 0);
+};
+
 export const getErrorMessage = (error: unknown, fallback = '操作失败，请检查后端状态') => {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;

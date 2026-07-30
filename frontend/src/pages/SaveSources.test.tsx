@@ -12,9 +12,12 @@ const mocks = vi.hoisted(() => ({
   rebuild: vi.fn(),
   rename: vi.fn(),
   remove: vi.fn(),
+  planHostMigration: vi.fn(),
+  executeHostMigration: vi.fn(),
+  waitForSaveSourcesBackend: vi.fn(),
 }));
 
-vi.mock('../api/saveSources', () => ({ saveSourcesApi: mocks }));
+vi.mock('../api/saveSources', () => ({ saveSourcesApi: mocks, waitForSaveSourcesBackend: mocks.waitForSaveSourcesBackend }));
 
 const renderSaveSources = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -32,6 +35,7 @@ describe('SaveSources archive inspection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.list.mockResolvedValue({ items: [], active_status: status });
+    mocks.waitForSaveSourcesBackend.mockResolvedValue(null);
     mocks.selectImportCandidate.mockImplementation(async (inspectionID: string, candidateID: string) => ({
       id: inspectionID, file_name: 'world.zip', candidates: [], selected_candidate_id: candidateID,
       requires_selection: false, expires_at: '2026-07-22T13:00:00Z',
@@ -131,5 +135,34 @@ describe('SaveSources archive inspection', () => {
     expect(await screen.findByText('导入失败')).toBeInTheDocument();
     expect(screen.getByLabelText('存档归档文件')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '检查存档' })).toBeEnabled();
+  });
+});
+
+
+describe('SaveSources host migration recovery', () => {
+  afterEach(() => cleanup());
+
+  it('waits for the backend after a temporary gateway error and confirms the migrated source', async () => {
+    const source = { id: 'import-1', name: '单人世界', kind: 'import', active: false, created_at: '', updated_at: '', warnings: [] };
+    mocks.list.mockResolvedValue({ items: [source], active_status: status });
+    mocks.planHostMigration.mockResolvedValue({
+      steam_id: '76561198000000000', source_uid: 'source', target_uid: 'target', strategy: 'direct', can_execute: true,
+      source_player_file: 'Players/source.sav', source_dps_exists: false, target_player_exists: false, target_dps_exists: false, warnings: [],
+    });
+    const temporaryError = Object.assign(new Error('HTTP 502'), { name: 'ApiError', status: 502 });
+    Object.setPrototypeOf(temporaryError, (await import('../api/client')).ApiError.prototype);
+    mocks.executeHostMigration.mockRejectedValue(temporaryError);
+    mocks.waitForSaveSourcesBackend.mockResolvedValue({
+      items: [{ ...source, id: 'migrated-1', name: '单人世界（主机迁移）' }], active_status: status,
+    });
+    vi.spyOn(window, 'prompt').mockReturnValue('76561198000000000');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderSaveSources();
+    expect(await screen.findByText('单人世界')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '主机迁移' }));
+
+    expect(await screen.findByText(/后端重启期间网关曾返回临时错误/)).toBeInTheDocument();
+    expect(mocks.waitForSaveSourcesBackend).toHaveBeenCalledTimes(1);
   });
 });

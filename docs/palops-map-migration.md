@@ -6,7 +6,7 @@ PalPanel `0.8.47` 默认把专用资源仓库的 GitHub Release 附件作为完�
 https://github.com/ninhua/palpanel-assets
 ```
 
-浏览器仍由自托管 MapLibre GL JS 6.0.0 渲染，不直接访问 GitHub。Linux 和 Windows 打包脚本会在构建阶段下载并验证资源，然后将其嵌入 PalPanel Web UI。
+浏览器由自托管 MapLibre GL JS 5.24.0 渲染并自动选择 WebGL2 / WebGL1，不直接访问 GitHub。Linux 和 Windows 打包脚本会在构建阶段下载并验证资源，然后将其嵌入 PalPanel Web UI。
 
 ## 资源仓库目录约定
 

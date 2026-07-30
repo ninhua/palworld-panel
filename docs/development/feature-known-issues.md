@@ -22,8 +22,8 @@
 
 - 地图资源在发布构建阶段从 `ninhua/palpanel-assets` 同步，并将请求 ref 解析为完整提交 SHA；浏览器运行时不会跟随分支或访问 GitHub。
 - 固定 POI、图标、许可证、元数据和两张地图的瓦片由同一资源快照提供；三种语言的 ID、地图、类别和坐标必须一致。
-- MapLibre GL JS 6.0.0 的 ESM、shared module、module worker、CSS 和 BSD 许可证由发布构建固定同步并自托管；运行时不访问 CDN。
-- MapLibre GL JS 6.0.0 需要 WebGL2；浏览器禁用 WebGL2 或显卡驱动不支持时，页面会显示运行时错误。
+- MapLibre GL JS 5.24.0 的浏览器 bundle、CSS 和 BSD 许可证由发布构建固定同步并自托管；运行时不访问 CDN。
+- 地图运行时优先使用 WebGL2，并在必要时使用 WebGL1；两者都不可用或运行时构造失败时才进入纯 DOM 兼容瓦片模式。
 - 正式发布要求 `palpagos` 与 `world-tree` 各自包含 341 张 WebP 瓦片；缺失任何瓦片都会阻止构建。
 - 私有资源仓库需要配置只读 `PALPANEL_MAP_ASSETS_TOKEN`；Token 不会进入发布包或浏览器。
 - 探索记录存放在浏览器 `localStorage`，并按资源清单的数据集版本隔离；不会同步到其他浏览器或用户，也不会写入存档。

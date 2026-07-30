@@ -1,4 +1,4 @@
-import { apiClient, handleRequest } from './client';
+import { apiClient, handleRequest, isTemporaryBackendError } from './client';
 import { emptySaveIndexStatus, mapSaveIndexStatus } from './saveIndex';
 import type { SaveIndexStatus, SaveSource } from '../types';
 import { SAVE_ARCHIVE_IMPORT_TIMEOUT_MS, SAVE_INDEX_OPERATION_TIMEOUT_MS } from './requestTimeouts';
@@ -177,4 +177,22 @@ export const saveSourcesApi = {
   ),
   rename: (id: string, name: string) => handleRequest<unknown, SaveSource>(() => apiClient.patch(`/save-sources/${encodeURIComponent(id)}`, { name }), mapSource({}), { fallbackOnError: false, map: mapSource }),
   remove: (id: string) => handleRequest(() => apiClient.delete(`/save-sources/${encodeURIComponent(id)}`), {}, { fallbackOnError: false }),
+};
+
+
+const backendRecoveryDelayMs = 2_000;
+const backendRecoveryAttempts = 30;
+
+const sleep = (duration: number) => new Promise((resolve) => setTimeout(resolve, duration));
+
+export const waitForSaveSourcesBackend = async (): Promise<SaveSourcesResponse | null> => {
+  for (let attempt = 0; attempt < backendRecoveryAttempts; attempt += 1) {
+    try {
+      return await saveSourcesApi.list();
+    } catch (error) {
+      if (!isTemporaryBackendError(error)) throw error;
+      if (attempt + 1 < backendRecoveryAttempts) await sleep(backendRecoveryDelayMs);
+    }
+  }
+  return null;
 };
