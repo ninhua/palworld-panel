@@ -179,9 +179,10 @@ pub fn remap_world(
     if ignored_custom_version_candidates != 0 {
         warnings.push(format!(
             concat!(
-                "preserved {ignored_custom_version_candidates} host UID-like byte sequence(s) ",
+                "preserved {} host UID-like byte sequence(s) ",
                 "in Level.sav ItemContainerSaveData CustomVersionData metadata"
-            )
+            ),
+            ignored_custom_version_candidates
         ));
     }
     for (source, _) in mapping.pairs() {
