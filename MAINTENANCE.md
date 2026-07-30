@@ -27,8 +27,8 @@
 
 ```text
 上游版本：v1.3.0
-自定义版本：0.8.46
-完整标签：v1.3.0-custom.0.8.46
+自定义版本：0.8.47
+完整标签：v1.3.0-custom.0.8.47
 ```
 
 版本源位于：
@@ -319,8 +319,7 @@ frontend/src/pages/Incidents.tsx
 
 维护规则：
 
-- `scripts/sync_palops_map_assets.py` 默认从 `ninhua/palpanel-assets@main` 解析完整提交 SHA并同步 POI/元数据；瓦片优先从该仓库最新 GitHub Release 的归档附件下载。
-- 可用 `PALPANEL_MAP_ASSETS_RELEASE_TAG` 指定 Release 标签，或用 `PALPANEL_MAP_ASSETS_RELEASE_ASSET` 指定确切附件名；设置标签为 `none` 可禁用 Release 下载并回退源码归档瓦片。
+- `scripts/sync_palops_map_assets.py` 默认从 `ninhua/palpanel-assets@main` 解析完整提交 SHA，再按不可变提交下载归档。
 - 私有资源仓库必须使用只读 `PALPANEL_MAP_ASSETS_TOKEN`；Token 只进入构建进程，不得写入清单、日志、前端或发布包。
 - `scripts/sync_maplibre_assets.py` 必须固定 MapLibre GL JS 6.0.0，只同步 ESM、shared、worker、CSS 和 BSD 许可证；浏览器不得从 CDN 加载运行时代码。
 - 三种语言 POI 的 ID、地图、类别和四组坐标必须完全一致；源清单声明 POI 总数时必须严格匹配，未声明时不得使用硬编码数量替代跨语言一致性校验。

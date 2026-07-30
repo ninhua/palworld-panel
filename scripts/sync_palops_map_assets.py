@@ -15,6 +15,7 @@ import math
 import os
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import tarfile
@@ -204,7 +205,7 @@ def release_metadata(repository: str, release_tag: str, token: str = "") -> dict
 
 def archive_asset_name(name: str) -> bool:
     lowered = name.lower()
-    return lowered.endswith((".zip", ".tar.gz", ".tgz", ".tar"))
+    return lowered.endswith((".zip", ".tar.gz", ".tgz", ".tar.zst", ".tzst", ".tar"))
 
 
 def select_release_assets(
@@ -283,6 +284,85 @@ def download_release_asset(
         raise
 
 
+def find_zstd_executable() -> str:
+    configured = os.environ.get("PALPANEL_ZSTD", "").strip()
+    if configured:
+        candidate = Path(configured).expanduser()
+        if candidate.is_file():
+            return str(candidate)
+        resolved = shutil.which(configured)
+        if resolved:
+            return resolved
+        raise ValueError(f"PALPANEL_ZSTD does not point to an executable: {configured}")
+
+    for name in ("zstd", "zstd.exe", "zstdmt", "zstdmt.exe", "unzstd", "unzstd.exe"):
+        resolved = shutil.which(name)
+        if resolved:
+            return resolved
+
+    roots = [
+        Path(os.environ.get("RUNNER_TEMP", "")),
+        Path("C:/msys64"),
+        Path("C:/Program Files/Git"),
+    ]
+    relatives = (
+        Path("msys64/mingw64/bin/zstd.exe"),
+        Path("msys64/usr/bin/zstd.exe"),
+        Path("mingw64/bin/zstd.exe"),
+        Path("usr/bin/zstd.exe"),
+    )
+    for root in roots:
+        if not str(root):
+            continue
+        for relative in relatives:
+            candidate = root / relative
+            if candidate.is_file():
+                return str(candidate)
+    raise ValueError(
+        "zstd is required to extract .tar.zst map Release assets; install zstd "
+        "or set PALPANEL_ZSTD to the executable path"
+    )
+
+
+def decompress_zstd_archive(archive: Path, target: Path) -> None:
+    executable = find_zstd_executable()
+    command = [executable, "--decompress", "--stdout", str(archive)]
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert process.stdout is not None
+    assert process.stderr is not None
+    total = 0
+    try:
+        with target.open("wb") as output:
+            while True:
+                chunk = process.stdout.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_ARCHIVE_BYTES:
+                    process.kill()
+                    raise ValueError("decompressed map Release archive exceeds the size limit")
+                output.write(chunk)
+        stderr = process.stderr.read().decode("utf-8", errors="replace").strip()
+        return_code = process.wait()
+        if return_code != 0:
+            raise ValueError(
+                f"unable to decompress map Release archive {archive.name}: "
+                f"{stderr or f'zstd exited with code {return_code}'}"
+            )
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        process.stdout.close()
+        process.stderr.close()
+    if total == 0:
+        raise ValueError(f"decompressed map Release archive is empty: {archive.name}")
+
+
 def extract_release_archive(archive: Path, extract_root: Path) -> Path:
     extract_root.mkdir(parents=True, exist_ok=True)
     total = 0
@@ -311,6 +391,13 @@ def extract_release_archive(archive: Path, extract_root: Path) -> Path:
         return destination
 
     lowered = archive.name.lower()
+    temporary_tar: Path | None = None
+    if lowered.endswith((".tar.zst", ".tzst")):
+        temporary_tar = extract_root.parent / f"{extract_root.name}.decompressed.tar"
+        decompress_zstd_archive(archive, temporary_tar)
+        archive = temporary_tar
+        lowered = archive.name.lower()
+
     if lowered.endswith(".zip"):
         with zipfile.ZipFile(archive) as bundle:
             for info in bundle.infolist():
@@ -1205,6 +1292,7 @@ def write_manifest(
         manifest_text(source_manifest, "asset_version")
         or manifest_text(source_manifest, "version")
         or manifest_text(source_manifest, "source", "version")
+        or release_tag
         or ref
     )
     dataset_version = (
@@ -1255,17 +1343,24 @@ def main() -> int:
     if not repository or not ref:
         raise ValueError("map asset repository and ref may not be empty")
 
+    release_requested = (
+        args.allow_network
+        and args.release_tag.strip().lower() not in {"none", "off", "disabled"}
+    )
+
     with tempfile.TemporaryDirectory(prefix="palpanel-map-assets-") as temp_name:
         temp = Path(temp_name)
         token = github_token()
         source_commit = args.source_commit.strip()
+        source_map_root: Path | None = None
+
         if args.source_dir:
             repository_root = args.source_dir.resolve()
-            map_root = find_map_root(
+            source_map_root = find_map_root(
                 repository_root,
-                require_tiles=not (args.allow_missing_tiles or args.tiles_source_dir or args.allow_network),
+                require_tiles=not (args.allow_missing_tiles or args.tiles_source_dir),
             )
-            source_commit = source_commit or f"local-{sha256_tree(map_root)}"
+            source_commit = source_commit or f"local-{sha256_tree(source_map_root)}"
         else:
             archive = args.archive
             if archive is None:
@@ -1280,48 +1375,93 @@ def main() -> int:
                     raise ValueError("map asset archive exceeds the configured size limit")
                 source_commit = source_commit or f"archive-{sha256_file(archive)}"
             repository_root = extract_archive(archive, temp / "archive")
-            map_root = find_map_root(
-                repository_root,
-                require_tiles=not (args.allow_missing_tiles or args.tiles_source_dir or args.allow_network),
-            )
-
-        source_manifest = load_source_manifest(map_root)
-        verify_source_manifest(map_root, source_manifest)
+            try:
+                source_map_root = find_map_root(
+                    repository_root,
+                    require_tiles=not (
+                        args.allow_missing_tiles
+                        or args.tiles_source_dir
+                        or release_requested
+                    ),
+                )
+            except ValueError as exc:
+                if not release_requested:
+                    raise
+                print(
+                    f"[palpanel] repository source does not contain a map payload ({exc}); "
+                    "using the GitHub Release archive as the complete resource bundle",
+                    file=sys.stderr,
+                )
 
         staged = temp / "staged"
         staged.mkdir()
-        copy_tree(map_root, staged)
-        normalize_pois(staged, source_manifest, ref)
+        source_manifest: dict[str, Any] = {}
+        if source_map_root is not None:
+            source_manifest = load_source_manifest(source_map_root)
+            verify_source_manifest(source_map_root, source_manifest)
+            copy_tree(source_map_root, staged)
+
         release_tag = ""
         release_assets: list[str] = []
+        if release_requested:
+            release_import = temp / "release-assets"
+            try:
+                release_tag, release_assets = download_release_tile_archives(
+                    release_import,
+                    repository,
+                    args.release_tag.strip() or "latest",
+                    args.release_asset.strip(),
+                    token,
+                )
+                try:
+                    release_map_root = find_map_root(
+                        release_import,
+                        require_tiles=not args.allow_missing_tiles,
+                    )
+                except ValueError as complete_error:
+                    if has_discoverable_pois(release_import):
+                        release_map_root = find_map_root(release_import, require_tiles=False)
+                    elif has_discoverable_pois(staged):
+                        normalize_tiles(release_import)
+                        copy_tiles(release_import / "tiles", staged)
+                        release_map_root = None
+                    else:
+                        raise ValueError(
+                            "map Release archive contains no discoverable POI JSON; "
+                            f"selected assets: {', '.join(release_assets)}; {complete_error}"
+                        ) from complete_error
+                if release_map_root is not None:
+                    release_manifest = load_source_manifest(release_map_root)
+                    verify_source_manifest(release_map_root, release_manifest)
+                    copy_tree(release_map_root, staged)
+                    if release_manifest:
+                        source_manifest = release_manifest
+            except ValueError as exc:
+                source_has_pois = has_discoverable_pois(staged)
+                source_has_tiles = any(
+                    is_xyz_tile_path(path.relative_to(staged)) for path in staged.rglob("*.webp")
+                )
+                if not (source_has_pois and (source_has_tiles or args.allow_missing_tiles)):
+                    raise
+                print(
+                    f"[palpanel] map Release bundle unavailable ({exc}); "
+                    "using repository archive resources",
+                    file=sys.stderr,
+                )
+
+        if not has_discoverable_pois(staged):
+            raise ValueError(
+                "no POI JSON was found after merging repository and GitHub Release resources"
+            )
+
+        normalize_pois(staged, source_manifest, release_tag or ref)
         if args.tiles_source_dir:
             copy_tiles(args.tiles_source_dir, staged)
         else:
-            source_has_tiles = any(
+            staged_has_tiles = any(
                 is_xyz_tile_path(path.relative_to(staged)) for path in staged.rglob("*.webp")
             )
-            release_requested = args.allow_network and args.release_tag.strip().lower() not in {"none", "off", "disabled"}
-            if release_requested:
-                tile_import = temp / "release-assets"
-                try:
-                    release_tag, release_assets = download_release_tile_archives(
-                        tile_import,
-                        repository,
-                        args.release_tag.strip() or "latest",
-                        args.release_asset.strip(),
-                        token,
-                    )
-                    normalize_tiles(tile_import)
-                    copy_tiles(tile_import / "tiles", staged)
-                except ValueError as exc:
-                    if not source_has_tiles:
-                        raise
-                    print(
-                        f"[palpanel] map Release tiles unavailable ({exc}); using repository archive tiles",
-                        file=sys.stderr,
-                    )
-                    normalize_tiles(staged)
-            elif source_has_tiles or not args.allow_missing_tiles:
+            if staged_has_tiles or not args.allow_missing_tiles:
                 normalize_tiles(staged)
         prune_noncanonical_tiles(staged)
 

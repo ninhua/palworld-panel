@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tarfile
 import unittest
 from unittest import mock
 import zipfile
@@ -210,6 +211,87 @@ class SyncPalOpsMapAssetsTest(unittest.TestCase):
             available, counts = SYNC_MODULE.validate_tiles(destination, required=True)
             self.assertTrue(available)
             self.assertEqual(counts, {"palpagos": 341, "world-tree": 341})
+
+    @unittest.skipUnless(shutil.which("zstd"), "zstd is required for tar.zst fixture")
+    def test_network_build_uses_complete_tar_zst_release_when_source_has_no_pois(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            source_repository = root / "source-repository"
+            source_repository.mkdir()
+            (source_repository / "README.md").write_text("Release-only map bundle", encoding="utf-8")
+            source_archive = Path(shutil.make_archive(
+                str(root / "source-archive"),
+                "zip",
+                root_dir=source_repository.parent,
+                base_dir=source_repository.name,
+            ))
+
+            release_repository = self.make_source(root / "release-repository", include_manifest=False)
+            release_payload = release_repository / "map" / "palops"
+            release_tar = root / "palops-map-assets.tar"
+            with tarfile.open(release_tar, "w") as bundle:
+                for path in sorted(release_payload.rglob("*")):
+                    if path.is_file():
+                        bundle.add(path, arcname=path.relative_to(release_payload).as_posix())
+            release_archive = root / "palops-map-assets.tar.zst"
+            subprocess.run(
+                ["zstd", "-q", "-f", "-o", str(release_archive), str(release_tar)],
+                check=True,
+            )
+            release_metadata = {
+                "tag_name": "palops-map-assets-2026.07.30",
+                "assets": [{
+                    "name": "palops-map-assets.tar.zst",
+                    "url": "https://example.invalid/assets/1",
+                    "size": release_archive.stat().st_size,
+                }],
+            }
+            destination = root / "destination"
+
+            def copy_source(target: Path, _repository: str, _commit: str, _token: str = "") -> None:
+                shutil.copy2(source_archive, target)
+
+            def copy_release(target: Path, _asset: dict, _token: str = "") -> None:
+                shutil.copy2(release_archive, target)
+
+            argv = [
+                str(SCRIPT),
+                "--destination", str(destination),
+                "--repository", "ninhua/palpanel-assets",
+                "--ref", "main",
+                "--allow-network",
+                "--expected-poi-total", "2",
+            ]
+            with mock.patch.object(sys, "argv", argv), mock.patch.object(
+                SYNC_MODULE, "resolve_repository_commit", return_value="1" * 40
+            ), mock.patch.object(
+                SYNC_MODULE, "download_repository_archive", side_effect=copy_source
+            ), mock.patch.object(
+                SYNC_MODULE, "release_metadata", return_value=release_metadata
+            ), mock.patch.object(
+                SYNC_MODULE, "download_release_asset", side_effect=copy_release
+            ):
+                result = SYNC_MODULE.main()
+
+            self.assertEqual(result, 0)
+            manifest = json.loads((destination / "palpanel-map-assets.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["release"]["tag"], "palops-map-assets-2026.07.30")
+            self.assertEqual(manifest["release"]["assets"], ["palops-map-assets.tar.zst"])
+            self.assertEqual(manifest["dataset_version"], "palops-map-assets-2026.07.30")
+            self.assertEqual(manifest["poi_total"], 2)
+            self.assertEqual(manifest["tiles"]["counts"], {"palpagos": 341, "world-tree": 341})
+            self.assertTrue((destination / "data" / "default-pois.zh-CN.json").is_file())
+            self.assertTrue((destination / "tiles" / "palpagos" / "4" / "15" / "15.webp").is_file())
+
+    def test_selects_tar_zst_release_asset(self) -> None:
+        metadata = {
+            "assets": [{
+                "name": "palops-map-assets.tar.zst",
+                "url": "https://example.invalid/assets/1",
+            }]
+        }
+        selected = SYNC_MODULE.select_release_assets(metadata, "")
+        self.assertEqual([asset["name"] for asset in selected], ["palops-map-assets.tar.zst"])
 
     def test_extracts_release_zip_without_single_top_level_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temp_name:

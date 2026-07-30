@@ -242,7 +242,7 @@ function Sync-PalOpsMapAssets {
     $arguments += "--allow-missing-tiles"
   }
   $releaseTag = if ([string]::IsNullOrWhiteSpace($env:PALPANEL_MAP_ASSETS_RELEASE_TAG)) { "latest" } else { $env:PALPANEL_MAP_ASSETS_RELEASE_TAG }
-  Write-Host "[palpanel] Synchronizing PalPanel map POIs from $repository@$ref and tiles from Release $releaseTag"
+  Write-Host "[palpanel] Synchronizing PalPanel map resources from Release $releaseTag (repository $repository@$ref)"
   Invoke-External "python" $arguments $RootDir
 }
 

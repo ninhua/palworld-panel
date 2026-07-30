@@ -107,10 +107,10 @@ sync_palops_map_assets() {
   if [[ "${PALPANEL_ALLOW_MISSING_MAP_TILES:-false}" == "true" ]]; then
     args+=(--allow-missing-tiles)
   fi
-  printf '[palpanel] Synchronizing PalPanel map POIs from %s@%s and tiles from Release %s\n' \
+  printf '[palpanel] Synchronizing PalPanel map resources from Release %s (repository %s@%s)\n' \
+    "${PALPANEL_MAP_ASSETS_RELEASE_TAG:-latest}" \
     "${PALPANEL_MAP_ASSETS_REPOSITORY:-ninhua/palpanel-assets}" \
-    "${PALPANEL_MAP_ASSETS_REF:-main}" \
-    "${PALPANEL_MAP_ASSETS_RELEASE_TAG:-latest}"
+    "${PALPANEL_MAP_ASSETS_REF:-main}"
   python3 "${args[@]}"
 }
 

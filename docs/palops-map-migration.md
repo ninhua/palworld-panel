@@ -1,6 +1,6 @@
 # PalPanel 世界地图资源接入
 
-PalPanel `0.8.46` 将固定 POI、图标、元数据和许可证从专用资源仓库源码快照同步，并从同仓库 GitHub Release 附件同步大体积瓦片：
+PalPanel `0.8.47` 默认把专用资源仓库的 GitHub Release 附件作为完整地图资源包，统一同步 POI、图标、元数据、许可证与瓦片：
 
 ```text
 https://github.com/ninhua/palpanel-assets
@@ -103,7 +103,7 @@ python3 scripts/sync_palops_map_assets.py \
   --allow-network
 ```
 
-同步器先通过 GitHub API 将 `main` 解析为完整提交 SHA，再按该提交下载归档。因此同一次构建使用不可变资源快照，而不是在下载过程中继续跟随分支变化。
+同步器先读取指定 GitHub Release，并下载选中的完整资源附件。源码分支仍会解析为完整提交 SHA，用作可选元数据和旧布局回退；源码归档中没有 POI 时不会阻止 Release 资源导入。生成清单会记录实际 Release 标签、附件名和源码提交。
 
 ## 私有资源仓库
 
@@ -122,7 +122,7 @@ PALPANEL_MAP_ASSETS_TOKEN=github_pat_xxx \
 PALPANEL_MAP_ASSETS_REPOSITORY=ninhua/palpanel-assets \
 PALPANEL_MAP_ASSETS_REF=main \
 PALPANEL_MAP_ASSETS_RELEASE_TAG=latest \
-scripts/package.sh --version v1.3.0-custom.0.8.46
+scripts/package.sh --version v1.3.0-custom.0.8.47
 ```
 
 ## 离线或本地资源构建
@@ -131,14 +131,14 @@ scripts/package.sh --version v1.3.0-custom.0.8.46
 
 ```bash
 PALPANEL_MAP_ASSETS_SOURCE_DIR=/srv/source/palpanel-assets \
-scripts/package.sh --version v1.3.0-custom.0.8.46
+scripts/package.sh --version v1.3.0-custom.0.8.47
 ```
 
 使用预下载 ZIP：
 
 ```bash
 PALPANEL_MAP_ASSETS_ARCHIVE=/srv/source/palpanel-assets.zip \
-scripts/package.sh --version v1.3.0-custom.0.8.46
+scripts/package.sh --version v1.3.0-custom.0.8.47
 ```
 
 仅在开发诊断时允许缺少瓦片：
@@ -185,6 +185,14 @@ PALPANEL_ALLOW_MISSING_MAP_TILES=true scripts/package.sh --version dev
 玩家、据点、帕鲁和地图对象继续通过 PalPanel 的 `/api/map/entities` 获取。浏览器不会访问 GitHub，也不会获得地图资源仓库 Token。
 
 
-## Release 瓦片归档
+## Release 完整资源归档
 
-构建默认从 `palpanel-assets` 最新 GitHub Release 中自动选择名称包含 `map`、`tile`、`palops` 或 `asset` 的 ZIP/TAR 归档作为瓦片来源。可通过 `PALPANEL_MAP_ASSETS_RELEASE_TAG` 指定标签，通过 `PALPANEL_MAP_ASSETS_RELEASE_ASSET` 指定确切附件名。
+构建默认从 `palpanel-assets` 最新 GitHub Release 中自动选择名称包含 `map`、`tile`、`palops` 或 `asset` 的资源附件，并从同一个附件读取 POI 与瓦片。支持 `.zip`、`.tar`、`.tar.gz`、`.tgz`、`.tar.zst` 和 `.tzst`。
+
+当前推荐附件名：
+
+```text
+palops-map-assets.tar.zst
+```
+
+可通过 `PALPANEL_MAP_ASSETS_RELEASE_TAG` 指定标签，通过 `PALPANEL_MAP_ASSETS_RELEASE_ASSET` 指定确切附件名。`.tar.zst` 构建需要 `zstd`；官方 Actions 工作流会在 Linux 和 Windows 构建作业中安装该工具，本地构建也可用 `PALPANEL_ZSTD` 指定可执行文件路径。
