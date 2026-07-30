@@ -10,6 +10,7 @@ import {
   type MapLibreMapInstance,
   type MapLibreRuntimeModule,
 } from '../../map/maplibreRuntime';
+import { PalOpsRasterFallback } from './PalOpsRasterFallback';
 
 interface Props {
   layerID: PalOpsMapLayerID;
@@ -29,7 +30,7 @@ export const PalOpsMapViewport: React.FC<Props> = ({ layerID, markers, selectedK
   const markersRef = useRef(markers);
   const onSelectRef = useRef(onSelect);
   const selectedKeyRef = useRef(selectedKey);
-  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [compatibilityReason, setCompatibilityReason] = useState<string | null>(null);
   const layer = palOpsMapLayers[layerID];
   const markerData = useMemo(() => markerFeatureCollection(markers, selectedKey, layerID), [markers, selectedKey, layerID]);
 
@@ -47,11 +48,19 @@ export const PalOpsMapViewport: React.FC<Props> = ({ layerID, markers, selectedK
     if (!container) return;
     let cancelled = false;
     let observer: ResizeObserver | null = null;
-    setRuntimeError(null);
+    let effectMap: MapLibreMapInstance | null = null;
+    setCompatibilityReason(null);
+
+    const capabilityIssue = mapLibreWebGL2CompatibilityIssue();
+    if (capabilityIssue) {
+      setCompatibilityReason(capabilityIssue);
+      return () => { cancelled = true; };
+    }
 
     void loadMapLibreRuntime().then((runtime) => {
       if (cancelled) return;
       const map = createMap(runtime, container, layerID, tilesAvailable, markerFeatureCollection(markersRef.current, selectedKeyRef.current, layerID));
+      effectMap = map;
       mapRef.current = map;
       map.addControl(new runtime.NavigationControl({ showCompass: false, visualizePitch: false }), 'bottom-left');
       map.on('load', () => {
@@ -72,36 +81,43 @@ export const PalOpsMapViewport: React.FC<Props> = ({ layerID, markers, selectedK
         observer.observe(container);
       }
     }).catch((error: unknown) => {
-      if (!cancelled) setRuntimeError(error instanceof Error ? error.message : 'MapLibre runtime unavailable');
+      try { effectMap?.remove(); } catch { /* fall back even if partial MapLibre cleanup fails */ }
+      if (mapRef.current === effectMap) mapRef.current = null;
+      if (!cancelled) {
+        setCompatibilityReason(error instanceof Error ? error.message : 'MapLibre runtime unavailable');
+      }
     });
 
     return () => {
       cancelled = true;
       observer?.disconnect();
-      mapRef.current?.remove();
-      mapRef.current = null;
+      try { effectMap?.remove(); } catch { /* ignore teardown errors from a partial runtime */ }
+      if (mapRef.current === effectMap) mapRef.current = null;
     };
   }, [layerID, tilesAvailable]);
 
   return (
     <div className="relative h-full min-h-[560px] overflow-hidden bg-slate-950">
       <div ref={containerRef} className="absolute inset-0" aria-label={`${layer.displayName} MapLibre 离线地图`} />
-      {!tilesAvailable && !runtimeError && (
+      {!tilesAvailable && !compatibilityReason && (
         <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-600 bg-slate-950/85 px-6 py-5 text-center shadow-xl backdrop-blur">
           <p className="text-sm font-bold text-slate-200">{layer.displayName}</p>
           <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">MapLibre 与固定 POI 已加载，但资源快照缺少完整瓦片；请检查 palpanel-assets 构建输入。</p>
         </div>
       )}
-      {runtimeError && (
-        <div className="absolute inset-0 z-20 grid place-items-center bg-slate-950 px-6 text-center">
-          <div className="max-w-md rounded-2xl border border-rose-800/70 bg-rose-950/50 px-6 py-5 text-xs font-semibold leading-5 text-rose-200">
-            MapLibre 地图初始化失败：{runtimeError}
-          </div>
-        </div>
+      {compatibilityReason && (
+        <PalOpsRasterFallback
+          layerID={layerID}
+          markers={markers}
+          selectedKey={selectedKey}
+          tilesAvailable={tilesAvailable}
+          reason={compatibilityReason}
+          onSelect={onSelect}
+        />
       )}
       <div className="pointer-events-none absolute right-4 top-4 z-10 rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-right text-[10px] font-semibold text-slate-300 backdrop-blur">
         <p>{layer.displayName}</p>
-        <p>{tilesAvailable ? 'PalPanel 地图资源 · MapLibre' : '无底图 · MapLibre 标记层'}</p>
+        <p>{compatibilityReason ? '兼容瓦片模式 · 无 WebGL' : tilesAvailable ? 'PalPanel 地图资源 · MapLibre' : '无底图 · MapLibre 标记层'}</p>
       </div>
     </div>
   );
@@ -207,4 +223,29 @@ const markerFeatureCollection = (
       },
     })),
   };
+};
+
+
+export const mapLibreWebGL2CompatibilityIssue = (): string | null => {
+  if (typeof document === 'undefined') return '当前环境没有浏览器文档对象';
+  const canvas = document.createElement('canvas');
+  let context: WebGL2RenderingContext | null = null;
+  try {
+    context = canvas.getContext('webgl2');
+  } catch (error) {
+    return error instanceof Error ? `WebGL2 初始化失败：${error.message}` : 'WebGL2 初始化失败';
+  }
+  if (!context) return '浏览器未提供可用的 WebGL2 上下文';
+
+  const viewport = context.getParameter(context.MAX_VIEWPORT_DIMS) as ArrayLike<number> | null;
+  if (!viewport || viewport.length < 2 || !Number.isFinite(Number(viewport[0])) || !Number.isFinite(Number(viewport[1]))) {
+    return '浏览器返回了无效的 WebGL2 视口能力';
+  }
+  const maximumTextureSize = Number(context.getParameter(context.MAX_TEXTURE_SIZE));
+  const loseContext = context.getExtension?.('WEBGL_lose_context') as { loseContext?: () => void } | null;
+  loseContext?.loseContext?.();
+  if (!Number.isFinite(maximumTextureSize) || maximumTextureSize < 512) {
+    return '浏览器返回了无效的 WebGL2 纹理能力';
+  }
+  return null;
 };

@@ -56,6 +56,7 @@ export const SaveHistory: React.FC = () => {
   });
 
   const snapshots = history.data?.items || [];
+  const diffItems = diff.data?.items ?? [];
   const summaryCards = useMemo(() => summarize(diff.data?.summary), [diff.data?.summary]);
   const notice = history.error ? getErrorMessage(history.error) : diff.error ? getErrorMessage(diff.error) : '';
 
@@ -131,9 +132,9 @@ export const SaveHistory: React.FC = () => {
               <FileDiff size={18} />
             </div>
             {diff.isFetching && <div className="pp-notice">正在计算差异……</div>}
-            {!diff.isFetching && diff.data.items.length === 0 && <div className="empty-state">所选范围没有匹配的变化。</div>}
+            {!diff.isFetching && diffItems.length === 0 && <div className="empty-state">所选范围没有匹配的变化。</div>}
             <div className="source-list">
-              {diff.data.items.map((change, index) => <ChangeRow key={`${change.category}-${change.kind}-${change.id}-${index}`} change={change} />)}
+              {diffItems.map((change, index) => <ChangeRow key={`${change.category}-${change.kind}-${change.id}-${index}`} change={change} />)}
             </div>
           </section>
         </>
@@ -150,7 +151,7 @@ const ChangeRow: React.FC<{ change: SaveHistoryChange }> = ({ change }) => (
     <div className="source-copy">
       <strong>{change.label || change.id}</strong>
       <span>{categoryLabels[change.category] || change.category} · {change.id}{typeof change.delta === 'number' ? ` · Δ ${change.delta > 0 ? '+' : ''}${change.delta}` : ''}</span>
-      {change.fields.map((field) => (
+      {(change.fields ?? []).map((field) => (
         <span key={`${change.id}-${field.field}`}><b>{fieldLabels[field.field] || field.field}</b>：{field.before || '—'} <ArrowRight size={12} /> {field.after || '—'}</span>
       ))}
     </div>
@@ -173,6 +174,11 @@ const summarize = (summary?: SaveHistoryDiffSummary) => {
   ];
 };
 
-const snapshotLabel = (item: SaveHistorySnapshot) => `${new Date(item.generated_at || item.captured_at).toLocaleString('zh-CN')} · ${item.counts.players} 玩家 · ${item.fingerprint.slice(0, 8)}`;
-const snapshotShort = (item: SaveHistorySnapshot) => new Date(item.generated_at || item.captured_at).toLocaleString('zh-CN');
+const snapshotTime = (item: SaveHistorySnapshot) => {
+  const value = item.generated_at || item.captured_at;
+  const parsed = value ? new Date(value) : null;
+  return parsed && Number.isFinite(parsed.getTime()) ? parsed.toLocaleString('zh-CN') : '时间未知';
+};
+const snapshotLabel = (item: SaveHistorySnapshot) => `${snapshotTime(item)} · ${item.counts?.players ?? 0} 玩家 · ${(item.fingerprint || item.id || 'unknown').slice(0, 8)}`;
+const snapshotShort = snapshotTime;
 const formatBytes = (value: number) => value >= 1024 * 1024 ? `${(value / 1024 / 1024).toFixed(1)} MiB` : value >= 1024 ? `${(value / 1024).toFixed(1)} KiB` : `${value} B`;

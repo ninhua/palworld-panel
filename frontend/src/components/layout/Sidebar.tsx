@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { NavLink, useLocation } from 'react-router-dom';
 import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useServerStore } from '../../store/useServerStore';
 import { appRoutes, type AppRoute } from '../../routes';
 import { appConfig } from '../../config/defaults';
 import { useI18n, type TranslationKey } from '../../i18n';
+import { patchInfoApi } from '../../api/patchInfo';
 
 interface SidebarProps {
   mobile?: boolean;
@@ -70,6 +72,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobile = false, onNavigate }) 
   const online = metrics?.current_players || 0;
   const capacity = metrics?.max_players || 32;
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
+  const patchInfo = useQuery({
+    queryKey: ['patch-info'],
+    queryFn: patchInfoApi.get,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const panelVersion = patchInfo.data?.patch.version || '';
+
 
   useEffect(() => {
     const activeEntry = sidebarGroups
@@ -105,7 +115,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobile = false, onNavigate }) 
         </NavLink>
         <NavLink to="/dashboard" onClick={onNavigate} className="pp-brandmark__copy" aria-hidden={collapsed}>
           <span className="pp-brandmark__name">{appConfig.brand}</span>
-          <span className="pp-brandmark__tag">dev · server control</span>
+          <span className="pp-brandmark__tag">{panelVersion ? `v${panelVersion}` : 'version pending'} · server control</span>
         </NavLink>
         {!mobile && (
           <button

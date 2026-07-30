@@ -77,7 +77,7 @@ func TestPatchInfo(t *testing.T) {
 	for _, feature := range response.Data.Patch.Features {
 		features[feature] = true
 	}
-	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-self-update", "external-package-updater", "exec-hot-updater", "startup-health-rollback", "audit-log-response-display", "player-presence-history", "host-save-migrator", "diagnostic-console", "config-revision-history", "save-history-diff", "crash-loop-guard", "incident-center", "signed-incident-webhook", "uid-remap-custom-version-sentinel", "palops-offline-map", "palops-map-poi", "self-hosted-maplibre", "offline-vendor-mirror", "diagnostic-health-checks", "redacted-support-bundle"} {
+	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-self-update", "external-package-updater", "exec-hot-updater", "startup-health-rollback", "audit-log-response-display", "player-presence-history", "host-save-migrator", "diagnostic-console", "config-revision-history", "save-history-diff", "crash-loop-guard", "incident-center", "signed-incident-webhook", "uid-remap-custom-version-sentinel", "palops-offline-map", "palops-map-poi", "self-hosted-maplibre", "offline-vendor-mirror", "diagnostic-health-checks", "redacted-support-bundle", "maplibre-raster-fallback", "save-history-response-normalization", "panel-version-display"} {
 		if !features[expected] {
 			t.Fatalf("missing feature %q in %#v", expected, response.Data.Patch.Features)
 		}

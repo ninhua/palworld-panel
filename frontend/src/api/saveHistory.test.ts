@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from './client';
-import { saveHistoryApi } from './saveHistory';
+import { mapSaveHistoryDiff, mapSaveHistoryState, saveHistoryApi } from './saveHistory';
 
 describe('save history API', () => {
   beforeEach(() => vi.restoreAllMocks());
@@ -17,5 +17,21 @@ describe('save history API', () => {
     expect(get).toHaveBeenNthCalledWith(2, '/save/history/diff', {
       params: { from: 'old', to: 'new', category: 'items', q: 'wood', limit: 100, offset: 0 },
     });
+  });
+
+  it('normalizes nullable legacy arrays instead of exposing render-time nulls', () => {
+    const history = mapSaveHistoryState({ source: null, retention: null, items: null });
+    const diff = mapSaveHistoryDiff({
+      from: null,
+      to: null,
+      summary: null,
+      items: [{ id: 'player-1', category: 'players', kind: 'added', fields: null }],
+    });
+
+    expect(history.source).toEqual({ id: '', name: '', kind: '' });
+    expect(history.items).toEqual([]);
+    expect(diff.items).toHaveLength(1);
+    expect(diff.items[0].fields).toEqual([]);
+    expect(diff.summary.players_added).toBe(0);
   });
 });

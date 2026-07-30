@@ -143,3 +143,20 @@ func TestSaveHistoryAPIListsSanitizedSnapshotsAndDiffs(t *testing.T) {
 		t.Fatalf("corrupt history response: %d %s", corrupt.Code, corrupt.Body.String())
 	}
 }
+
+func TestSaveHistoryChangesAlwaysReturnsJSONArrays(t *testing.T) {
+	if changes := saveHistoryChanges(nil); changes == nil {
+		t.Fatal("nil changes must normalize to an empty slice")
+	}
+	changes := saveHistoryChanges([]saveindex.HistoryChange{{ID: "player-1", Fields: nil}})
+	if len(changes) != 1 || changes[0].Fields == nil {
+		t.Fatalf("nil fields were not normalized: %#v", changes)
+	}
+	body, err := json.Marshal(changes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != `[{"category":"","kind":"","id":"player-1","label":"","fields":[]}]` {
+		t.Fatalf("unexpected JSON: %s", body)
+	}
+}

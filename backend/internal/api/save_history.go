@@ -125,8 +125,19 @@ func (s Server) diffSaveHistory(c *gin.Context) {
 	}
 	ok(c, saveHistoryDiffView{
 		From: saveHistorySnapshotViewFor(diff.From), To: saveHistorySnapshotViewFor(diff.To),
-		Summary: diff.Summary, Total: diff.Total, Limit: diff.Limit, Offset: diff.Offset, Items: diff.Items,
+		Summary: diff.Summary, Total: diff.Total, Limit: diff.Limit, Offset: diff.Offset, Items: saveHistoryChanges(diff.Items),
 	})
+}
+
+func saveHistoryChanges(items []saveindex.HistoryChange) []saveindex.HistoryChange {
+	changes := make([]saveindex.HistoryChange, len(items))
+	copy(changes, items)
+	for index := range changes {
+		if changes[index].Fields == nil {
+			changes[index].Fields = []saveindex.HistoryFieldChange{}
+		}
+	}
+	return changes
 }
 
 func saveHistorySnapshotViews(items []saveindex.HistorySnapshot) []saveHistorySnapshotView {
