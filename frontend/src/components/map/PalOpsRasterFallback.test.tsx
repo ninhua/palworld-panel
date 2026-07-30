@@ -33,4 +33,26 @@ describe('PalOpsRasterFallback', () => {
     fireEvent.click(screen.getByRole('button', { name: '测试地点' }));
     expect(onSelect).toHaveBeenCalledWith(marker);
   });
+  it('supports pointer dragging to pan the compatibility map', () => {
+    render(
+      <PalOpsRasterFallback
+        layerID="palpagos"
+        markers={[]}
+        selectedKey={null}
+        tilesAvailable
+        reason="MapLibre initialization failed"
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const viewport = screen.getByLabelText('Palpagos 兼容瓦片地图');
+    viewport.scrollLeft = 120;
+    viewport.scrollTop = 80;
+    fireEvent.pointerDown(viewport, { pointerId: 7, button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(viewport, { pointerId: 7, clientX: 60, clientY: 70 });
+    expect(viewport.scrollLeft).toBe(160);
+    expect(viewport.scrollTop).toBe(110);
+    fireEvent.pointerUp(viewport, { pointerId: 7, clientX: 60, clientY: 70 });
+  });
+
 });

@@ -17,7 +17,12 @@ const mocks = vi.hoisted(() => ({
   waitForSaveSourcesBackend: vi.fn(),
 }));
 
+const taskMocks = vi.hoisted(() => ({
+  waitForJob: vi.fn(),
+}));
+
 vi.mock('../api/saveSources', () => ({ saveSourcesApi: mocks, waitForSaveSourcesBackend: mocks.waitForSaveSourcesBackend }));
+vi.mock('../api/tasks', () => ({ tasksApi: taskMocks }));
 
 const renderSaveSources = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -29,18 +34,49 @@ const status = {
   counts: { players: 0, guilds: 0, bases: 0, pals: 0, containers: 0, map_entities: 0 },
 };
 
+const runtimeSave = {
+  available: true, server_active: true, source_id: 'server', source_name: '当前服务器存档',
+  world_id: 'RUNNINGWORLD0123456789ABCDEF0123', state: 'running',
+};
+
 describe('SaveSources archive inspection', () => {
   afterEach(() => cleanup());
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.list.mockResolvedValue({ items: [], active_status: status });
+    mocks.list.mockResolvedValue({ items: [], active_status: status, runtime_save: runtimeSave });
     mocks.waitForSaveSourcesBackend.mockResolvedValue(null);
     mocks.selectImportCandidate.mockImplementation(async (inspectionID: string, candidateID: string) => ({
       id: inspectionID, file_name: 'world.zip', candidates: [], selected_candidate_id: candidateID,
       requires_selection: false, expires_at: '2026-07-22T13:00:00Z',
     }));
     mocks.importInspected.mockResolvedValue({ id: 'save-1', name: 'Imported', kind: 'import' });
+    mocks.planHostMigration.mockResolvedValue({
+      steam_id: '76561198000000000', source_uid: 'source', target_uid: 'target', strategy: 'direct',
+      can_execute: true, source_player_file: 'Players/host.sav', source_dps_exists: false,
+      target_player_exists: false, target_dps_exists: false, warnings: [],
+    });
+    mocks.executeHostMigration.mockResolvedValue({ id: 'job-migrate', type: 'host_save_migration', status: 'waiting', progress: 0, message: 'queued', created_at: '' });
+    taskMocks.waitForJob.mockImplementation(async (_id: string, onUpdate?: (job: unknown) => void) => {
+      onUpdate?.({ id: 'job-migrate', type: 'host_save_migration', status: 'running', progress: 55, message: 'publishing world', created_at: '' });
+      return { id: 'job-migrate', type: 'host_save_migration', status: 'success', progress: 100, message: 'completed', created_at: '' };
+    });
+  });
+
+  it('shows the running world separately from the active parsing source', async () => {
+    mocks.list.mockResolvedValue({
+      items: [{ id: 'import-active', name: '分析副本', kind: 'import', active: true, created_at: '', updated_at: '' }],
+      active_status: status,
+      runtime_save: runtimeSave,
+    });
+    renderSaveSources();
+
+    expect(await screen.findByText('RUNNINGWORLD0123456789ABCDEF0123')).toBeInTheDocument();
+    expect(screen.getByText('服务器实际运行世界')).toBeInTheDocument();
+    expect(screen.getByText('PalPanel 当前分析源')).toBeInTheDocument();
+    expect(screen.getAllByText('分析副本').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/服务器实际运行的是/)).toBeInTheDocument();
+    expect(screen.getByText(/“用于分析”不会部署或切换运行世界/)).toBeInTheDocument();
   });
 
   it('requires an explicit valid world selection before importing a multi-world archive', async () => {
@@ -142,9 +178,24 @@ describe('SaveSources archive inspection', () => {
 describe('SaveSources host migration recovery', () => {
   afterEach(() => cleanup());
 
-  it('waits for the backend after a temporary gateway error and confirms the migrated source', async () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.waitForSaveSourcesBackend.mockResolvedValue(null);
+    mocks.planHostMigration.mockResolvedValue({
+      steam_id: '76561198000000000', source_uid: 'source', target_uid: 'target', strategy: 'direct',
+      can_execute: true, source_player_file: 'Players/host.sav', source_dps_exists: false,
+      target_player_exists: false, target_dps_exists: false, warnings: [],
+    });
+    mocks.executeHostMigration.mockResolvedValue({ id: 'job-migrate', type: 'host_save_migration', status: 'waiting', progress: 0, message: 'queued', created_at: '' });
+    taskMocks.waitForJob.mockImplementation(async (_id: string, onUpdate?: (job: unknown) => void) => {
+      onUpdate?.({ id: 'job-migrate', type: 'host_save_migration', status: 'running', progress: 55, message: 'publishing world', created_at: '' });
+      return { id: 'job-migrate', type: 'host_save_migration', status: 'success', progress: 100, message: 'completed', created_at: '' };
+    });
+  });
+
+  it('recovers after an uncertain migration submission response and confirms the migrated source', async () => {
     const source = { id: 'import-1', name: '单人世界', kind: 'import', active: false, created_at: '', updated_at: '', warnings: [] };
-    mocks.list.mockResolvedValue({ items: [source], active_status: status });
+    mocks.list.mockResolvedValue({ items: [source], active_status: status, runtime_save: runtimeSave });
     mocks.planHostMigration.mockResolvedValue({
       steam_id: '76561198000000000', source_uid: 'source', target_uid: 'target', strategy: 'direct', can_execute: true,
       source_player_file: 'Players/source.sav', source_dps_exists: false, target_player_exists: false, target_dps_exists: false, warnings: [],
@@ -153,7 +204,7 @@ describe('SaveSources host migration recovery', () => {
     Object.setPrototypeOf(temporaryError, (await import('../api/client')).ApiError.prototype);
     mocks.executeHostMigration.mockRejectedValue(temporaryError);
     mocks.waitForSaveSourcesBackend.mockResolvedValue({
-      items: [{ ...source, id: 'migrated-1', name: '单人世界（主机迁移）' }], active_status: status,
+      items: [{ ...source, id: 'migrated-1', name: '单人世界（主机迁移）' }], active_status: status, runtime_save: runtimeSave,
     });
     vi.spyOn(window, 'prompt').mockReturnValue('76561198000000000');
     vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -162,7 +213,27 @@ describe('SaveSources host migration recovery', () => {
     expect(await screen.findByText('单人世界')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '主机迁移' }));
 
-    expect(await screen.findByText(/后端重启期间网关曾返回临时错误/)).toBeInTheDocument();
+    expect(await screen.findByText(/网关连接曾短暂中断/)).toBeInTheDocument();
     expect(mocks.waitForSaveSourcesBackend).toHaveBeenCalledTimes(1);
   });
+
+  it('submits host migration as a background job and follows its progress', async () => {
+    mocks.list.mockResolvedValue({
+      items: [{ id: 'save-imported', name: 'Imported world', kind: 'import', active: false, created_at: '', updated_at: '' }],
+      active_status: status,
+      runtime_save: runtimeSave,
+    });
+    vi.spyOn(window, 'prompt').mockReturnValue('76561198000000000');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderSaveSources();
+
+    fireEvent.click(await screen.findByRole('button', { name: '主机迁移' }));
+
+    await waitFor(() => expect(mocks.executeHostMigration).toHaveBeenCalledWith(
+      'save-imported', '76561198000000000', 'Imported world（主机迁移）',
+    ));
+    await waitFor(() => expect(taskMocks.waitForJob).toHaveBeenCalledWith('job-migrate', expect.any(Function)));
+    expect(await screen.findByText(/迁移完成：Imported world/)).toBeInTheDocument();
+  });
+
 });

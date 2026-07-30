@@ -47,10 +47,11 @@ type HistorySnapshot struct {
 }
 
 type HistoryState struct {
-	Retention     int               `json:"retention"`
-	MaxTotalBytes int64             `json:"max_total_bytes"`
-	TotalBytes    int64             `json:"total_bytes"`
-	Items         []HistorySnapshot `json:"items"`
+	Retention          int               `json:"retention"`
+	MinimumIntervalSec int               `json:"minimum_interval_seconds"`
+	MaxTotalBytes      int64             `json:"max_total_bytes"`
+	TotalBytes         int64             `json:"total_bytes"`
+	Items              []HistorySnapshot `json:"items"`
 }
 
 type HistoryDiffOptions struct {
@@ -161,7 +162,7 @@ func (m *Manager) EnsureHistorySnapshot() error {
 	if err != nil {
 		return err
 	}
-	return m.captureHistorySnapshot(worldDir, cached.Fingerprint, cached.Index)
+	return m.captureHistorySnapshotIfDue(worldDir, cached.Fingerprint, cached.Index)
 }
 
 func (m *Manager) RemoveHistoryForWorld(worldDir string) error {
@@ -181,13 +182,21 @@ func (m *Manager) History() (HistoryState, error) {
 	}
 	m.historyMu.Lock()
 	defer m.historyMu.Unlock()
-	manifest, err := m.loadHistoryManifest(historyWorldKey(worldDir))
+	worldKey := historyWorldKey(worldDir)
+	manifest, err := m.loadHistoryManifest(worldKey)
 	if err != nil {
 		return HistoryState{}, err
 	}
+	removed := compactHistoryItems(&manifest.Items, m.historyMinInterval)
+	if len(removed) > 0 {
+		if err := m.writeHistoryManifest(manifest); err != nil {
+			return HistoryState{}, err
+		}
+		removeHistoryArchives(m, worldKey, removed)
+	}
 	state := HistoryState{
-		Retention: historyRetention, MaxTotalBytes: historyMaxTotalBytes,
-		Items: append([]HistorySnapshot(nil), manifest.Items...),
+		Retention: historyRetention, MinimumIntervalSec: int(m.historyMinInterval / time.Second),
+		MaxTotalBytes: historyMaxTotalBytes, Items: append([]HistorySnapshot(nil), manifest.Items...),
 	}
 	for _, item := range state.Items {
 		state.TotalBytes += item.SizeBytes
@@ -237,6 +246,14 @@ func (m *Manager) HistoryDiff(fromID, toID string, options HistoryDiffOptions) (
 }
 
 func (m *Manager) captureHistorySnapshot(worldDir, fingerprint string, index Index) error {
+	return m.captureHistorySnapshotWithPolicy(worldDir, fingerprint, index, true)
+}
+
+func (m *Manager) captureHistorySnapshotIfDue(worldDir, fingerprint string, index Index) error {
+	return m.captureHistorySnapshotWithPolicy(worldDir, fingerprint, index, false)
+}
+
+func (m *Manager) captureHistorySnapshotWithPolicy(worldDir, fingerprint string, index Index, force bool) error {
 	fingerprint = strings.ToLower(strings.TrimSpace(fingerprint))
 	if !historyFingerprintPattern.MatchString(fingerprint) {
 		return errors.New("invalid save history fingerprint")
@@ -248,10 +265,16 @@ func (m *Manager) captureHistorySnapshot(worldDir, fingerprint string, index Ind
 	if err != nil {
 		return err
 	}
+	compacted := compactHistoryItems(&manifest.Items, m.historyMinInterval)
 	if len(manifest.Items) > 0 && manifest.Items[0].Fingerprint == fingerprint {
-		return nil
+		return m.persistHistoryCompaction(worldKey, manifest, compacted)
 	}
 	capturedAt := time.Now().UTC()
+	if !force && m.historyMinInterval > 0 && len(manifest.Items) > 0 {
+		if latestAt, ok := historySnapshotTime(manifest.Items[0]); ok && capturedAt.Sub(latestAt) < m.historyMinInterval {
+			return m.persistHistoryCompaction(worldKey, manifest, compacted)
+		}
+	}
 	generatedAt := strings.TrimSpace(index.GeneratedAt)
 	if _, err := time.Parse(time.RFC3339, generatedAt); err != nil {
 		generatedAt = capturedAt.Format(time.RFC3339)
@@ -303,17 +326,83 @@ func (m *Manager) captureHistorySnapshot(worldDir, fingerprint string, index Ind
 		return err
 	}
 	manifest.Items = append([]HistorySnapshot{metadata}, manifest.Items...)
-	removed := pruneHistoryItems(&manifest.Items)
+	removed := append(compacted, pruneHistoryItems(&manifest.Items)...)
 	if err := m.writeHistoryManifest(manifest); err != nil {
 		_ = os.Remove(path)
 		return err
 	}
-	for _, item := range removed {
+	removeHistoryArchives(m, worldKey, removed)
+	return nil
+}
+
+func (m *Manager) persistHistoryCompaction(worldKey string, manifest historyManifest, removed []HistorySnapshot) error {
+	if len(removed) == 0 {
+		return nil
+	}
+	if err := m.writeHistoryManifest(manifest); err != nil {
+		return err
+	}
+	removeHistoryArchives(m, worldKey, removed)
+	return nil
+}
+
+func removeHistoryArchives(m *Manager, worldKey string, items []HistorySnapshot) {
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		if _, exists := seen[item.ID]; exists {
+			continue
+		}
+		seen[item.ID] = struct{}{}
 		if oldPath, err := m.historySnapshotPath(worldKey, item.ID); err == nil {
 			_ = os.Remove(oldPath)
 		}
 	}
-	return nil
+}
+
+// compactHistoryItems keeps snapshots far enough apart for meaningful semantic
+// comparisons. The newest snapshot is retained, and a dense history keeps its
+// oldest entry as a baseline when no item reaches the configured interval.
+func compactHistoryItems(items *[]HistorySnapshot, minimumInterval time.Duration) []HistorySnapshot {
+	if items == nil || len(*items) < 2 || minimumInterval <= 0 {
+		return nil
+	}
+	original := *items
+	kept := make([]HistorySnapshot, 0, len(original))
+	removed := make([]HistorySnapshot, 0, len(original))
+	kept = append(kept, original[0])
+	lastAt, lastOK := historySnapshotTime(original[0])
+	for index := 1; index < len(original); index++ {
+		item := original[index]
+		itemAt, itemOK := historySnapshotTime(item)
+		if !lastOK || !itemOK || lastAt.Sub(itemAt) >= minimumInterval {
+			kept = append(kept, item)
+			lastAt, lastOK = itemAt, itemOK
+			continue
+		}
+		removed = append(removed, item)
+	}
+	if len(kept) == 1 && len(original) > 1 {
+		oldest := original[len(original)-1]
+		kept = append(kept, oldest)
+		for index, item := range removed {
+			if item.ID == oldest.ID {
+				removed = append(removed[:index], removed[index+1:]...)
+				break
+			}
+		}
+	}
+	*items = kept
+	return removed
+}
+
+func historySnapshotTime(item HistorySnapshot) (time.Time, bool) {
+	for _, value := range []string{item.CapturedAt, item.GeneratedAt} {
+		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+		if err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func (m *Manager) historyRoot() string {

@@ -29,7 +29,9 @@ export const PalOpsRasterFallback: React.FC<Props> = ({
   onSelect,
 }) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ pointerID: number; clientX: number; clientY: number; scrollLeft: number; scrollTop: number } | null>(null);
   const [zoom, setZoom] = useState(initialZoom);
+  const [dragging, setDragging] = useState(false);
   const layer = palOpsMapLayers[layerID];
   const tileCount = 2 ** zoom;
   const mapSize = layer.tileSize * tileCount;
@@ -56,12 +58,64 @@ export const PalOpsRasterFallback: React.FC<Props> = ({
     return () => window.clearTimeout(timer);
   }, [layerID, zoom]);
 
+  const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('button')) return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    dragRef.current = {
+      pointerID: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      scrollLeft: viewport.scrollLeft,
+      scrollTop: viewport.scrollTop,
+    };
+    setDragging(true);
+    viewport.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  };
+
+  const moveDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const viewport = viewportRef.current;
+    const drag = dragRef.current;
+    if (!viewport || !drag || drag.pointerID !== event.pointerId) return;
+    viewport.scrollLeft = drag.scrollLeft - (event.clientX - drag.clientX);
+    viewport.scrollTop = drag.scrollTop - (event.clientY - drag.clientY);
+    event.preventDefault();
+  };
+
+  const finishDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const viewport = viewportRef.current;
+    const drag = dragRef.current;
+    if (!drag || drag.pointerID !== event.pointerId) return;
+    dragRef.current = null;
+    setDragging(false);
+    try {
+      if (viewport?.hasPointerCapture?.(event.pointerId)) viewport.releasePointerCapture(event.pointerId);
+    } catch {
+      // The browser may release capture before pointercancel/lostpointercapture.
+    }
+  };
+
+  const loseDragCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerID !== event.pointerId) return;
+    dragRef.current = null;
+    setDragging(false);
+  };
+
   return (
     <div className="absolute inset-0 bg-slate-950">
       <div
         ref={viewportRef}
-        className="absolute inset-0 overflow-auto overscroll-contain"
+        className={`absolute inset-0 select-none overflow-auto overscroll-contain ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        style={{ touchAction: 'none' }}
         aria-label={`${layer.displayName} 兼容瓦片地图`}
+        onPointerDown={startDrag}
+        onPointerMove={moveDrag}
+        onPointerUp={finishDrag}
+        onPointerCancel={finishDrag}
+        onLostPointerCapture={loseDragCapture}
       >
         <div
           className="relative m-auto shrink-0 bg-slate-900"
@@ -123,6 +177,7 @@ export const PalOpsRasterFallback: React.FC<Props> = ({
       <div className="pointer-events-none absolute left-4 top-4 z-20 max-w-md rounded-xl border border-amber-400/30 bg-slate-950/90 px-3 py-2 text-[10px] font-semibold leading-4 text-amber-100 shadow-lg backdrop-blur">
         <p>兼容瓦片模式 · MapLibre 回退</p>
         <p className="mt-1 text-slate-300">{reason}</p>
+        <p className="mt-1 text-slate-400">按住鼠标或单指拖动地图；滚轮、双指或左下角按钮缩放。</p>
       </div>
 
       <div className="absolute bottom-4 left-4 z-20 flex overflow-hidden rounded-lg border border-white/15 bg-slate-950/90 shadow-lg">

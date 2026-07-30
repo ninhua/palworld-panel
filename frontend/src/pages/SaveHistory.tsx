@@ -44,21 +44,25 @@ export const SaveHistory: React.FC = () => {
   const [query, setQuery] = useState('');
   const [selectionSourceID, setSelectionSourceID] = useState('');
   const sourceID = history.data?.source.id || '';
+  const minimumIntervalSeconds = history.data?.minimum_interval_seconds || 15 * 60;
 
   useEffect(() => {
     const items = history.data?.items || [];
     if (sourceID !== selectionSourceID) {
+      const newestID = items[0]?.id || '';
       setSelectionSourceID(sourceID);
-      setToID(items[0]?.id || '');
-      setFromID(items[1]?.id || '');
+      setToID(newestID);
+      setFromID(selectMeaningfulBaseline(items, minimumIntervalSeconds, newestID)?.id || '');
       return;
     }
     const ids = new Set(items.map((item) => item.id));
     const nextTo = toID && ids.has(toID) ? toID : items[0]?.id || '';
-    const nextFrom = fromID && ids.has(fromID) && fromID !== nextTo ? fromID : items.find((item) => item.id !== nextTo)?.id || '';
+    const nextFrom = fromID && ids.has(fromID) && fromID !== nextTo
+      ? fromID
+      : selectMeaningfulBaseline(items, minimumIntervalSeconds, nextTo)?.id || '';
     if (nextTo !== toID) setToID(nextTo);
     if (nextFrom !== fromID) setFromID(nextFrom);
-  }, [fromID, history.data?.items, selectionSourceID, sourceID, toID]);
+  }, [fromID, history.data?.items, minimumIntervalSeconds, selectionSourceID, sourceID, toID]);
 
   const diff = useQuery({
     queryKey: ['save-history-diff', sourceID, fromID, toID, category, query],
@@ -79,7 +83,7 @@ export const SaveHistory: React.FC = () => {
         <div>
           <p className="eyebrow">Save activity</p>
           <h1>存档事件与差异</h1>
-          <p>把两次存档快照之间的字段变化解释成玩家、装备、帕鲁、公会和据点事件。</p>
+          <p>按有意义的时间间隔采样存档，并把前后状态解释成玩家、装备、帕鲁、公会和据点事件。</p>
         </div>
         <button type="button" className="pp-button" onClick={() => void history.refetch()} disabled={history.isFetching}>
           <RefreshCw className={history.isFetching ? 'animate-spin' : ''} size={15} />刷新
@@ -95,18 +99,18 @@ export const SaveHistory: React.FC = () => {
           </div>
           <span className={`state-pill ${snapshots.length >= 2 ? 'ok' : 'warn'}`}>{snapshots.length >= 2 ? '可比较' : '需要两份快照'}</span>
         </div>
-        <Metric label="保留上限" value={history.data?.retention || 24} suffix="份" />
+        <Metric label="采样间隔" value={Math.max(1, Math.round(minimumIntervalSeconds / 60))} suffix="分钟" />
         <Metric label="当前快照" value={snapshots.length} suffix="份" />
         <Metric label="推断事件" value={diff.data?.event_total || 0} suffix="项" />
       </section>
 
       {notice && <div className="pp-notice">{notice}</div>}
       {!history.isLoading && snapshots.length < 2 && (
-        <div className="pp-notice">首次打开已记录当前成功索引。存档变化后执行“存档中心 → 重建”或等待自动索引，形成第二份快照后即可比较。</div>
+        <div className="pp-notice">首次打开已记录当前成功索引。自动索引会按采样间隔保存快照，避免几十秒内生成大量无意义记录；也可以在存档中心手动重建分析索引。</div>
       )}
 
       <section className="pp-card">
-        <div className="pp-card-head"><div><h2>比较范围</h2><p>快照按当前激活存档源隔离；搜索会同时匹配玩家、物品、帕鲁、据点和原始字段。</p></div><History size={18} /></div>
+        <div className="pp-card-head"><div><h2>比较范围</h2><p>默认选择与最新快照至少相隔一个采样周期的基线；旧的过密快照会自动去重压缩。搜索会同时匹配玩家、物品、帕鲁、据点和原始字段。</p></div><History size={18} /></div>
         <div className="content-grid two-column">
           <label className="field-label">较早快照
             <select aria-label="较早快照" value={fromID} onChange={(event) => setFromID(event.target.value)}>
@@ -296,6 +300,35 @@ const summarize = (summary?: SaveHistoryDiffSummary) => {
     { label: '容器', value: summary.containers_added + summary.containers_removed + summary.containers_changed },
     { label: '物品', value: summary.items_increased + summary.items_decreased },
   ];
+};
+
+const snapshotTimestamp = (item: SaveHistorySnapshot): number | null => {
+  for (const value of [item.captured_at, item.generated_at]) {
+    const parsed = value ? new Date(value).getTime() : Number.NaN;
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+};
+
+export const selectMeaningfulBaseline = (
+  items: SaveHistorySnapshot[],
+  minimumIntervalSeconds: number,
+  newestID = items[0]?.id || '',
+): SaveHistorySnapshot | undefined => {
+  const newest = items.find((item) => item.id === newestID) || items[0];
+  if (!newest) return undefined;
+  const candidates = items.filter((item) => item.id !== newest.id);
+  if (candidates.length === 0) return undefined;
+  const newestAt = snapshotTimestamp(newest);
+  const minimumGap = Math.max(0, minimumIntervalSeconds) * 1000;
+  if (newestAt != null && minimumGap > 0) {
+    const spaced = candidates.find((item) => {
+      const itemAt = snapshotTimestamp(item);
+      return itemAt != null && newestAt - itemAt >= minimumGap;
+    });
+    if (spaced) return spaced;
+  }
+  return candidates[candidates.length - 1] || candidates[0];
 };
 
 const snapshotTime = (item: SaveHistorySnapshot) => {

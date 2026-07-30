@@ -150,6 +150,12 @@ export const createPalOpsMapOptions = (
     // Keep an explicit tuple because MapLibre reads both entries during its first resize.
     maxCanvasSize: [...mapLibreMaxCanvasSize],
     attributionControl: false,
+    dragPan: true,
+    scrollZoom: true,
+    touchZoomRotate: true,
+    keyboard: true,
+    boxZoom: true,
+    doubleClickZoom: true,
     dragRotate: false,
     pitchWithRotate: false,
     touchPitch: false,

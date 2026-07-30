@@ -1813,10 +1813,11 @@ components:
     SaveHistoryState:
       type: object
       additionalProperties: false
-      required: [source, retention, max_total_bytes, total_bytes, items]
+      required: [source, retention, minimum_interval_seconds, max_total_bytes, total_bytes, items]
       properties:
         source: {$ref: '#/components/schemas/SaveHistorySource'}
         retention: {type: integer, minimum: 1}
+        minimum_interval_seconds: {type: integer, minimum: 0}
         max_total_bytes: {type: integer, format: int64, minimum: 1}
         total_bytes: {type: integer, format: int64, minimum: 0}
         items: {type: array, items: {$ref: '#/components/schemas/SaveHistorySnapshot'}}

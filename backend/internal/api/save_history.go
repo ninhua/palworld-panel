@@ -30,11 +30,12 @@ type saveHistorySnapshotView struct {
 }
 
 type saveHistoryStateView struct {
-	Source        saveHistorySourceView     `json:"source"`
-	Retention     int                       `json:"retention"`
-	MaxTotalBytes int64                     `json:"max_total_bytes"`
-	TotalBytes    int64                     `json:"total_bytes"`
-	Items         []saveHistorySnapshotView `json:"items"`
+	Source                 saveHistorySourceView     `json:"source"`
+	Retention              int                       `json:"retention"`
+	MinimumIntervalSeconds int                       `json:"minimum_interval_seconds"`
+	MaxTotalBytes          int64                     `json:"max_total_bytes"`
+	TotalBytes             int64                     `json:"total_bytes"`
+	Items                  []saveHistorySnapshotView `json:"items"`
 }
 
 type saveHistoryDiffView struct {
@@ -79,7 +80,8 @@ func (s Server) listSaveHistory(c *gin.Context) {
 	}
 	ok(c, saveHistoryStateView{
 		Source:    saveHistorySourceView{ID: source.ID, Name: source.Name, Kind: source.Kind},
-		Retention: state.Retention, MaxTotalBytes: state.MaxTotalBytes, TotalBytes: state.TotalBytes,
+		Retention: state.Retention, MinimumIntervalSeconds: state.MinimumIntervalSec,
+		MaxTotalBytes: state.MaxTotalBytes, TotalBytes: state.TotalBytes,
 		Items: saveHistorySnapshotViews(state.Items),
 	})
 }

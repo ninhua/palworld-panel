@@ -17,8 +17,18 @@ import (
 	"palpanel/internal/appconfig"
 	"palpanel/internal/breeding"
 	"palpanel/internal/db"
+	"palpanel/internal/playerpresence"
 	"palpanel/internal/saveindex"
 )
+
+type runtimeSaveView struct {
+	Available    bool   `json:"available"`
+	ServerActive bool   `json:"server_active"`
+	SourceID     string `json:"source_id"`
+	SourceName   string `json:"source_name"`
+	WorldID      string `json:"world_id"`
+	State        string `json:"state"`
+}
 
 func initializeSaveSources(cfg appconfig.Config, store *db.Store, manager *saveindex.Manager) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -43,7 +53,26 @@ func (s Server) listSaveSources(c *gin.Context) {
 		return
 	}
 	status := s.saveIndex.Status(c.Request.Context())
-	ok(c, gin.H{"items": items, "active_status": status})
+	runtimeSave := runtimeSaveView{
+		SourceID:   "server",
+		SourceName: "当前服务器存档",
+		State:      "unknown",
+	}
+	if scope, scopeErr := playerpresence.ResolveServerScope(s.cfg.ServerDirectory()); scopeErr == nil {
+		runtimeSave.Available = true
+		runtimeSave.WorldID = scope.WorldID
+	}
+	if serverStatus, statusErr := s.server.Status(c.Request.Context()); statusErr == nil {
+		runtimeSave.State = strings.ToLower(strings.TrimSpace(serverStatus.Container.Status))
+		if runtimeSave.State == "" && !serverStatus.Container.Exists {
+			runtimeSave.State = "not_found"
+		}
+		switch runtimeSave.State {
+		case "running", "starting", "restarting":
+			runtimeSave.ServerActive = true
+		}
+	}
+	ok(c, gin.H{"items": items, "active_status": status, "runtime_save": runtimeSave})
 }
 
 func (s Server) importSaveSource(c *gin.Context) {

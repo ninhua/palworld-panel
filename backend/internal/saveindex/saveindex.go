@@ -37,19 +37,20 @@ var (
 )
 
 type Manager struct {
-	cfg         appconfig.Config
-	client      *http.Client
-	mu          sync.Mutex
-	sourceMu    sync.RWMutex
-	sourcePath  string
-	cacheMu     sync.Mutex
-	cache       *cacheFile
-	cacheMTime  time.Time
-	cacheLoaded bool
-	oodleMu     sync.Mutex
-	oodleAt     time.Time
-	oodle       *bool
-	historyMu   sync.Mutex
+	cfg                appconfig.Config
+	client             *http.Client
+	mu                 sync.Mutex
+	sourceMu           sync.RWMutex
+	sourcePath         string
+	cacheMu            sync.Mutex
+	cache              *cacheFile
+	cacheMTime         time.Time
+	cacheLoaded        bool
+	oodleMu            sync.Mutex
+	oodleAt            time.Time
+	oodle              *bool
+	historyMu          sync.Mutex
+	historyMinInterval time.Duration
 
 	autoMu          sync.Mutex
 	rebuildInFlight bool
@@ -65,9 +66,17 @@ func NewManager(cfg appconfig.Config) *Manager {
 	if timeout <= 0 {
 		timeout = 120 * time.Second
 	}
+	historyMinutes := cfg.SaveHistoryIntervalMinutes
+	if historyMinutes <= 0 {
+		historyMinutes = 15
+	}
+	if historyMinutes > 24*60 {
+		historyMinutes = 24 * 60
+	}
 	return &Manager{
-		cfg:    cfg,
-		client: &http.Client{Timeout: timeout},
+		cfg:                cfg,
+		client:             &http.Client{Timeout: timeout},
+		historyMinInterval: time.Duration(historyMinutes) * time.Minute,
 	}
 }
 
@@ -514,7 +523,7 @@ func (m *Manager) Rebuild(ctx context.Context) (Index, Status, error) {
 		status.State = "stale"
 		status.Stale = true
 	}
-	if historyErr := m.captureHistorySnapshot(worldDir, fp, index); historyErr != nil {
+	if historyErr := m.captureHistorySnapshotIfDue(worldDir, fp, index); historyErr != nil {
 		index.Warnings = appendUnique(index.Warnings, "save index history snapshot could not be stored")
 		status.Warnings = appendUnique(status.Warnings, "save index history snapshot could not be stored")
 	}

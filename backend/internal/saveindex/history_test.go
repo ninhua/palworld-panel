@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"palpanel/internal/appconfig"
 )
@@ -254,6 +255,51 @@ func TestHistorySkipsDuplicateFingerprint(t *testing.T) {
 	}
 }
 
+func TestHistoryCaptureIfDueSkipsDenseSnapshots(t *testing.T) {
+	manager, worldDir := testHistoryManager(t)
+	manager.historyMinInterval = 15 * time.Minute
+
+	if err := manager.captureHistorySnapshot(worldDir, strings.Repeat("7", 32), Index{GeneratedAt: "2026-07-30T10:00:00Z"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.captureHistorySnapshotIfDue(worldDir, strings.Repeat("8", 32), Index{GeneratedAt: "2026-07-30T10:01:00Z"}); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := manager.loadHistoryManifest(historyWorldKey(worldDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Items) != 1 || manifest.Items[0].Fingerprint != strings.Repeat("7", 32) {
+		t.Fatalf("dense automatic snapshot was not skipped: %#v", manifest.Items)
+	}
+}
+
+func TestCompactHistoryItemsKeepsSpacedSnapshotsAndOldestBaseline(t *testing.T) {
+	items := []HistorySnapshot{
+		{ID: "newest", CapturedAt: "2026-07-30T10:30:00Z"},
+		{ID: "dense", CapturedAt: "2026-07-30T10:29:00Z"},
+		{ID: "middle", CapturedAt: "2026-07-30T10:15:00Z"},
+		{ID: "oldest", CapturedAt: "2026-07-30T10:00:00Z"},
+	}
+	removed := compactHistoryItems(&items, 15*time.Minute)
+	if got := []string{items[0].ID, items[1].ID, items[2].ID}; strings.Join(got, ",") != "newest,middle,oldest" {
+		t.Fatalf("unexpected compacted history: %#v", items)
+	}
+	if len(removed) != 1 || removed[0].ID != "dense" {
+		t.Fatalf("unexpected removed snapshots: %#v", removed)
+	}
+
+	denseOnly := []HistorySnapshot{
+		{ID: "latest", CapturedAt: "2026-07-30T10:03:00Z"},
+		{ID: "middle", CapturedAt: "2026-07-30T10:02:00Z"},
+		{ID: "baseline", CapturedAt: "2026-07-30T10:01:00Z"},
+	}
+	compactHistoryItems(&denseOnly, 15*time.Minute)
+	if len(denseOnly) != 2 || denseOnly[0].ID != "latest" || denseOnly[1].ID != "baseline" {
+		t.Fatalf("dense history did not preserve the oldest baseline: %#v", denseOnly)
+	}
+}
+
 func testHistoryManager(t *testing.T) (*Manager, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -268,7 +314,11 @@ func testHistoryManager(t *testing.T) (*Manager, string) {
 		ServerDir: root + "/server", SaveIndexerEnabled: true,
 		SaveIndexCacheDir: filepath.Join(root, "cache"), SaveIndexTimeoutSeconds: 1,
 	}.WithServerDirectoryState()
-	return NewManager(cfg), worldDir
+	manager := NewManager(cfg)
+	// Most history unit tests intentionally create snapshots back-to-back.
+	// Production rebuilds use the configured semantic sampling interval.
+	manager.historyMinInterval = 0
+	return manager, worldDir
 }
 
 func floatPointer(value float64) *float64 { return &value }

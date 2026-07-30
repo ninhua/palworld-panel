@@ -163,6 +163,9 @@ func TestLoadUsesProductionNetworkAndProviderDefaults(t *testing.T) {
 	if cfg.AITranslationTimeoutSeconds != 90 {
 		t.Fatalf("AITranslationTimeoutSeconds = %d", cfg.AITranslationTimeoutSeconds)
 	}
+	if cfg.SaveHistoryIntervalMinutes != 15 {
+		t.Fatalf("SaveHistoryIntervalMinutes = %d", cfg.SaveHistoryIntervalMinutes)
+	}
 	if cfg.MonitorRetentionDays != DefaultMonitorRetentionDays {
 		t.Fatalf("MonitorRetentionDays = %d", cfg.MonitorRetentionDays)
 	}
@@ -177,9 +180,10 @@ func TestLoadUsesProductionNetworkAndProviderDefaults(t *testing.T) {
 func TestLoadRejectsInvalidScalarConfiguration(t *testing.T) {
 	tests := map[string]string{
 		"PALPANEL_REQUIRE_AUTH":                        "sometimes",
-		"PALPANEL_DIAGNOSTIC_SHELL_ENABLED":           "sometimes",
+		"PALPANEL_DIAGNOSTIC_SHELL_ENABLED":            "sometimes",
 		"PALPANEL_STEAM_API_TIMEOUT_SECONDS":           "soon",
 		"PALPANEL_AI_TRANSLATION_TIMEOUT_SECONDS":      "0",
+		"PALPANEL_SAVE_HISTORY_INTERVAL_MINUTES":       "0",
 		"PALPANEL_RCON_PORT":                           "70000",
 		"PALPANEL_LISTEN_ADDR":                         "127.0.0.1:not-a-port",
 		"PALPANEL_MONITOR_RETENTION_DAYS":              "-1",

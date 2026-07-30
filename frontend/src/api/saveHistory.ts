@@ -22,6 +22,7 @@ export interface SaveHistorySnapshot {
 export interface SaveHistoryState {
   source: { id: string; name: string; kind: string };
   retention: number;
+  minimum_interval_seconds: number;
   max_total_bytes: number;
   total_bytes: number;
   items: SaveHistorySnapshot[];
@@ -125,6 +126,7 @@ const emptySummary: SaveHistoryDiffSummary = {
 export const emptySaveHistoryState: SaveHistoryState = {
   source: { id: '', name: '', kind: '' },
   retention: 24,
+  minimum_interval_seconds: 15 * 60,
   max_total_bytes: 0,
   total_bytes: 0,
   items: [],
@@ -173,6 +175,7 @@ export const mapSaveHistoryState = (value: unknown): SaveHistoryState => {
   return {
     source: { id: text(source.id), name: text(source.name), kind: text(source.kind) },
     retention: number(data.retention, emptySaveHistoryState.retention),
+    minimum_interval_seconds: number(data.minimum_interval_seconds, emptySaveHistoryState.minimum_interval_seconds),
     max_total_bytes: number(data.max_total_bytes),
     total_bytes: number(data.total_bytes),
     items: Array.isArray(data.items) ? data.items.map(mapSaveHistorySnapshot).filter((item) => item.id) : [],

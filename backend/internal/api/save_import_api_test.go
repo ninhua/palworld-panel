@@ -212,6 +212,34 @@ func TestSaveSourceImportRemovesNestedUnselectedWorlds(t *testing.T) {
 	}
 }
 
+func TestSaveSourceImportRemovesWorldOptionSav(t *testing.T) {
+	_, router, _ := newSaveImportTestServer(t)
+	archive := writeSaveImportArchive(t, map[string]string{
+		"world/Level.sav":       "level",
+		"world/WorldOption.sav": "stale-world-options",
+		"world/Players/one.sav": "player",
+	})
+	response := performSaveImportMultipart(t, router, "/api/save-sources/import", archive, "World option cleanup")
+	if response.Code != http.StatusOK {
+		t.Fatalf("import response = %d: %s", response.Code, response.Body.String())
+	}
+	var imported struct {
+		Data db.SaveSource `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &imported); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(imported.Data.Path, "WorldOption.sav")); !os.IsNotExist(err) {
+		t.Fatalf("WorldOption.sav was retained after import: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(imported.Data.Path, "Level.sav")); err != nil {
+		t.Fatalf("Level.sav was removed with WorldOption.sav: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(imported.Data.Path, "Players", "one.sav")); err != nil {
+		t.Fatalf("player save was removed with WorldOption.sav: %v", err)
+	}
+}
+
 func TestSaveSourceImportRoutesRequireServerControl(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

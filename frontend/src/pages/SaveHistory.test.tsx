@@ -23,7 +23,7 @@ describe('SaveHistory page', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.list.mockResolvedValue({ source: { id: 'server', name: '当前服务器存档', kind: 'server' }, retention: 24, max_total_bytes: 536870912, total_bytes: 220, items: [newer, older] });
+    mocks.list.mockResolvedValue({ source: { id: 'server', name: '当前服务器存档', kind: 'server' }, retention: 24, minimum_interval_seconds: 900, max_total_bytes: 536870912, total_bytes: 220, items: [newer, older] });
     mocks.diff.mockResolvedValue({
       from: older, to: newer,
       summary: {
@@ -45,6 +45,25 @@ describe('SaveHistory page', () => {
       }],
       items: [{ category: 'items', kind: 'increased', id: 'Stone', label: 'Stone', delta: 4, fields: [{ field: 'count', before: '0', after: '4' }] }],
     });
+  });
+
+
+  it('selects a meaningful baseline instead of the immediately adjacent autosave', async () => {
+    const adjacent = { ...newer, id: '20260729T102900Z-cccccccccccccccccccccccccccccccc', fingerprint: 'cccccccccccccccccccccccccccccccc', generated_at: '2026-07-29T10:29:00Z', captured_at: '2026-07-29T10:29:01Z' };
+    const latest = { ...newer, id: '20260729T103000Z-dddddddddddddddddddddddddddddddd', fingerprint: 'dddddddddddddddddddddddddddddddd', generated_at: '2026-07-29T10:30:00Z', captured_at: '2026-07-29T10:30:01Z' };
+    mocks.list.mockResolvedValue({
+      source: { id: 'server', name: '当前服务器存档', kind: 'server' },
+      retention: 24, minimum_interval_seconds: 900, max_total_bytes: 536870912, total_bytes: 340,
+      items: [latest, adjacent, older],
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(mocks.diff).toHaveBeenCalledWith(expect.objectContaining({
+      from: older.id,
+      to: latest.id,
+    })));
+    expect(mocks.diff).not.toHaveBeenCalledWith(expect.objectContaining({ from: adjacent.id, to: latest.id }));
   });
 
   it('selects the two latest snapshots and renders bounded item changes', async () => {

@@ -547,6 +547,11 @@ func (s Server) importClaimedSaveSource(c *gin.Context, inspectionID, requestedN
 		fail(c, http.StatusInternalServerError, "save_import_store_failed", "unselected save worlds could not be removed")
 		return
 	}
+	if err := removeImportedWorldOption(destination); err != nil {
+		_ = os.RemoveAll(destination)
+		fail(c, http.StatusInternalServerError, "save_import_store_failed", "WorldOption.sav could not be removed from the imported world")
+		return
+	}
 	name := strings.TrimSpace(requestedName)
 	if name == "" {
 		name = inspection.Name
@@ -561,6 +566,26 @@ func (s Server) importClaimedSaveSource(c *gin.Context, inspectionID, requestedN
 		return
 	}
 	ok(c, source)
+}
+
+func removeImportedWorldOption(worldPath string) error {
+	entries, err := os.ReadDir(worldPath)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.EqualFold(entry.Name(), "WorldOption.sav") {
+			continue
+		}
+		target := filepath.Join(worldPath, entry.Name())
+		if !pathWithin(worldPath, target) {
+			return errors.New("unsafe WorldOption.sav path")
+		}
+		if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 func safeSaveImportCandidatePath(root, relative string) (string, error) {

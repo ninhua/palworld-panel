@@ -102,6 +102,7 @@ type Config struct {
 	SaveIndexerURL                string
 	SaveIndexCacheDir             string
 	SaveIndexTimeoutSeconds       int
+	SaveHistoryIntervalMinutes    int
 	SaveSourcesDir                string
 	PalCalcBridgeURL              string
 	PalCalcTimeoutSeconds         int
@@ -346,6 +347,7 @@ func Load() (Config, error) {
 		SaveIndexerURL:                env("PALPANEL_SAVE_INDEXER_URL", "http://127.0.0.1:8090"),
 		SaveIndexCacheDir:             saveIndexCacheDir,
 		SaveIndexTimeoutSeconds:       envInt("PALPANEL_SAVE_INDEX_TIMEOUT_SECONDS", 120),
+		SaveHistoryIntervalMinutes:    envInt("PALPANEL_SAVE_HISTORY_INTERVAL_MINUTES", 15),
 		SaveSourcesDir:                filepath.Join(dataDir, "save-sources"),
 		PalCalcBridgeURL:              strings.TrimRight(env("PALPANEL_PALCALC_URL", "http://127.0.0.1:8091"), "/"),
 		PalCalcTimeoutSeconds:         envInt("PALPANEL_PALCALC_TIMEOUT_SECONDS", 300),
@@ -409,6 +411,9 @@ func Load() (Config, error) {
 	}
 	if cfg.AITranslationTimeoutSeconds < 1 || cfg.AITranslationTimeoutSeconds > 600 {
 		return Config{}, fmt.Errorf("PALPANEL_AI_TRANSLATION_TIMEOUT_SECONDS must be between 1 and 600")
+	}
+	if cfg.SaveHistoryIntervalMinutes < 1 || cfg.SaveHistoryIntervalMinutes > 24*60 {
+		return Config{}, fmt.Errorf("PALPANEL_SAVE_HISTORY_INTERVAL_MINUTES must be between 1 and 1440")
 	}
 	if cfg.MonitorRetentionDays < 0 || cfg.MonitorRetentionDays > 3650 {
 		return Config{}, fmt.Errorf("PALPANEL_MONITOR_RETENTION_DAYS must be between 0 and 3650")
@@ -684,6 +689,7 @@ func validateScalarEnvironment() error {
 		"PALPANEL_GAME_DATA_TIMEOUT_MS",
 		"PALPANEL_GAME_DATA_MAX_MB",
 		"PALPANEL_SAVE_INDEX_TIMEOUT_SECONDS",
+		"PALPANEL_SAVE_HISTORY_INTERVAL_MINUTES",
 		"PALPANEL_PERF_SLOW_REQUEST_MS",
 		"PALPANEL_MONITOR_RETENTION_DAYS",
 		"PALPANEL_AI_TRANSLATION_TIMEOUT_SECONDS",

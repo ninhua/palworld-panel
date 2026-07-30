@@ -1385,6 +1385,7 @@ export interface components {
     "SaveHistoryState": {
       "items": Array<components["schemas"]["SaveHistorySnapshot"]>;
       "max_total_bytes": number;
+      "minimum_interval_seconds": number;
       "retention": number;
       "source": components["schemas"]["SaveHistorySource"];
       "total_bytes": number;
