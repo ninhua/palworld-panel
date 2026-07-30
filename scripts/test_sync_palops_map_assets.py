@@ -95,6 +95,13 @@ class SyncPalOpsMapAssetsTest(unittest.TestCase):
         )
 
 
+    def test_preserves_original_poi_subcategory_groups(self) -> None:
+        self.assertEqual(SYNC_MODULE.normalize_category("Fast Travel"), "poi-location-fast-travel")
+        self.assertEqual(SYNC_MODULE.normalize_category("Dungeon"), "poi-location-dungeon")
+        self.assertEqual(SYNC_MODULE.normalize_category("Field Boss"), "poi-enemy-field-boss")
+        self.assertEqual(SYNC_MODULE.normalize_category("Enemy Camp"), "poi-enemy-enemy-camp")
+        self.assertEqual(SYNC_MODULE.normalize_category("Crude Oil"), "poi-resource-crude-oil")
+
     def test_selects_map_release_archives_and_honors_exact_name(self) -> None:
         metadata = {
             "assets": [

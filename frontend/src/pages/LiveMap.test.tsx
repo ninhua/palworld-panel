@@ -51,8 +51,8 @@ describe('LiveMap', () => {
       dataset_version: 'fixture-dataset-1',
       maps: ['palpagos', 'world-tree'],
       locales: ['zh-CN', 'en-US', 'ja-JP'],
-      poi_total: 2,
-      category_counts: { 'poi-location-fast-travel': 1, 'poi-resource-oil': 1 },
+      poi_total: 3,
+      category_counts: { 'poi-location-fast-travel': 1, 'poi-location-dungeon': 1, 'poi-resource-oil': 1 },
       tiles_available: true,
       tile_policy: 'fixture',
     });
@@ -61,6 +61,11 @@ describe('LiveMap', () => {
         id: 'poi-fast-travel-1', type: 'fast-travel', category: 'poi-location-fast-travel', map: 'palpagos',
         name: '樱花岛快速传送', aliases: ['Sakurajima'], keywords: ['fast travel'], mapX: -696, mapY: 87,
         worldX: -83955, worldY: -161464, source: 'fixture', license: 'CC-BY-SA-4.0', version: 'fixture', iconId: 'fast-travel',
+      },
+      {
+        id: 'poi-dungeon-1', type: 'dungeon', category: 'poi-location-dungeon', map: 'palpagos',
+        name: '樱花岛地牢', aliases: [], keywords: ['dungeon'], mapX: -610, mapY: 92,
+        worldX: -81000, worldY: -120000, source: 'fixture', license: 'CC-BY-SA-4.0', version: 'fixture', iconId: 'dungeon',
       },
       {
         id: 'poi-oil-1', type: 'oil', category: 'poi-resource-oil', map: 'palpagos',
@@ -87,9 +92,14 @@ describe('LiveMap', () => {
 
     expect(await screen.findByText('PalOps MapLibre 离线世界地图')).toBeInTheDocument();
     expect(await screen.findByText('樱花岛快速传送 地图标记')).toBeInTheDocument();
+    expect(await screen.findByText('樱花岛地牢 地图标记')).toBeInTheDocument();
     expect(await screen.findByText('Builder 地图标记')).toBeInTheDocument();
     expect(screen.queryByText('原油节点 地图标记')).not.toBeInTheDocument();
     expect(screen.queryByText('捣蛋猫 地图标记')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '地牢' }));
+    expect(screen.queryByText('樱花岛地牢 地图标记')).not.toBeInTheDocument();
+    expect(screen.getByText('樱花岛快速传送 地图标记')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '资源' }));
     expect(await screen.findByText('原油节点 地图标记')).toBeInTheDocument();

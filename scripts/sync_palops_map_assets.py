@@ -948,9 +948,9 @@ def normalize_category(value: Any) -> str:
     if raw.startswith("poi-"):
         return raw
     group = "location"
-    if any(token in raw for token in ("boss", "enemy", "dungeon", "raid")):
+    if any(token in raw for token in ("boss", "enemy", "raid", "camp", "encounter", "event")):
         group = "enemy"
-    elif any(token in raw for token in ("ore", "resource", "mining", "sulfur", "coal", "quartz")):
+    elif any(token in raw for token in ("ore", "resource", "mining", "sulfur", "coal", "quartz", "oil", "meteorite")):
         group = "resource"
     elif any(token in raw for token in ("collect", "chest", "effigy", "journal")):
         group = "collectible"

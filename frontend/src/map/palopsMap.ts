@@ -133,13 +133,13 @@ export const palOpsMapLayers: Record<PalOpsMapLayerID, PalOpsMapLayer> = {
   },
 };
 
-export const palOpsPoiGroups: Array<{ id: PalOpsPoiGroup; zh: string; en: string; color: string }> = [
-  { id: 'location', zh: '地点', en: 'Locations', color: '#38bdf8' },
-  { id: 'enemy', zh: '敌人与首领', en: 'Enemies', color: '#ef4444' },
-  { id: 'resource', zh: '资源', en: 'Resources', color: '#f59e0b' },
-  { id: 'collectible', zh: '收集', en: 'Collectibles', color: '#a855f7' },
-  { id: 'npc', zh: 'NPC', en: 'NPCs', color: '#14b8a6' },
-  { id: 'pal', zh: '帕鲁', en: 'Pals', color: '#84cc16' },
+export const palOpsPoiGroups: Array<{ id: PalOpsPoiGroup; zh: string; en: string; ja: string; color: string }> = [
+  { id: 'location', zh: '地点', en: 'Locations', ja: '場所', color: '#38bdf8' },
+  { id: 'enemy', zh: '敌人与首领', en: 'Enemies & Bosses', ja: '敵とボス', color: '#ef4444' },
+  { id: 'resource', zh: '资源', en: 'Resources', ja: '資源', color: '#f59e0b' },
+  { id: 'collectible', zh: '收集品', en: 'Collectibles', ja: '収集品', color: '#a855f7' },
+  { id: 'npc', zh: 'NPC', en: 'NPCs', ja: 'NPC', color: '#14b8a6' },
+  { id: 'pal', zh: '帕鲁', en: 'Pals', ja: 'パル', color: '#84cc16' },
 ];
 
 const groupByPrefix: Array<[string, PalOpsPoiGroup]> = [
@@ -150,6 +150,129 @@ const groupByPrefix: Array<[string, PalOpsPoiGroup]> = [
   ['poi-npc-', 'npc'],
   ['poi-pal-', 'pal'],
 ];
+
+type PalOpsPoiCategoryLabels = { zh: string; en: string; ja: string };
+
+const poiCategoryLabels: Record<string, PalOpsPoiCategoryLabels> = {
+  'fast-travel': { zh: '快速传送', en: 'Fast Travel', ja: 'ファストトラベル' },
+  waypoint: { zh: '快速传送', en: 'Fast Travel', ja: 'ファストトラベル' },
+  dungeon: { zh: '地牢', en: 'Dungeons', ja: 'ダンジョン' },
+  'region-name': { zh: '地区名称', en: 'Region Names', ja: '地域名' },
+  region: { zh: '地区名称', en: 'Region Names', ja: '地域名' },
+  tower: { zh: '高塔', en: 'Towers', ja: '塔' },
+  special: { zh: '特殊地点', en: 'Special Locations', ja: '特殊地点' },
+  'special-location': { zh: '特殊地点', en: 'Special Locations', ja: '特殊地点' },
+  landmark: { zh: '地标', en: 'Landmarks', ja: 'ランドマーク' },
+  'field-boss': { zh: '区域头目', en: 'Field Bosses', ja: 'フィールドボス' },
+  'alpha-pal': { zh: '区域头目', en: 'Field Bosses', ja: 'フィールドボス' },
+  boss: { zh: '区域头目', en: 'Bosses', ja: 'ボス' },
+  'tower-boss': { zh: '高塔首领', en: 'Tower Bosses', ja: '塔ボス' },
+  'enemy-camp': { zh: '敌人营地', en: 'Enemy Camps', ja: '敵のキャンプ' },
+  camp: { zh: '敌人营地', en: 'Enemy Camps', ja: '敵のキャンプ' },
+  encounter: { zh: '遭遇目标', en: 'Encounters', ja: 'エンカウント' },
+  event: { zh: '事件地点', en: 'Events', ja: 'イベント地点' },
+  raid: { zh: '突袭地点', en: 'Raids', ja: 'レイド地点' },
+  ore: { zh: '矿石', en: 'Ore', ja: '鉱石' },
+  mining: { zh: '矿点', en: 'Mining Nodes', ja: '採掘地点' },
+  coal: { zh: '煤炭', en: 'Coal', ja: '石炭' },
+  sulfur: { zh: '硫磺', en: 'Sulfur', ja: '硫黄' },
+  quartz: { zh: '纯水晶', en: 'Pure Quartz', ja: 'ピュアクォーツ' },
+  'pure-quartz': { zh: '纯水晶', en: 'Pure Quartz', ja: 'ピュアクォーツ' },
+  oil: { zh: '原油', en: 'Crude Oil', ja: '原油' },
+  'crude-oil': { zh: '原油', en: 'Crude Oil', ja: '原油' },
+  meteorite: { zh: '陨石', en: 'Meteorites', ja: '隕石' },
+  resource: { zh: '资源点', en: 'Resource Nodes', ja: '資源地点' },
+  chest: { zh: '宝箱', en: 'Treasure Chests', ja: '宝箱' },
+  'treasure-chest': { zh: '宝箱', en: 'Treasure Chests', ja: '宝箱' },
+  effigy: { zh: '翠叶鼠雕像', en: 'Lifmunk Effigies', ja: 'クルリス像' },
+  'lifmunk-effigy': { zh: '翠叶鼠雕像', en: 'Lifmunk Effigies', ja: 'クルリス像' },
+  journal: { zh: '手记', en: 'Journals', ja: '手記' },
+  memo: { zh: '手记', en: 'Journals', ja: '手記' },
+  note: { zh: '手记', en: 'Notes', ja: 'メモ' },
+  egg: { zh: '帕鲁蛋', en: 'Pal Eggs', ja: 'パルのタマゴ' },
+  'pal-egg': { zh: '帕鲁蛋', en: 'Pal Eggs', ja: 'パルのタマゴ' },
+  merchant: { zh: '商人', en: 'Merchants', ja: '商人' },
+  vendor: { zh: '商人', en: 'Vendors', ja: '商人' },
+  'wandering-merchant': { zh: '流浪商人', en: 'Wandering Merchants', ja: '放浪商人' },
+  'black-marketeer': { zh: '黑市商人', en: 'Black Marketeers', ja: '闇商人' },
+  'pal-merchant': { zh: '帕鲁商人', en: 'Pal Merchants', ja: 'パル商人' },
+  npc: { zh: '其他 NPC', en: 'Other NPCs', ja: 'その他のNPC' },
+  spawn: { zh: '帕鲁刷新点', en: 'Pal Spawns', ja: 'パル出現地点' },
+  'pal-spawn': { zh: '帕鲁刷新点', en: 'Pal Spawns', ja: 'パル出現地点' },
+  habitat: { zh: '帕鲁栖息地', en: 'Pal Habitats', ja: 'パル生息地' },
+  'lucky-pal': { zh: '闪光帕鲁', en: 'Lucky Pals', ja: 'ラッキーパル' },
+  pal: { zh: '其他帕鲁地点', en: 'Other Pal Locations', ja: 'その他のパル地点' },
+};
+
+const poiCategoryOrder: Record<PalOpsPoiGroup, string[]> = {
+  location: ['fast-travel', 'waypoint', 'dungeon', 'region-name', 'region', 'tower', 'special-location', 'special', 'landmark'],
+  enemy: ['field-boss', 'alpha-pal', 'boss', 'tower-boss', 'enemy-camp', 'camp', 'encounter', 'event', 'raid'],
+  resource: ['ore', 'mining', 'coal', 'sulfur', 'pure-quartz', 'quartz', 'oil', 'crude-oil', 'meteorite', 'resource'],
+  collectible: ['chest', 'treasure-chest', 'lifmunk-effigy', 'effigy', 'journal', 'memo', 'note', 'pal-egg', 'egg'],
+  npc: ['wandering-merchant', 'black-marketeer', 'pal-merchant', 'merchant', 'vendor', 'npc'],
+  pal: ['pal-spawn', 'spawn', 'habitat', 'lucky-pal', 'pal'],
+};
+
+const chineseCategoryTokens: Record<string, string> = {
+  fast: '快速', travel: '传送', dungeon: '地牢', region: '地区', name: '名称', tower: '高塔',
+  special: '特殊', location: '地点', landmark: '地标', field: '区域', boss: '头目', alpha: '头目',
+  enemy: '敌人', camp: '营地', encounter: '遭遇', event: '事件', raid: '突袭', ore: '矿石',
+  mining: '矿点', coal: '煤炭', sulfur: '硫磺', pure: '纯', quartz: '水晶', oil: '原油',
+  crude: '原油', meteorite: '陨石', resource: '资源点', chest: '宝箱', treasure: '宝箱',
+  effigy: '雕像', lifmunk: '翠叶鼠', journal: '手记', memo: '手记', note: '笔记', egg: '蛋',
+  merchant: '商人', wandering: '流浪', black: '黑市', marketeer: '商人', vendor: '商人', npc: 'NPC',
+  pal: '帕鲁', spawn: '刷新点', habitat: '栖息地', lucky: '闪光',
+};
+
+const palOpsPoiCategorySlug = (category: string, group: PalOpsPoiGroup | null): string => {
+  if (!group) return category.trim().toLowerCase().replaceAll('_', '-').replaceAll(' ', '-');
+  const prefix = `poi-${group}-`;
+  return category.startsWith(prefix) ? category.slice(prefix.length) : category;
+};
+
+const titleCaseCategory = (slug: string): string => slug
+  .split('-')
+  .filter(Boolean)
+  .map((part) => part.length > 0 ? `${part[0].toUpperCase()}${part.slice(1)}` : part)
+  .join(' ');
+
+const fallbackChineseCategory = (slug: string): string => slug
+  .split('-')
+  .filter(Boolean)
+  .map((part) => chineseCategoryTokens[part] ?? part)
+  .join('');
+
+export const palOpsPoiGroupLabel = (group: PalOpsPoiGroup, locale: Locale | string): string => {
+  const definition = palOpsPoiGroups.find((item) => item.id === group);
+  if (!definition) return group;
+  const normalized = normalizePalOpsLocale(locale);
+  if (normalized === 'en-US') return definition.en;
+  if (normalized === 'ja-JP') return definition.ja;
+  return definition.zh;
+};
+
+export const palOpsPoiCategoryLabel = (category: string, locale: Locale | string): string => {
+  const group = palOpsPoiGroup(category);
+  const slug = palOpsPoiCategorySlug(category, group);
+  const labels = poiCategoryLabels[slug];
+  const normalized = normalizePalOpsLocale(locale);
+  if (labels) {
+    if (normalized === 'en-US') return labels.en;
+    if (normalized === 'ja-JP') return labels.ja;
+    return labels.zh;
+  }
+  if (normalized === 'en-US') return titleCaseCategory(slug);
+  if (normalized === 'ja-JP') return titleCaseCategory(slug);
+  return fallbackChineseCategory(slug);
+};
+
+export const palOpsPoiCategoryRank = (category: string): number => {
+  const group = palOpsPoiGroup(category);
+  if (!group) return Number.MAX_SAFE_INTEGER;
+  const slug = palOpsPoiCategorySlug(category, group);
+  const index = poiCategoryOrder[group].indexOf(slug);
+  return index >= 0 ? index : poiCategoryOrder[group].length + 100;
+};
 
 const manifestPath = '/map/palops/palpanel-map-assets.json';
 

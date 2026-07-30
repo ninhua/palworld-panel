@@ -9,7 +9,10 @@ import {
   mapPointToPixel,
   normalizePalOpsLocale,
   palOpsMapLayers,
+  palOpsPoiCategoryLabel,
+  palOpsPoiCategoryRank,
   palOpsPoiGroup,
+  palOpsPoiGroupLabel,
   worldToPalOpsMap,
 } from './palopsMap';
 
@@ -56,10 +59,17 @@ describe('PalOps map data helpers', () => {
     expect(normalizePalOpsLocale('zh-CN')).toBe('zh-CN');
   });
 
-  it('groups the fixed POI categories', () => {
+  it('groups and labels fixed POI subcategories', () => {
     expect(palOpsPoiGroup('poi-location-fast-travel')).toBe('location');
     expect(palOpsPoiGroup('poi-resource-oil')).toBe('resource');
     expect(palOpsPoiGroup('unknown')).toBeNull();
+    expect(palOpsPoiGroupLabel('enemy', 'zh-CN')).toBe('敌人与首领');
+    expect(palOpsPoiCategoryLabel('poi-location-fast-travel', 'zh-CN')).toBe('快速传送');
+    expect(palOpsPoiCategoryLabel('poi-enemy-field-boss', 'en-US')).toBe('Field Bosses');
+    expect(palOpsPoiCategoryLabel('poi-resource-custom-node', 'en-US')).toBe('Custom Node');
+    expect(palOpsPoiCategoryRank('poi-location-fast-travel')).toBeLessThan(
+      palOpsPoiCategoryRank('poi-location-special'),
+    );
   });
   it('rejects malformed localized POI arrays before spreading aliases', () => {
     expect(isPalOpsPoi({

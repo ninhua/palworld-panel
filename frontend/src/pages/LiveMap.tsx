@@ -17,7 +17,10 @@ import {
   mapPointInsideLayer,
   markerSearchText,
   palOpsMapLayers,
+  palOpsPoiCategoryLabel,
+  palOpsPoiCategoryRank,
   palOpsPoiGroup,
+  palOpsPoiGroupLabel,
   palOpsPoiGroups,
   palOpsPoiToMarker,
   PALOPS_DATASET_VERSION,
@@ -27,20 +30,47 @@ import {
   type PalOpsMapMarker,
   type PalOpsPoiGroup,
 } from '../map/palopsMap';
-import type { MapEntityType } from '../types';
+import type { MapEntity } from '../types';
 
-const dynamicFilters: Array<{ type: MapEntityType; label: string; color: string }> = [
-  { type: 'player', label: '玩家', color: '#0ea5e9' },
-  { type: 'base', label: '据点', color: '#f59e0b' },
-  { type: 'pal', label: '帕鲁实体', color: '#84cc16' },
-  { type: 'map_object', label: '地图对象', color: '#94a3b8' },
+type DynamicFilterID = 'guild-base' | 'custom-marker' | 'offline-player' | 'online-player' | 'pal';
+
+type LocalizedLabel = { zh: string; en: string; ja: string };
+
+interface PoiCategorySummary {
+  category: string;
+  group: PalOpsPoiGroup;
+  count: number;
+  label: string;
+  color: string;
+}
+
+interface MapFilterItem {
+  id: string;
+  label: string;
+  count: number;
+  color: string;
+  enabled: boolean;
+  onToggle: () => void;
+}
+
+const dynamicFilters: Array<{
+  id: DynamicFilterID;
+  label: LocalizedLabel;
+  color: string;
+}> = [
+  { id: 'guild-base', label: { zh: '公会据点', en: 'Guild Bases', ja: 'ギルド拠点' }, color: '#f59e0b' },
+  { id: 'custom-marker', label: { zh: '自定义标记', en: 'Custom Markers', ja: 'カスタムマーカー' }, color: '#94a3b8' },
+  { id: 'offline-player', label: { zh: '离线玩家', en: 'Offline Players', ja: 'オフラインプレイヤー' }, color: '#64748b' },
+  { id: 'online-player', label: { zh: '在线玩家', en: 'Online Players', ja: 'オンラインプレイヤー' }, color: '#10b981' },
+  { id: 'pal', label: { zh: '帕鲁实体', en: 'Pal Entities', ja: 'パル実体' }, color: '#84cc16' },
 ];
 
-const defaultDynamicFilters: Record<string, boolean> = {
-  player: true,
-  base: true,
+const defaultDynamicFilters: Record<DynamicFilterID, boolean> = {
+  'guild-base': true,
+  'custom-marker': true,
+  'offline-player': true,
+  'online-player': true,
   pal: false,
-  map_object: false,
 };
 
 const defaultPoiFilters: Record<PalOpsPoiGroup, boolean> = {
@@ -56,6 +86,21 @@ const refreshOptions = [1, 2, 3, 5, 10, 15, 30];
 const refreshStorageKey = 'palpanel-live-map-refresh-seconds';
 const defaultExploredStorageKey = `palpanel-palops-explored:${PALOPS_DATASET_VERSION}`;
 
+const localizedLabel = (label: LocalizedLabel, locale: string): string => {
+  const normalized = locale.trim().toLowerCase();
+  if (normalized.startsWith('en')) return label.en;
+  if (normalized.startsWith('ja')) return label.ja;
+  return label.zh;
+};
+
+const dynamicFilterIDForEntity = (entity: MapEntity): DynamicFilterID | null => {
+  if (entity.type === 'player') return entity.is_online ? 'online-player' : 'offline-player';
+  if (entity.type === 'base') return 'guild-base';
+  if (entity.type === 'map_object') return 'custom-marker';
+  if (entity.type === 'pal') return 'pal';
+  return null;
+};
+
 export const LiveMap: React.FC = () => {
   const queryClient = useQueryClient();
   const { locale } = useI18n();
@@ -64,6 +109,7 @@ export const LiveMap: React.FC = () => {
   const [refreshSeconds, setRefreshSeconds] = useState(() => loadRefreshSeconds());
   const [dynamicEnabled, setDynamicEnabled] = useState(defaultDynamicFilters);
   const [poiEnabled, setPoiEnabled] = useState(defaultPoiFilters);
+  const [poiCategoryEnabled, setPoiCategoryEnabled] = useState<Record<string, boolean>>({});
   const [search, setSearch] = useState('');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [onlyUndiscovered, setOnlyUndiscovered] = useState(false);
@@ -118,28 +164,77 @@ export const LiveMap: React.FC = () => {
   }, [explored, exploredStorageKey]);
 
   const normalizedSearch = search.trim().toLowerCase();
-  const dynamicMarkers = useMemo(
-    () => (mapQuery.data?.entities ?? [])
-      .filter((entity) => dynamicEnabled[entity.type])
+  const allEntities = mapQuery.data?.entities ?? [];
+  const layerEntities = useMemo(
+    () => allEntities
       .filter((entity) => Number.isFinite(entity.x) && Number.isFinite(entity.y))
       .filter((entity) => !(entity.x === 0 && entity.y === 0 && entity.z === 0))
-      .filter((entity) => detectPalOpsLayer(entity.x, entity.y) === layerID)
+      .filter((entity) => detectPalOpsLayer(entity.x, entity.y) === layerID),
+    [allEntities, layerID],
+  );
+  const dynamicFilterCounts = useMemo(() => {
+    const counts = Object.fromEntries(dynamicFilters.map((option) => [option.id, 0])) as Record<DynamicFilterID, number>;
+    for (const entity of layerEntities) {
+      const filterID = dynamicFilterIDForEntity(entity);
+      if (filterID) counts[filterID] += 1;
+    }
+    return counts;
+  }, [layerEntities]);
+  const dynamicMarkers = useMemo(
+    () => layerEntities
+      .filter((entity) => {
+        const filterID = dynamicFilterIDForEntity(entity);
+        return filterID ? dynamicEnabled[filterID] : false;
+      })
       .map(mapEntityToMarker)
       .filter((marker) => mapPointInsideLayer({ x: marker.mapX, y: marker.mapY }, palOpsMapLayers[layerID])),
-    [mapQuery.data?.entities, dynamicEnabled, layerID],
+    [layerEntities, dynamicEnabled, layerID],
   );
+
+  const poiCategorySummaries = useMemo<PoiCategorySummary[]>(() => {
+    const counts = new Map<string, number>();
+    for (const poi of poisQuery.data ?? []) {
+      if (poi.map !== layerID) continue;
+      counts.set(poi.category, (counts.get(poi.category) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([category, count]) => {
+        const group = palOpsPoiGroup(category);
+        if (!group) return null;
+        return {
+          category,
+          group,
+          count,
+          label: palOpsPoiCategoryLabel(category, locale),
+          color: palOpsPoiGroups.find((item) => item.id === group)?.color ?? '#94a3b8',
+        };
+      })
+      .filter((item): item is PoiCategorySummary => Boolean(item))
+      .sort((left, right) => {
+        const leftGroup = palOpsPoiGroups.findIndex((item) => item.id === left.group);
+        const rightGroup = palOpsPoiGroups.findIndex((item) => item.id === right.group);
+        if (leftGroup !== rightGroup) return leftGroup - rightGroup;
+        const rank = palOpsPoiCategoryRank(left.category) - palOpsPoiCategoryRank(right.category);
+        return rank || left.label.localeCompare(right.label, locale);
+      });
+  }, [poisQuery.data, layerID, locale]);
+  const poiCategoriesByGroup = useMemo(() => {
+    const grouped = Object.fromEntries(palOpsPoiGroups.map((group) => [group.id, []])) as Record<PalOpsPoiGroup, PoiCategorySummary[]>;
+    for (const category of poiCategorySummaries) grouped[category.group].push(category);
+    return grouped;
+  }, [poiCategorySummaries]);
 
   const poiMarkers = useMemo(
     () => (poisQuery.data ?? [])
       .filter((poi) => poi.map === layerID)
       .filter((poi) => {
         const group = palOpsPoiGroup(poi.category);
-        return group ? poiEnabled[group] : false;
+        return group ? (poiCategoryEnabled[poi.category] ?? poiEnabled[group]) : false;
       })
       .filter((poi) => !onlyUndiscovered || !explored.has(poi.id))
       .map(palOpsPoiToMarker)
       .filter((marker) => mapPointInsideLayer({ x: marker.mapX, y: marker.mapY }, palOpsMapLayers[layerID])),
-    [poisQuery.data, layerID, poiEnabled, onlyUndiscovered, explored],
+    [poisQuery.data, layerID, poiEnabled, poiCategoryEnabled, onlyUndiscovered, explored],
   );
 
   const markers = useMemo(() => {
@@ -152,7 +247,6 @@ export const LiveMap: React.FC = () => {
     [poiMarkers, dynamicMarkers, selectedKey],
   );
 
-  const allEntities = mapQuery.data?.entities ?? [];
   const onlinePlayers = allEntities.filter((entity) => entity.type === 'player' && entity.is_online);
   const mapError = mapQuery.error
     ? getErrorMessage(mapQuery.error)
@@ -163,6 +257,25 @@ export const LiveMap: React.FC = () => {
   const tilesAvailable = Boolean(manifestQuery.data?.tiles_available);
   const currentLayerPoiTotal = (poisQuery.data ?? []).filter((poi) => poi.map === layerID).length;
   const currentLayerExplored = (poisQuery.data ?? []).filter((poi) => poi.map === layerID && explored.has(poi.id)).length;
+
+  const toggleDynamicGroup = () => {
+    const next = !dynamicFilters.every((option) => dynamicEnabled[option.id]);
+    setDynamicEnabled(Object.fromEntries(dynamicFilters.map((option) => [option.id, next])) as Record<DynamicFilterID, boolean>);
+  };
+
+  const togglePoiGroup = (group: PalOpsPoiGroup) => {
+    const categories = poiCategoriesByGroup[group];
+    const allEnabled = categories.length > 0
+      ? categories.every((category) => poiCategoryEnabled[category.category] ?? poiEnabled[group])
+      : poiEnabled[group];
+    const next = !allEnabled;
+    setPoiEnabled((current) => ({ ...current, [group]: next }));
+    setPoiCategoryEnabled((current) => {
+      const updated = { ...current };
+      for (const category of categories) updated[category.category] = next;
+      return updated;
+    });
+  };
 
   const toggleExplored = (marker: PalOpsMapMarker) => {
     if (!marker.poi) return;
@@ -247,7 +360,7 @@ export const LiveMap: React.FC = () => {
           </div>
         </header>
 
-        <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-3">
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="mr-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400"><Layers3 size={12} />地图</span>
             {(Object.keys(palOpsMapLayers) as PalOpsMapLayerID[]).map((id) => (
@@ -256,21 +369,55 @@ export const LiveMap: React.FC = () => {
               </button>
             ))}
             <span className="mx-1 h-5 w-px bg-slate-200" />
-            {dynamicFilters.map((option) => (
-              <FilterButton key={option.type} enabled={Boolean(dynamicEnabled[option.type])} color={option.color} label={option.label} onClick={() => setDynamicEnabled((current) => ({ ...current, [option.type]: !current[option.type] }))} />
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">固定图层</span>
-            {palOpsPoiGroups.map((group) => (
-              <FilterButton key={group.id} enabled={poiEnabled[group.id]} color={group.color} label={locale === 'en-US' ? group.en : group.zh} onClick={() => setPoiEnabled((current) => ({ ...current, [group.id]: !current[group.id] }))} />
-            ))}
             <button type="button" onClick={() => setOnlyUndiscovered((value) => !value)} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[11px] font-bold ${onlyUndiscovered ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-500'}`}>
               <CheckCircle2 size={12} />仅未发现
             </button>
             <button type="button" onClick={() => setExplored(new Set())} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-500">
               <Undo2 size={12} />清空探索记录
             </button>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+            <FilterGroupCard
+              label={localizedLabel({ zh: '服务器数据', en: 'Server Data', ja: 'サーバーデータ' }, locale)}
+              color="#2563eb"
+              total={dynamicFilters.reduce((sum, option) => sum + dynamicFilterCounts[option.id], 0)}
+              enabledCount={dynamicFilters.filter((option) => dynamicEnabled[option.id]).length}
+              onToggleAll={toggleDynamicGroup}
+              items={dynamicFilters.map((option) => ({
+                id: option.id,
+                label: localizedLabel(option.label, locale),
+                count: dynamicFilterCounts[option.id],
+                color: option.color,
+                enabled: dynamicEnabled[option.id],
+                onToggle: () => setDynamicEnabled((current) => ({ ...current, [option.id]: !current[option.id] })),
+              }))}
+            />
+            {palOpsPoiGroups.map((group) => {
+              const categories = poiCategoriesByGroup[group.id];
+              const enabledCount = categories.filter((category) => poiCategoryEnabled[category.category] ?? poiEnabled[group.id]).length;
+              return (
+                <FilterGroupCard
+                  key={group.id}
+                  label={palOpsPoiGroupLabel(group.id, locale)}
+                  color={group.color}
+                  total={categories.reduce((sum, category) => sum + category.count, 0)}
+                  enabledCount={enabledCount}
+                  onToggleAll={() => togglePoiGroup(group.id)}
+                  items={categories.map((category) => ({
+                    id: category.category,
+                    label: category.label,
+                    count: category.count,
+                    color: category.color,
+                    enabled: poiCategoryEnabled[category.category] ?? poiEnabled[group.id],
+                    onToggle: () => setPoiCategoryEnabled((current) => ({
+                      ...current,
+                      [category.category]: !(current[category.category] ?? poiEnabled[group.id]),
+                    })),
+                  }))}
+                />
+              );
+            })}
           </div>
         </div>
 
@@ -289,7 +436,7 @@ export const LiveMap: React.FC = () => {
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">选中标记</p>
               {selected ? (
-                <MarkerDetails marker={selected} explored={Boolean(selected.poi && explored.has(selected.poi.id))} onToggleExplored={() => toggleExplored(selected)} />
+                <MarkerDetails marker={selected} locale={locale} explored={Boolean(selected.poi && explored.has(selected.poi.id))} onToggleExplored={() => toggleExplored(selected)} />
               ) : <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">点击玩家、据点或固定 POI 查看坐标和来源。</p>}
             </div>
 
@@ -326,13 +473,52 @@ export const LiveMap: React.FC = () => {
   );
 };
 
-const FilterButton: React.FC<{ enabled: boolean; color: string; label: string; onClick: () => void }> = ({ enabled, color, label, onClick }) => (
-  <button type="button" onClick={onClick} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[11px] font-bold ${enabled ? 'border-sky-200 bg-sky-50 text-sky-800' : 'border-slate-200 bg-white text-slate-500'}`}>
-    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />{label}
-  </button>
-);
+const FilterGroupCard: React.FC<{
+  label: string;
+  color: string;
+  total: number;
+  enabledCount: number;
+  items: MapFilterItem[];
+  onToggleAll: () => void;
+}> = ({ label, color, total, enabledCount, items, onToggleAll }) => {
+  const allEnabled = items.length > 0 && enabledCount === items.length;
+  const partiallyEnabled = enabledCount > 0 && !allEnabled;
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={partiallyEnabled ? 'mixed' : allEnabled}
+        disabled={items.length === 0}
+        onClick={onToggleAll}
+        className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-black transition ${allEnabled || partiallyEnabled ? 'border-sky-200 bg-white text-slate-800' : 'border-slate-200 bg-white/70 text-slate-500'} disabled:cursor-not-allowed disabled:opacity-50`}
+      >
+        <span className="h-3 w-3 shrink-0 rounded" style={{ backgroundColor: color, opacity: allEnabled ? 1 : partiallyEnabled ? 0.55 : 0.22 }} />
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">{total}</span>
+      </button>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            aria-label={item.label}
+            aria-pressed={item.enabled}
+            onClick={item.onToggle}
+            className={`inline-flex min-w-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold transition ${item.enabled ? 'border-sky-200 bg-white text-slate-700 shadow-sm' : 'border-slate-200 bg-white/60 text-slate-400'}`}
+          >
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color, opacity: item.enabled ? 1 : 0.28 }} />
+            <span className="max-w-32 truncate">{item.label}</span>
+            <span className="text-[9px] tabular-nums opacity-60">{item.count}</span>
+          </button>
+        ))}
+        {items.length === 0 && <span className="px-2 py-1 text-[10px] font-semibold text-slate-400">当前地图无此类标记</span>}
+      </div>
+    </section>
+  );
+};
 
-const MarkerDetails: React.FC<{ marker: PalOpsMapMarker; explored: boolean; onToggleExplored: () => void }> = ({ marker, explored, onToggleExplored }) => (
+const MarkerDetails: React.FC<{ marker: PalOpsMapMarker; locale: string; explored: boolean; onToggleExplored: () => void }> = ({ marker, locale, explored, onToggleExplored }) => (
   <div className="mt-3">
     <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: marker.color }} /><p className="truncate text-sm font-bold text-slate-800">{marker.label}</p></div>
     <p className="mt-2 break-all font-mono text-[9px] text-slate-500">{marker.poi?.id ?? marker.entity?.id}</p>
@@ -343,7 +529,7 @@ const MarkerDetails: React.FC<{ marker: PalOpsMapMarker; explored: boolean; onTo
       {marker.poi && <span className="col-span-2 font-mono">世界：{marker.poi.worldX.toFixed(0)}, {marker.poi.worldY.toFixed(0)}</span>}
       {marker.entity && <span className="col-span-2 font-mono">世界：{marker.entity.x.toFixed(0)}, {marker.entity.y.toFixed(0)}, {marker.entity.z.toFixed(0)}</span>}
       {marker.entity?.guild_name && <span className="col-span-2 truncate">公会：{marker.entity.guild_name}</span>}
-      {marker.poi && <span className="col-span-2">类别：{marker.poi.category}</span>}
+      {marker.poi && <span className="col-span-2">类别：{palOpsPoiGroupLabel(palOpsPoiGroup(marker.poi.category) ?? 'location', locale)} / {palOpsPoiCategoryLabel(marker.poi.category, locale)}</span>}
       {marker.poi && <span className="col-span-2">许可：{marker.poi.license}</span>}
     </div>
     {marker.poi && (
