@@ -218,8 +218,15 @@ export const LiveMap: React.FC = () => {
         return rank || left.label.localeCompare(right.label, locale);
       });
   }, [poisQuery.data, layerID, locale]);
-  const poiCategoriesByGroup = useMemo(() => {
-    const grouped = Object.fromEntries(palOpsPoiGroups.map((group) => [group.id, []])) as Record<PalOpsPoiGroup, PoiCategorySummary[]>;
+  const poiCategoriesByGroup = useMemo<Record<PalOpsPoiGroup, PoiCategorySummary[]>>(() => {
+    const grouped: Record<PalOpsPoiGroup, PoiCategorySummary[]> = {
+      location: [],
+      enemy: [],
+      resource: [],
+      collectible: [],
+      npc: [],
+      pal: [],
+    };
     for (const category of poiCategorySummaries) grouped[category.group].push(category);
     return grouped;
   }, [poiCategorySummaries]);
