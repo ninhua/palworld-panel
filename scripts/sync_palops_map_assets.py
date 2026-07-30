@@ -17,6 +17,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import tarfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -57,6 +58,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repository", default=os.environ.get("PALPANEL_MAP_ASSETS_REPOSITORY", ASSET_REPOSITORY))
     parser.add_argument("--ref", default=os.environ.get("PALPANEL_MAP_ASSETS_REF", ASSET_REF))
     parser.add_argument("--source-commit", default="")
+    parser.add_argument(
+        "--release-tag",
+        default=os.environ.get("PALPANEL_MAP_ASSETS_RELEASE_TAG", "latest"),
+        help="GitHub Release tag containing tile archives, or latest",
+    )
+    parser.add_argument(
+        "--release-asset",
+        default=os.environ.get("PALPANEL_MAP_ASSETS_RELEASE_ASSET", ""),
+        help="Exact GitHub Release asset name; auto-detected when omitted",
+    )
     parser.add_argument("--tiles-source-dir", type=Path)
     parser.add_argument("--allow-missing-tiles", action="store_true")
     parser.add_argument(
@@ -105,9 +116,14 @@ def github_token() -> str:
     )
 
 
-def github_request(url: str, token: str = "") -> urllib.request.Request:
+def github_request(
+    url: str,
+    token: str = "",
+    *,
+    accept: str = "application/vnd.github+json",
+) -> urllib.request.Request:
     headers = {
-        "Accept": "application/vnd.github+json",
+        "Accept": accept,
         "User-Agent": "PalPanel-map-assets-sync/2",
         "X-GitHub-Api-Version": "2022-11-28",
     }
@@ -166,6 +182,192 @@ def download_repository_archive(target: Path, repository: str, commit: str, toke
                 "PALPANEL_MAP_ASSETS_TOKEN with contents:read access"
             ) from exc
         raise
+
+
+
+
+def release_metadata(repository: str, release_tag: str, token: str = "") -> dict[str, Any]:
+    owner, name = repository_parts(repository)
+    if not release_tag or release_tag == "latest":
+        url = f"https://api.github.com/repos/{owner}/{name}/releases/latest"
+    else:
+        encoded_tag = urllib.parse.quote(release_tag, safe="")
+        url = f"https://api.github.com/repos/{owner}/{name}/releases/tags/{encoded_tag}"
+    try:
+        return read_json_url(url, token)
+    except ValueError as exc:
+        raise ValueError(
+            f"unable to read map asset GitHub Release {release_tag!r}; "
+            "verify the release exists and the token has contents:read access"
+        ) from exc
+
+
+def archive_asset_name(name: str) -> bool:
+    lowered = name.lower()
+    return lowered.endswith((".zip", ".tar.gz", ".tgz", ".tar"))
+
+
+def select_release_assets(
+    metadata: dict[str, Any],
+    requested_name: str,
+) -> list[dict[str, Any]]:
+    raw_assets = metadata.get("assets")
+    if not isinstance(raw_assets, list):
+        raise ValueError("map asset GitHub Release returned an invalid asset list")
+    assets = [asset for asset in raw_assets if isinstance(asset, dict)]
+    if requested_name:
+        selected = [asset for asset in assets if asset.get("name") == requested_name]
+        if not selected:
+            available = ", ".join(str(asset.get("name", "")) for asset in assets) or "none"
+            raise ValueError(
+                f"map asset Release does not contain {requested_name!r}; available assets: {available}"
+            )
+        return selected
+    archives = [
+        asset for asset in assets
+        if isinstance(asset.get("name"), str) and archive_asset_name(asset["name"])
+    ]
+    strong_keywords = ("palops", "map", "tile", "palpagos", "world-tree", "worldtree")
+    preferred = [
+        asset for asset in archives
+        if any(keyword in asset["name"].lower() for keyword in strong_keywords)
+    ]
+    if preferred:
+        return preferred
+    weak_keywords = ("palpanel", "poi", "asset")
+    fallback = [
+        asset for asset in archives
+        if any(keyword in asset["name"].lower() for keyword in weak_keywords)
+    ]
+    if len(fallback) == 1:
+        return fallback
+    if len(archives) == 1:
+        return archives
+    available = ", ".join(str(asset.get("name", "")) for asset in assets) or "none"
+    raise ValueError(
+        "unable to choose a map asset Release archive automatically; "
+        f"set PALPANEL_MAP_ASSETS_RELEASE_ASSET. Available assets: {available}"
+    )
+
+
+def download_release_asset(
+    target: Path,
+    asset: dict[str, Any],
+    token: str = "",
+) -> None:
+    url = asset.get("url")
+    expected_size = asset.get("size")
+    name = asset.get("name")
+    if not isinstance(url, str) or not isinstance(name, str):
+        raise ValueError("map asset GitHub Release contains invalid asset metadata")
+    if isinstance(expected_size, int) and expected_size > MAX_ARCHIVE_BYTES:
+        raise ValueError(f"map asset Release archive exceeds the size limit: {name}")
+    try:
+        request = github_request(url, token, accept="application/octet-stream")
+        with urllib.request.urlopen(request, timeout=300) as response, target.open("wb") as output:
+            total = 0
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_ARCHIVE_BYTES:
+                    raise ValueError(f"map asset Release archive exceeds the size limit: {name}")
+                output.write(chunk)
+    except urllib.error.HTTPError as exc:
+        if exc.code in {401, 403, 404}:
+            raise ValueError(
+                f"unable to download map asset Release archive {name!r}; "
+                "provide PALPANEL_MAP_ASSETS_TOKEN with contents:read access"
+            ) from exc
+        raise
+
+
+def extract_release_archive(archive: Path, extract_root: Path) -> Path:
+    extract_root.mkdir(parents=True, exist_ok=True)
+    total = 0
+    extracted_paths: set[str] = set()
+
+    def prepare(relative_text: str, size: int, mode: int = 0) -> Path | None:
+        nonlocal total
+        relative = PurePosixPath(relative_text)
+        ensure_safe_relative(relative)
+        if stat.S_ISLNK(mode):
+            raise ValueError(f"symlinks are forbidden in map Release assets: {relative}")
+        if size > MAX_FILE_BYTES:
+            raise ValueError(f"map Release asset exceeds per-file limit: {relative}")
+        suffix = Path(relative.name).suffix.lower()
+        if suffix not in ALLOWED_EXTENSIONS and relative.name not in ALLOWED_BASENAMES:
+            return None
+        total += size
+        if total > MAX_TOTAL_BYTES:
+            raise ValueError("map Release asset set exceeds the configured total size limit")
+        normalized = relative.as_posix().casefold()
+        if normalized in extracted_paths:
+            raise ValueError(f"duplicate or case-colliding Release asset path: {relative}")
+        extracted_paths.add(normalized)
+        destination = extract_root.joinpath(*relative.parts)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        return destination
+
+    lowered = archive.name.lower()
+    if lowered.endswith(".zip"):
+        with zipfile.ZipFile(archive) as bundle:
+            for info in bundle.infolist():
+                if info.is_dir():
+                    continue
+                destination = prepare(info.filename, info.file_size, info.external_attr >> 16)
+                if destination is None:
+                    continue
+                with bundle.open(info) as source, destination.open("wb") as output:
+                    shutil.copyfileobj(source, output)
+    elif lowered.endswith((".tar.gz", ".tgz", ".tar")):
+        with tarfile.open(archive, mode="r:*") as bundle:
+            for member in bundle.getmembers():
+                if member.isdir():
+                    continue
+                if member.issym() or member.islnk():
+                    raise ValueError(f"links are forbidden in map Release assets: {member.name}")
+                if not member.isfile():
+                    continue
+                destination = prepare(member.name, member.size, member.mode)
+                if destination is None:
+                    continue
+                source = bundle.extractfile(member)
+                if source is None:
+                    raise ValueError(f"unable to read map Release asset member: {member.name}")
+                with source, destination.open("wb") as output:
+                    shutil.copyfileobj(source, output)
+    else:
+        raise ValueError(f"unsupported map Release archive format: {archive.name}")
+    return extract_root
+
+
+def download_release_tile_archives(
+    destination: Path,
+    repository: str,
+    release_tag: str,
+    release_asset: str,
+    token: str,
+) -> tuple[str, list[str]]:
+    metadata = release_metadata(repository, release_tag, token)
+    selected = select_release_assets(metadata, release_asset)
+    resolved_tag = metadata.get("tag_name")
+    if not isinstance(resolved_tag, str) or not resolved_tag:
+        resolved_tag = release_tag
+    declared_total = sum(
+        asset.get("size", 0) for asset in selected if isinstance(asset.get("size"), int)
+    )
+    if declared_total > MAX_TOTAL_BYTES:
+        raise ValueError("selected map Release archives exceed the configured total size limit")
+    downloaded: list[str] = []
+    for index, asset in enumerate(selected):
+        name = str(asset["name"])
+        archive = destination.parent / f"release-{index}-{Path(name).name}"
+        download_release_asset(archive, asset, token)
+        extract_release_archive(archive, destination / f"asset-{index}")
+        downloaded.append(name)
+    return resolved_tag, downloaded
 
 
 def extract_archive(archive: Path, extract_root: Path) -> Path:
@@ -229,14 +431,17 @@ def is_xyz_tile_path(path: Path) -> bool:
     return zoom.isdigit() and x_name.isdigit() and y_name.removesuffix(".webp").isdigit()
 
 
+def has_discoverable_pois(candidate: Path) -> bool:
+    return any(is_poi_json_path(path) for path in candidate.rglob("*"))
+
+
 def has_discoverable_assets(candidate: Path) -> bool:
-    has_pois = any(is_poi_json_path(path) for path in candidate.rglob("*"))
-    if not has_pois:
-        return False
-    return any(is_xyz_tile_path(path.relative_to(candidate)) for path in candidate.rglob("*.webp"))
+    return has_discoverable_pois(candidate) and any(
+        is_xyz_tile_path(path.relative_to(candidate)) for path in candidate.rglob("*.webp")
+    )
 
 
-def find_map_root(source: Path) -> Path:
+def find_map_root(source: Path, *, require_tiles: bool = True) -> Path:
     source = source.resolve()
     candidates = [source, *(source / relative for relative in COMMON_MAP_ROOTS)]
     for manifest in source.rglob("palpanel-map-assets.json"):
@@ -253,11 +458,13 @@ def find_map_root(source: Path) -> Path:
         seen.add(candidate)
         resolved_candidates.append(candidate)
         if is_normalized_map_root(candidate):
-            return candidate
+            if not require_tiles or any(is_xyz_tile_path(path.relative_to(candidate)) for path in candidate.rglob("*.webp")):
+                return candidate
+    predicate = has_discoverable_assets if require_tiles else has_discoverable_pois
     for candidate in resolved_candidates:
-        if has_discoverable_assets(candidate):
+        if predicate(candidate):
             return candidate
-    if has_discoverable_assets(source):
+    if predicate(source):
         return source
     json_candidates = sorted(
         path.relative_to(source).as_posix()
@@ -266,7 +473,8 @@ def find_map_root(source: Path) -> Path:
     )[:20]
     suffix = f"; JSON files found: {', '.join(json_candidates)}" if json_candidates else "; no JSON files found"
     raise ValueError(
-        f"unable to locate map assets under {source}; expected localized/default POI JSON and XYZ WebP tiles{suffix}"
+        f"unable to locate map assets under {source}; expected localized/default POI JSON"
+        f"{' and XYZ WebP tiles' if require_tiles else ''}{suffix}"
     )
 
 
@@ -433,6 +641,26 @@ def copy_tiles(source: Path, destination: Path) -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(tile, target)
 
+
+
+def prune_noncanonical_tiles(root: Path) -> None:
+    for tile in sorted(root.rglob("*.webp")):
+        if not tile.is_file():
+            continue
+        relative = tile.relative_to(root)
+        canonical = (
+            len(relative.parts) == 5
+            and relative.parts[0] == "tiles"
+            and relative.parts[1] in LAYERS
+            and is_xyz_tile_path(Path(*relative.parts[1:]))
+        )
+        if is_xyz_tile_path(relative) and not canonical:
+            tile.unlink()
+    for directory in sorted((path for path in root.rglob("*") if path.is_dir()), reverse=True):
+        try:
+            directory.rmdir()
+        except OSError:
+            pass
 
 
 def localized_tokens(locale: str) -> tuple[str, ...]:
@@ -961,6 +1189,8 @@ def write_manifest(
     poi_total: int,
     categories: dict[str, int],
     tile_counts: dict[str, int],
+    release_tag: str = "",
+    release_assets: list[str] | None = None,
 ) -> None:
     files = []
     for path in sorted(destination.rglob("*")):
@@ -991,6 +1221,10 @@ def write_manifest(
             "version": source_version,
         },
         "dataset_version": dataset_version,
+        "release": {
+            "tag": release_tag,
+            "assets": release_assets or [],
+        },
         "maps": list(LAYERS),
         "locales": list(LOCALES),
         "poi_total": poi_total,
@@ -1023,17 +1257,20 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="palpanel-map-assets-") as temp_name:
         temp = Path(temp_name)
+        token = github_token()
         source_commit = args.source_commit.strip()
         if args.source_dir:
             repository_root = args.source_dir.resolve()
-            map_root = find_map_root(repository_root)
+            map_root = find_map_root(
+                repository_root,
+                require_tiles=not (args.allow_missing_tiles or args.tiles_source_dir or args.allow_network),
+            )
             source_commit = source_commit or f"local-{sha256_tree(map_root)}"
         else:
             archive = args.archive
             if archive is None:
                 if not args.allow_network:
                     raise ValueError("provide --source-dir/--archive or enable --allow-network")
-                token = github_token()
                 source_commit = resolve_repository_commit(repository, ref, token)
                 archive = temp / "map-assets.zip"
                 download_repository_archive(archive, repository, source_commit, token)
@@ -1043,7 +1280,10 @@ def main() -> int:
                     raise ValueError("map asset archive exceeds the configured size limit")
                 source_commit = source_commit or f"archive-{sha256_file(archive)}"
             repository_root = extract_archive(archive, temp / "archive")
-            map_root = find_map_root(repository_root)
+            map_root = find_map_root(
+                repository_root,
+                require_tiles=not (args.allow_missing_tiles or args.tiles_source_dir or args.allow_network),
+            )
 
         source_manifest = load_source_manifest(map_root)
         verify_source_manifest(map_root, source_manifest)
@@ -1052,10 +1292,38 @@ def main() -> int:
         staged.mkdir()
         copy_tree(map_root, staged)
         normalize_pois(staged, source_manifest, ref)
+        release_tag = ""
+        release_assets: list[str] = []
         if args.tiles_source_dir:
             copy_tiles(args.tiles_source_dir, staged)
-        elif any(staged.rglob("*.webp")) or not args.allow_missing_tiles:
-            normalize_tiles(staged)
+        else:
+            source_has_tiles = any(
+                is_xyz_tile_path(path.relative_to(staged)) for path in staged.rglob("*.webp")
+            )
+            release_requested = args.allow_network and args.release_tag.strip().lower() not in {"none", "off", "disabled"}
+            if release_requested:
+                tile_import = temp / "release-assets"
+                try:
+                    release_tag, release_assets = download_release_tile_archives(
+                        tile_import,
+                        repository,
+                        args.release_tag.strip() or "latest",
+                        args.release_asset.strip(),
+                        token,
+                    )
+                    normalize_tiles(tile_import)
+                    copy_tiles(tile_import / "tiles", staged)
+                except ValueError as exc:
+                    if not source_has_tiles:
+                        raise
+                    print(
+                        f"[palpanel] map Release tiles unavailable ({exc}); using repository archive tiles",
+                        file=sys.stderr,
+                    )
+                    normalize_tiles(staged)
+            elif source_has_tiles or not args.allow_missing_tiles:
+                normalize_tiles(staged)
+        prune_noncanonical_tiles(staged)
 
         expected_poi_total = (
             args.expected_poi_total
@@ -1078,6 +1346,8 @@ def main() -> int:
             poi_total=poi_total,
             categories=categories,
             tile_counts=tile_counts,
+            release_tag=release_tag,
+            release_assets=release_assets,
         )
 
         destination = args.destination.resolve()
@@ -1090,6 +1360,7 @@ def main() -> int:
     print(
         f"[palpanel] synchronized {repository}@{source_commit[:12]}: "
         f"{poi_total} POIs, tiles={'yes' if tiles_available else 'no'}"
+        + (f", release={release_tag} ({', '.join(release_assets)})" if release_assets else "")
     )
     return 0
 
@@ -1097,6 +1368,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (OSError, ValueError, json.JSONDecodeError, zipfile.BadZipFile) as exc:
+    except (OSError, ValueError, json.JSONDecodeError, zipfile.BadZipFile, tarfile.TarError) as exc:
         print(f"map asset sync failed: {exc}", file=sys.stderr)
         raise SystemExit(1)

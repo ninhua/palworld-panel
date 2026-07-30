@@ -1,6 +1,6 @@
 # PalPanel 世界地图资源接入
 
-PalPanel `0.8.45` 将世界地图瓦片、固定 POI、图标、元数据和许可证统一切换到专用资源仓库：
+PalPanel `0.8.46` 将固定 POI、图标、元数据和许可证从专用资源仓库源码快照同步，并从同仓库 GitHub Release 附件同步大体积瓦片：
 
 ```text
 https://github.com/ninhua/palpanel-assets
@@ -121,7 +121,8 @@ Token 只需要对 `ninhua/palpanel-assets` 的 `contents:read` 权限。CI、Re
 PALPANEL_MAP_ASSETS_TOKEN=github_pat_xxx \
 PALPANEL_MAP_ASSETS_REPOSITORY=ninhua/palpanel-assets \
 PALPANEL_MAP_ASSETS_REF=main \
-scripts/package.sh --version v1.3.0-custom.0.8.45
+PALPANEL_MAP_ASSETS_RELEASE_TAG=latest \
+scripts/package.sh --version v1.3.0-custom.0.8.46
 ```
 
 ## 离线或本地资源构建
@@ -130,14 +131,14 @@ scripts/package.sh --version v1.3.0-custom.0.8.45
 
 ```bash
 PALPANEL_MAP_ASSETS_SOURCE_DIR=/srv/source/palpanel-assets \
-scripts/package.sh --version v1.3.0-custom.0.8.45
+scripts/package.sh --version v1.3.0-custom.0.8.46
 ```
 
 使用预下载 ZIP：
 
 ```bash
 PALPANEL_MAP_ASSETS_ARCHIVE=/srv/source/palpanel-assets.zip \
-scripts/package.sh --version v1.3.0-custom.0.8.45
+scripts/package.sh --version v1.3.0-custom.0.8.46
 ```
 
 仅在开发诊断时允许缺少瓦片：
@@ -161,6 +162,8 @@ PALPANEL_ALLOW_MISSING_MAP_TILES=true scripts/package.sh --version dev
 - `PALPANEL_MAP_ASSETS_REPOSITORY`
 - `PALPANEL_MAP_ASSETS_REF`
 - `PALPANEL_MAP_ASSETS_TOKEN`
+- `PALPANEL_MAP_ASSETS_RELEASE_TAG`
+- `PALPANEL_MAP_ASSETS_RELEASE_ASSET`
 - `PALPANEL_MAP_ASSETS_SOURCE_DIR`
 - `PALPANEL_MAP_ASSETS_ARCHIVE`
 - `PALPANEL_MAP_ASSETS_TILE_SOURCE_DIR`
@@ -180,3 +183,8 @@ PALPANEL_ALLOW_MISSING_MAP_TILES=true scripts/package.sh --version dev
 ```
 
 玩家、据点、帕鲁和地图对象继续通过 PalPanel 的 `/api/map/entities` 获取。浏览器不会访问 GitHub，也不会获得地图资源仓库 Token。
+
+
+## Release 瓦片归档
+
+构建默认从 `palpanel-assets` 最新 GitHub Release 中自动选择名称包含 `map`、`tile`、`palops` 或 `asset` 的 ZIP/TAR 归档作为瓦片来源。可通过 `PALPANEL_MAP_ASSETS_RELEASE_TAG` 指定标签，通过 `PALPANEL_MAP_ASSETS_RELEASE_ASSET` 指定确切附件名。
