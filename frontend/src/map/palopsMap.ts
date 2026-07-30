@@ -383,7 +383,7 @@ export const palOpsPoiVisual = (category: string): PalOpsMarkerVisual => {
   if (slug === 'coal') return { icon: 'poi-resource-coal', glyph: 'C', color: '#334155', shape: 'hexagon' };
   if (slug === 'sulfur') return { icon: 'poi-resource-sulfur', glyph: 'S', color: '#ca8a04', shape: 'hexagon' };
   if (['pure-quartz', 'quartz'].includes(slug)) return { icon: 'poi-resource-quartz', glyph: 'Q', color: '#0891b2', shape: 'diamond' };
-  if (['oil', 'crude-oil'].includes(slug)) return { icon: 'poi-resource-oil', glyph: 'OIL', color: '#92400e', shape: 'pin' };
+  if (['oil', 'crude-oil'].includes(slug)) return { icon: 'poi-resource-oil', glyph: 'OIL', color: '#92400e', shape: 'hexagon' };
   if (slug === 'meteorite') return { icon: 'poi-resource-meteorite', glyph: 'M', color: '#7c3aed', shape: 'star' };
   if (group === 'resource') return { icon: 'poi-resource', glyph: '◆', color: '#d97706', shape: 'hexagon' };
   if (['chest', 'treasure-chest'].includes(slug)) return { icon: 'poi-collectible-chest', glyph: 'C', color: '#b45309', shape: 'square' };
@@ -425,7 +425,7 @@ const palOpsMarkerVisualList: PalOpsMarkerVisual[] = [
   { icon: 'poi-resource-coal', glyph: 'C', color: '#334155', shape: 'hexagon' },
   { icon: 'poi-resource-sulfur', glyph: 'S', color: '#ca8a04', shape: 'hexagon' },
   { icon: 'poi-resource-quartz', glyph: 'Q', color: '#0891b2', shape: 'diamond' },
-  { icon: 'poi-resource-oil', glyph: 'OIL', color: '#92400e', shape: 'pin' },
+  { icon: 'poi-resource-oil', glyph: 'OIL', color: '#92400e', shape: 'hexagon' },
   { icon: 'poi-resource-meteorite', glyph: 'M', color: '#7c3aed', shape: 'star' },
   { icon: 'poi-resource', glyph: '◆', color: '#d97706', shape: 'hexagon' },
   { icon: 'poi-collectible-chest', glyph: 'C', color: '#b45309', shape: 'square' },
