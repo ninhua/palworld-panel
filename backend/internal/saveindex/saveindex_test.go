@@ -68,11 +68,22 @@ func TestRebuildWritesCacheAndCurrentReadsIt(t *testing.T) {
 func TestRebuildRetriesWhenSaveChangesDuringIndexing(t *testing.T) {
 	root, cfg := testConfig(t)
 	writeWorld(t, root, "level-one")
-	calls := 0
+	levelPath := filepath.Join(root, "server", "Pal", "Saved", "SaveGames", "0", "world", "Level.sav")
+	initialMTime := time.Date(2026, time.July, 18, 0, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(levelPath, initialMTime, initialMTime); err != nil {
+		t.Fatalf("set initial Level.sav mtime: %v", err)
+	}
+	var calls int32
 	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		calls++
-		if calls == 1 {
+		call := atomic.AddInt32(&calls, 1)
+		if call == 1 {
 			writeWorld(t, root, "level-two")
+			changedMTime := initialMTime.Add(2 * time.Second)
+			if err := os.Chtimes(levelPath, changedMTime, changedMTime); err != nil {
+				t.Errorf("advance Level.sav mtime: %v", err)
+				http.Error(w, "failed to update test save timestamp", http.StatusInternalServerError)
+				return
+			}
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"ok": true,
@@ -91,8 +102,9 @@ func TestRebuildRetriesWhenSaveChangesDuringIndexing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 2 || status.State != "ready" || status.Stale {
-		t.Fatalf("rebuild did not settle after retry: calls=%d status=%#v", calls, status)
+	callCount := atomic.LoadInt32(&calls)
+	if callCount != 2 || status.State != "ready" || status.Stale {
+		t.Fatalf("rebuild did not settle after retry: calls=%d status=%#v", callCount, status)
 	}
 	_, currentStatus, err := m.Current(t.Context())
 	if err != nil || currentStatus.State != "ready" {
