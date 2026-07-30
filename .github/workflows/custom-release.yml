@@ -30,7 +30,7 @@ jobs:
       custom_version: ${{ steps.version.outputs.custom_version }}
       source_sha: ${{ steps.source.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.source_ref }}
           fetch-depth: 0
@@ -57,7 +57,7 @@ jobs:
           echo "custom_version=$custom_version" >> "$GITHUB_OUTPUT"
           test -s "docs/releases/${custom_version}.md"
       - name: Upload release notes
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: custom-release-notes
           path: docs/releases/${{ steps.version.outputs.custom_version }}.md
@@ -85,21 +85,21 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate.outputs.source_sha }}
           fetch-depth: 0
           submodules: recursive
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: |
             backend/go.sum
             sav-cli/go.sum
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -116,7 +116,7 @@ jobs:
             "dist/packages/palpanel_${RELEASE_TAG}_source.tar.gz"
           scripts/smoke-linux.sh "dist/packages/palpanel_${RELEASE_TAG}_linux_amd64.tar.gz"
           bash scripts/smoke-palcalc-no-icu.sh "dist/packages/palpanel_${RELEASE_TAG}_linux_amd64.tar.gz"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: custom-release-linux
           if-no-files-found: error
@@ -133,21 +133,21 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate.outputs.source_sha }}
           fetch-depth: 0
           submodules: recursive
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: |
             backend/go.sum
             sav-cli/go.sum
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -170,7 +170,7 @@ jobs:
           $objdump = Join-Path $env:RUNNER_TEMP "msys64\mingw64\bin\objdump.exe"
           ./scripts/verify-windows-package.ps1 -Archive $archive -ObjdumpPath $objdump
           ./scripts/smoke-windows.ps1 -PackageDir $package -Version $env:RELEASE_TAG
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: custom-release-windows
           if-no-files-found: error
@@ -185,15 +185,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: custom-release-linux
           path: dist/release
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: custom-release-windows
           path: dist/release
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: custom-release-notes
           path: dist/release-notes
@@ -207,7 +207,7 @@ jobs:
             "palpanel-sav-cli_${RELEASE_TAG}_source.tar.gz" \
             THIRD_PARTY_LICENSES.txt > SHA256SUMS
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.validate.outputs.release_tag }}
           target_commitish: ${{ needs.validate.outputs.source_sha }}

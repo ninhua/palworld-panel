@@ -16,20 +16,20 @@ jobs:
   linux:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: recursive
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: |
             backend/go.sum
             sav-cli/go.sum
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -90,7 +90,7 @@ jobs:
           sudo scripts/test-bootstrap-install.sh "dist/packages/palpanel_${CI_PACKAGE_VERSION}_linux_amd64.tar.gz"
           sudo scripts/test-upgrade.sh "dist/packages/palpanel_${CI_PACKAGE_VERSION}_linux_amd64.tar.gz" v1.0.2
       - name: Upload Linux CI packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: palpanel-linux-amd64-${{ github.sha }}
           if-no-files-found: error
@@ -106,19 +106,19 @@ jobs:
   windows:
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: |
             backend/go.sum
             sav-cli/go.sum
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -152,7 +152,7 @@ jobs:
             -TimeoutMinutes 30
       - name: Upload Windows validation evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: palpanel-windows-validation-${{ github.sha }}
           if-no-files-found: warn
@@ -162,7 +162,7 @@ jobs:
             dev-runtime/windows/e2e/**
             dev-runtime/windows/temp/**
       - name: Upload Windows CI package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: palpanel-windows-amd64-${{ github.sha }}
           if-no-files-found: error
@@ -172,13 +172,16 @@ jobs:
   vulnerability:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
-      - uses: actions/setup-node@v4
+          cache-dependency-path: |
+            backend/go.sum
+            sav-cli/go.sum
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - name: Dependency vulnerability checks

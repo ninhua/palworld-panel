@@ -15,12 +15,12 @@ jobs:
   build:
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.release_tag }}
           fetch-depth: 0
           submodules: recursive
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
       - name: Validate release tag
@@ -34,13 +34,13 @@ jobs:
           }
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: |
             backend/go.sum
             sav-cli/go.sum
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -67,7 +67,7 @@ jobs:
           ./scripts/smoke-windows.ps1 -PackageDir $package -Version $env:RELEASE_TAG
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: palpanel-windows-${{ inputs.release_tag }}
           if-no-files-found: error

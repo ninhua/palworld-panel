@@ -306,7 +306,7 @@ func TestManagementWriteWorkflows(t *testing.T) {
 
 func TestSupportBundleWorkflow(t *testing.T) {
 	router := newSmokeRouter(t)
-	createdRecorder := performJSONRequest(t, router, http.MethodPost, "/api/system/diagnostics/support-bundles", `{"include_logs":false,"confirm":true}`)
+	createdRecorder := performInteractiveJSONRequest(t, router, http.MethodPost, "/api/system/diagnostics/support-bundles", `{"include_logs":false,"confirm":true}`)
 	if createdRecorder.Code != http.StatusCreated {
 		t.Fatalf("create support bundle = %d: %s", createdRecorder.Code, createdRecorder.Body.String())
 	}
@@ -320,12 +320,12 @@ func TestSupportBundleWorkflow(t *testing.T) {
 		t.Fatalf("unexpected support bundle metadata: %#v", created.Data)
 	}
 
-	listRecorder := performJSONRequest(t, router, http.MethodGet, "/api/system/diagnostics/support-bundles", "")
+	listRecorder := performInteractiveJSONRequest(t, router, http.MethodGet, "/api/system/diagnostics/support-bundles", "")
 	if listRecorder.Code != http.StatusOK || !strings.Contains(listRecorder.Body.String(), created.Data.ID) {
 		t.Fatalf("list support bundles = %d: %s", listRecorder.Code, listRecorder.Body.String())
 	}
 
-	downloadRecorder := performJSONRequest(t, router, http.MethodGet, "/api/system/diagnostics/support-bundles/"+created.Data.ID+"/download", "")
+	downloadRecorder := performInteractiveJSONRequest(t, router, http.MethodGet, "/api/system/diagnostics/support-bundles/"+created.Data.ID+"/download", "")
 	if downloadRecorder.Code != http.StatusOK {
 		t.Fatalf("download support bundle = %d: %s", downloadRecorder.Code, downloadRecorder.Body.String())
 	}
@@ -348,11 +348,11 @@ func TestSupportBundleWorkflow(t *testing.T) {
 		t.Fatal("support ZIP is missing manifest.json")
 	}
 
-	deleteRecorder := performJSONRequest(t, router, http.MethodDelete, "/api/system/diagnostics/support-bundles/"+created.Data.ID, "")
+	deleteRecorder := performInteractiveJSONRequest(t, router, http.MethodDelete, "/api/system/diagnostics/support-bundles/"+created.Data.ID, "")
 	if deleteRecorder.Code != http.StatusOK {
 		t.Fatalf("delete support bundle = %d: %s", deleteRecorder.Code, deleteRecorder.Body.String())
 	}
-	missingRecorder := performJSONRequest(t, router, http.MethodGet, "/api/system/diagnostics/support-bundles/"+created.Data.ID+"/download", "")
+	missingRecorder := performInteractiveJSONRequest(t, router, http.MethodGet, "/api/system/diagnostics/support-bundles/"+created.Data.ID+"/download", "")
 	if missingRecorder.Code != http.StatusNotFound {
 		t.Fatalf("download deleted support bundle = %d: %s", missingRecorder.Code, missingRecorder.Body.String())
 	}
@@ -386,9 +386,19 @@ func TestBreedingAndAstrBotPublicRoutesRejectInvalidSessions(t *testing.T) {
 
 func performJSONRequest(t *testing.T, router http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
+	return performAuthorizedJSONRequest(t, router, method, path, body, authorizeTestRequest)
+}
+
+func performInteractiveJSONRequest(t *testing.T, router http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return performAuthorizedJSONRequest(t, router, method, path, body, authorizeInteractiveTestRequest)
+}
+
+func performAuthorizedJSONRequest(t *testing.T, router http.Handler, method, path, body string, authorize func(*http.Request)) *httptest.ResponseRecorder {
+	t.Helper()
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(method, path, strings.NewReader(body))
-	authorizeTestRequest(request)
+	authorize(request)
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")
 	}
@@ -446,6 +456,7 @@ func newSmokeRouter(t *testing.T) *gin.Engine {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	provisionTestPrincipal(t, store, RoleAdmin)
+	provisionInteractiveTestSession(t, store, "usr_test")
 	runner := docker.NewRunner(cfg)
 	serverManager := server.NewManager(cfg, store, runner)
 	restClient := palrest.New(upstream.URL, "admin", "secret")

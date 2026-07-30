@@ -126,13 +126,13 @@ Release 工作流应覆盖：
 2. 若同一提交的完整 Windows CI 已通过，可先只重跑失败任务。
 3. 若连续复现，不要反复重跑，应修复测试的时间依赖。
 
-### Actions Node.js 弃用警告
+### Actions Node.js 运行时
 
-GitHub Runner 可能提示 `actions/checkout@v4` 等 Action 的 Node.js 20 弃用警告。这是警告，不应当作构建失败，但后续应统一升级官方 Action 主版本。
+工作流中的 GitHub 官方 Actions 已统一使用 Node.js 24 兼容主版本。新增或升级 Action 时，不得重新引入以 Node.js 20 为运行时的旧主版本；GitHub 托管 Runner 应满足这些版本的最低 Runner 要求。
 
-### Go 缓存警告
+### Go 缓存路径
 
-仓库根目录没有 `go.sum` 时，某些 Action 可能提示根目录依赖缓存无法恢复。实际 Go 模块位于子目录。除非任务因此失败，否则不要误判为业务构建错误。
+仓库根目录没有 `go.sum`，Go 模块位于 `backend` 和 `sav-cli`。所有启用 Go 缓存的 `actions/setup-go` 步骤必须显式配置 `backend/go.sum` 和 `sav-cli/go.sum`，不得依赖根目录默认路径。
 
 ## 6. 上游同步
 

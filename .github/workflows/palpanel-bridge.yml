@@ -19,7 +19,7 @@ jobs:
       GH_TOKEN: ${{ secrets.UEPSEUDO_TOKEN }}
       UE4SS_COMMIT: c838a8acaade1a0f860bdf249f039e58f4e10088
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -101,7 +101,7 @@ jobs:
             $archive.Dispose()
           }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: PalPanelBridge-v0.1.4-ue4ss-c838a8ac-server-package
           if-no-files-found: error

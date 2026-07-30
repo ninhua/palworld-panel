@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -23,7 +24,10 @@ import (
 	"palpanel/internal/server"
 )
 
-const testDevelopmentKey = "ppk_test-development-key-for-isolated-tests"
+const (
+	testDevelopmentKey = "ppk_test-development-key-for-isolated-tests"
+	testSessionToken   = "test-session-token-for-isolated-tests"
+)
 
 func provisionTestPrincipal(t *testing.T, store *db.Store, role Role) string {
 	t.Helper()
@@ -49,8 +53,29 @@ func provisionTestPrincipal(t *testing.T, store *db.Store, role Role) string {
 	return testDevelopmentKey
 }
 
+func provisionInteractiveTestSession(t *testing.T, store *db.Store, userID string) string {
+	t.Helper()
+	now := time.Now().UTC()
+	session := db.Session{
+		ID:         "ses_test",
+		UserID:     userID,
+		TokenHash:  panelauth.TokenHash(testSessionToken),
+		ExpiresAt:  now.Add(panelauth.SessionLifetime).Format(time.RFC3339Nano),
+		LastSeenAt: now.Format(time.RFC3339Nano),
+		CreatedAt:  now.Format(time.RFC3339Nano),
+	}
+	if err := store.CreateSession(context.Background(), session); err != nil {
+		t.Fatalf("create test session: %v", err)
+	}
+	return testSessionToken
+}
+
 func authorizeTestRequest(request *http.Request) {
 	request.Header.Set("Authorization", "Bearer "+testDevelopmentKey)
+}
+
+func authorizeInteractiveTestRequest(request *http.Request) {
+	request.AddCookie(&http.Cookie{Name: panelauth.SessionCookieName, Value: testSessionToken})
 }
 
 func TestAPIHelperConversionsAndValidation(t *testing.T) {
