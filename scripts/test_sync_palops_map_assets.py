@@ -101,6 +101,69 @@ class SyncPalOpsMapAssetsTest(unittest.TestCase):
             self.assertTrue((destination / "tiles" / "palpagos" / "4" / "15" / "15.webp").is_file())
 
 
+    def test_discovers_and_normalizes_repository_native_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            source = root / "source"
+            poi_dir = source / "resources" / "poi"
+            poi_dir.mkdir(parents=True)
+            features = [
+                {
+                    "type": "Feature",
+                    "id": f"native-{index}",
+                    "properties": {
+                        "kind": "fast-travel" if index == 0 else "boss",
+                        "mapId": "Palpagos" if index == 0 else "WorldTree",
+                        "name": {
+                            "zh-CN": f"地点 {index}",
+                            "en-US": f"Location {index}",
+                            "ja-JP": f"場所 {index}",
+                        },
+                    },
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [index + 0.25, index + 0.75],
+                    },
+                }
+                for index in range(2)
+            ]
+            (poi_dir / "map-data.geojson").write_text(
+                json.dumps({"type": "FeatureCollection", "features": features}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            for directory in ("PalpagosMap", "WorldTreeMap"):
+                for zoom in range(5):
+                    edge = 2**zoom
+                    for x in range(edge):
+                        for y in range(edge):
+                            tile = source / "resources" / "raster" / directory / str(zoom) / str(x) / f"{y}.webp"
+                            tile.parent.mkdir(parents=True, exist_ok=True)
+                            payload = f"{directory}:{zoom}:{x}:{y}".encode()
+                            tile.write_bytes(b"RIFF" + (len(payload) + 4).to_bytes(4, "little") + b"WEBP" + payload)
+            archive = Path(shutil.make_archive(str(root / "native-assets"), "zip", root_dir=root, base_dir=source.name))
+            destination = root / "destination"
+            result = subprocess.run(
+                [
+                    "python3", str(SCRIPT),
+                    "--archive", str(archive),
+                    "--destination", str(destination),
+                    "--repository", "ninhua/palpanel-assets",
+                    "--ref", "fixture",
+                    "--source-commit", "0123456789abcdef0123456789abcdef01234567",
+                    "--expected-poi-total", "2",
+                ],
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            zh = json.loads((destination / "data" / "default-pois.zh-CN.json").read_text(encoding="utf-8"))
+            en = json.loads((destination / "data" / "default-pois.en-US.json").read_text(encoding="utf-8"))
+            self.assertEqual(zh[0]["name"], "地点 0")
+            self.assertEqual(en[0]["name"], "Location 0")
+            self.assertEqual(zh[1]["map"], "world-tree")
+            self.assertTrue((destination / "tiles" / "palpagos" / "4" / "15" / "15.webp").is_file())
+            self.assertTrue((destination / "tiles" / "world-tree" / "4" / "15" / "15.webp").is_file())
+
     def test_syncs_single_root_archive_and_uses_manifest_poi_total(self) -> None:
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)

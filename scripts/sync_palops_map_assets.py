@@ -39,7 +39,7 @@ COMMON_MAP_ROOTS = (
     LEGACY_MAP_RELATIVE_ROOT,
 )
 ALLOWED_EXTENSIONS = {
-    ".json", ".webp", ".png", ".svg", ".txt", ".md", ".css", ".woff", ".woff2"
+    ".json", ".geojson", ".webp", ".png", ".svg", ".txt", ".md", ".css", ".woff", ".woff2"
 }
 ALLOWED_BASENAMES = {"LICENSE", "NOTICE", "COPYING"}
 SKIPPED_BASENAMES = {".gitignore", ".gitattributes", ".gitkeep", ".DS_Store"}
@@ -210,8 +210,30 @@ def extract_archive(archive: Path, extract_root: Path) -> Path:
     return root
 
 
-def is_map_root(candidate: Path) -> bool:
+def is_normalized_map_root(candidate: Path) -> bool:
     return (candidate / "data" / "default-pois.zh-CN.json").is_file()
+
+
+def is_poi_json_path(path: Path) -> bool:
+    if path.suffix.lower() not in {".json", ".geojson"}:
+        return False
+    if path.name in {"palpanel-map-assets.json", "package.json", "package-lock.json", "tsconfig.json"}:
+        return False
+    return not path.name.endswith(".schema.json")
+
+
+def is_xyz_tile_path(path: Path) -> bool:
+    if path.suffix.lower() != ".webp" or len(path.parts) < 4:
+        return False
+    zoom, x_name, y_name = path.parts[-3:]
+    return zoom.isdigit() and x_name.isdigit() and y_name.removesuffix(".webp").isdigit()
+
+
+def has_discoverable_assets(candidate: Path) -> bool:
+    has_pois = any(is_poi_json_path(path) for path in candidate.rglob("*"))
+    if not has_pois:
+        return False
+    return any(is_xyz_tile_path(path.relative_to(candidate)) for path in candidate.rglob("*.webp"))
 
 
 def find_map_root(source: Path) -> Path:
@@ -223,15 +245,28 @@ def find_map_root(source: Path) -> Path:
         if pois.parent.name == "data":
             candidates.append(pois.parent.parent)
     seen: set[Path] = set()
+    resolved_candidates: list[Path] = []
     for candidate in candidates:
         candidate = candidate.resolve()
-        if candidate in seen:
+        if candidate in seen or not candidate.is_dir():
             continue
         seen.add(candidate)
-        if is_map_root(candidate):
+        resolved_candidates.append(candidate)
+        if is_normalized_map_root(candidate):
             return candidate
+    for candidate in resolved_candidates:
+        if has_discoverable_assets(candidate):
+            return candidate
+    if has_discoverable_assets(source):
+        return source
+    json_candidates = sorted(
+        path.relative_to(source).as_posix()
+        for path in source.rglob("*")
+        if path.is_file() and path.suffix.lower() in {".json", ".geojson"}
+    )[:20]
+    suffix = f"; JSON files found: {', '.join(json_candidates)}" if json_candidates else "; no JSON files found"
     raise ValueError(
-        f"unable to locate map assets under {source}; expected data/default-pois.zh-CN.json"
+        f"unable to locate map assets under {source}; expected localized/default POI JSON and XYZ WebP tiles{suffix}"
     )
 
 
@@ -398,6 +433,445 @@ def copy_tiles(source: Path, destination: Path) -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(tile, target)
 
+
+
+def localized_tokens(locale: str) -> tuple[str, ...]:
+    if locale == "zh-CN":
+        return ("zh-cn", "zh_cn", "zhcn", "chinese", "simplified", "-cn", "_cn")
+    if locale == "en-US":
+        return ("en-us", "en_us", "enus", "english", "-en", "_en")
+    return ("ja-jp", "ja_jp", "jajp", "japanese", "-ja", "_ja", "-jp", "_jp")
+
+
+def path_locale(path: Path) -> str | None:
+    normalized = path.as_posix().lower()
+    for locale in LOCALES:
+        if any(token in normalized for token in localized_tokens(locale)):
+            return locale
+    return None
+
+
+def poi_context_for_key(key: str, inherited: dict[str, Any]) -> dict[str, Any]:
+    context = dict(inherited)
+    normalized = key.lower().replace("_", "-").replace(" ", "-")
+    map_key = False
+    if "tree" in normalized:
+        context["map"] = "world-tree"
+        map_key = True
+    elif any(token in normalized for token in ("palpagos", "palworld", "main-map", "overworld")):
+        context["map"] = "palpagos"
+        map_key = True
+    wrapper_keys = {"pois", "items", "markers", "locations", "data", "features", "points", "records"}
+    metadata_keys = {"source", "metadata", "meta", "schema", "version", "license", "licenses", "files"}
+    if (
+        not map_key
+        and normalized not in wrapper_keys | metadata_keys
+        and not normalized.startswith(("zh-", "en-", "ja-"))
+    ):
+        context.setdefault("category", key)
+    return context
+
+
+def apply_poi_context(record: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+    result = dict(record)
+    if "map" in context and first_value(result, ("map", "mapId", "map_id", "layer", "world")) is None:
+        result["map"] = context["map"]
+    if "category" in context and first_value(result, ("category", "categoryId", "category_id", "type", "kind")) is None:
+        result["category"] = context["category"]
+    return result
+
+
+def unwrap_poi_records(value: Any) -> list[dict[str, Any]] | None:
+    records: list[dict[str, Any]] = []
+
+    def visit(current: Any, context: dict[str, Any]) -> None:
+        if isinstance(current, list):
+            for item in current:
+                visit(item, context)
+            return
+        if not isinstance(current, dict):
+            return
+        candidate = apply_poi_context(current, context)
+        merged = merged_poi_record(candidate)
+        identity = first_value(merged, ("id", "poiId", "poi_id", "name", "title", "label", "type", "kind", "category"))
+        if identity is not None and poi_coordinates(merged) is not None:
+            records.append(candidate)
+            return
+        for key, nested in current.items():
+            if key in {"properties", "geometry"}:
+                continue
+            visit(nested, poi_context_for_key(str(key), context))
+
+    visit(value, {})
+    return records or None
+
+
+def merged_poi_record(record: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(record)
+    properties = record.get("properties")
+    if isinstance(properties, dict):
+        merged.update(properties)
+    geometry = record.get("geometry")
+    if isinstance(geometry, dict):
+        coordinates = geometry.get("coordinates")
+        if isinstance(coordinates, list) and len(coordinates) >= 2:
+            merged.setdefault("coordinates", coordinates)
+    return merged
+
+
+def nested_value(record: dict[str, Any], key: str) -> Any:
+    value: Any = record
+    for part in key.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
+
+def first_value(record: dict[str, Any], keys: Iterable[str]) -> Any:
+    for key in keys:
+        value = nested_value(record, key)
+        if value is not None:
+            return value
+    return None
+
+
+def finite_number(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def poi_coordinates(record: dict[str, Any]) -> tuple[float, float, float, float] | None:
+    map_x = finite_number(first_value(record, ("mapX", "map_x", "map.x", "position.x", "x", "lng", "longitude")))
+    map_y = finite_number(first_value(record, ("mapY", "map_y", "map.y", "position.y", "y", "lat", "latitude")))
+    coordinates = first_value(record, ("coordinates", "coordinate", "coords", "position"))
+    if (map_x is None or map_y is None) and isinstance(coordinates, (list, tuple)) and len(coordinates) >= 2:
+        map_x = map_x if map_x is not None else finite_number(coordinates[0])
+        map_y = map_y if map_y is not None else finite_number(coordinates[1])
+    if (map_x is None or map_y is None) and isinstance(coordinates, dict):
+        map_x = map_x if map_x is not None else finite_number(first_value(coordinates, ("x", "lng", "longitude")))
+        map_y = map_y if map_y is not None else finite_number(first_value(coordinates, ("y", "lat", "latitude")))
+    if map_x is None or map_y is None:
+        return None
+    world_x = finite_number(first_value(record, ("worldX", "world_x", "world.x", "gameX", "game_x")))
+    world_y = finite_number(first_value(record, ("worldY", "world_y", "world.y", "gameY", "game_y")))
+    return map_x, map_y, world_x if world_x is not None else map_x, world_y if world_y is not None else map_y
+
+
+def localized_value(value: Any, locale: str) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if not isinstance(value, dict):
+        return ""
+    aliases = {
+        "zh-CN": ("zh-CN", "zh_CN", "zh", "cn", "chinese"),
+        "en-US": ("en-US", "en_US", "en", "english"),
+        "ja-JP": ("ja-JP", "ja_JP", "ja", "jp", "japanese"),
+    }[locale]
+    for key in aliases:
+        result = value.get(key)
+        if isinstance(result, str) and result.strip():
+            return result.strip()
+    for result in value.values():
+        if isinstance(result, str) and result.strip():
+            return result.strip()
+    return ""
+
+
+def localized_record_text(record: dict[str, Any], base: str, locale: str) -> str:
+    direct = localized_value(record.get(base), locale)
+    if direct:
+        return direct
+    suffixes = {
+        "zh-CN": ("zhCN", "zh_CN", "zh", "cn"),
+        "en-US": ("enUS", "en_US", "en"),
+        "ja-JP": ("jaJP", "ja_JP", "ja", "jp"),
+    }[locale]
+    for suffix in suffixes:
+        for key in (f"{base}_{suffix}", f"{base}{suffix[0].upper()}{suffix[1:]}"):
+            value = record.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
+
+def string_list(value: Any, locale: str) -> list[str]:
+    if isinstance(value, dict):
+        for key in localized_tokens(locale):
+            candidate = value.get(key)
+            if candidate is not None:
+                return string_list(candidate, locale)
+        for candidate in value.values():
+            if isinstance(candidate, (list, str)):
+                return string_list(candidate, locale)
+    if isinstance(value, list):
+        return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+    if isinstance(value, str):
+        return [item.strip() for item in value.replace(";", ",").split(",") if item.strip()]
+    return []
+
+
+def normalize_layer_id(value: Any, default: str = "palpagos") -> str:
+    normalized = str(value or "").lower().replace("_", "-").replace(" ", "-")
+    if "tree" in normalized:
+        return "world-tree"
+    if any(token in normalized for token in ("palpagos", "palworld", "main", "overworld")):
+        return "palpagos"
+    return default
+
+
+def layer_from_path(path: Path) -> str:
+    normalized = path.as_posix().lower().replace("_", "-")
+    return "world-tree" if "tree" in normalized else "palpagos"
+
+
+def normalize_category(value: Any) -> str:
+    raw = str(value or "location").strip().lower().replace("_", "-").replace(" ", "-")
+    if raw.startswith("poi-"):
+        return raw
+    group = "location"
+    if any(token in raw for token in ("boss", "enemy", "dungeon", "raid")):
+        group = "enemy"
+    elif any(token in raw for token in ("ore", "resource", "mining", "sulfur", "coal", "quartz")):
+        group = "resource"
+    elif any(token in raw for token in ("collect", "chest", "effigy", "journal")):
+        group = "collectible"
+    elif "npc" in raw or "merchant" in raw or "vendor" in raw:
+        group = "npc"
+    elif "pal" in raw:
+        group = "pal"
+    return f"poi-{group}-{raw or group}"
+
+
+def normalize_poi_record(
+    record: dict[str, Any],
+    locale: str,
+    index: int,
+    source_version: str,
+    default_layer: str,
+) -> dict[str, Any]:
+    record = merged_poi_record(record)
+    coordinates = poi_coordinates(record)
+    if coordinates is None:
+        raise ValueError(f"POI record {index + 1} has no usable coordinates")
+    map_x, map_y, world_x, world_y = coordinates
+    raw_type = first_value(record, ("type", "kind", "category", "group"))
+    category = normalize_category(first_value(record, ("category", "categoryId", "category_id", "type", "kind")))
+    layer = normalize_layer_id(
+        first_value(record, ("map", "mapId", "map_id", "layer", "world")),
+        default_layer,
+    )
+    raw_id = first_value(record, ("id", "poiId", "poi_id", "uid", "uuid", "key"))
+    if isinstance(raw_id, (str, int)) and str(raw_id).strip():
+        poi_id = str(raw_id).strip()
+    else:
+        digest = hashlib.sha256(
+            f"{layer}|{category}|{map_x:.8f}|{map_y:.8f}|{raw_type or ''}".encode("utf-8")
+        ).hexdigest()[:20]
+        poi_id = f"poi-import-{digest}"
+    name = (
+        localized_record_text(record, "name", locale)
+        or localized_record_text(record, "title", locale)
+        or localized_record_text(record, "label", locale)
+        or poi_id
+    )
+    icon = first_value(record, ("iconId", "icon_id", "icon", "marker", "sprite"))
+    source = first_value(record, ("source", "origin", "provider"))
+    license_name = first_value(record, ("license", "licence"))
+    version = first_value(record, ("version", "datasetVersion", "dataset_version"))
+    return {
+        "id": poi_id,
+        "type": str(raw_type or category).strip(),
+        "category": category,
+        "map": layer,
+        "name": name,
+        "aliases": string_list(first_value(record, ("aliases", "alias", "alternateNames", "alternate_names")), locale),
+        "keywords": string_list(first_value(record, ("keywords", "tags", "search")), locale),
+        "mapX": map_x,
+        "mapY": map_y,
+        "worldX": world_x,
+        "worldY": world_y,
+        "source": str(source or "ninhua/palpanel-assets"),
+        "license": str(license_name or "repository-defined"),
+        "version": str(version or source_version),
+        "iconId": str(icon or raw_type or category),
+    }
+
+
+def poi_candidate_score(path: Path, records: list[dict[str, Any]]) -> int:
+    score = min(len(records), 1000)
+    normalized = path.as_posix().lower()
+    if "poi" in normalized:
+        score += 5000
+    if "default" in normalized:
+        score += 1000
+    sample = records[:20]
+    score += sum(100 for item in sample if poi_coordinates(merged_poi_record(item)) is not None)
+    score += sum(20 for item in sample if first_value(merged_poi_record(item), ("name", "title", "label")) is not None)
+    return score
+
+
+def discover_poi_datasets(root: Path) -> list[tuple[Path, list[dict[str, Any]]]]:
+    candidates: list[tuple[int, Path, list[dict[str, Any]]]] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or not is_poi_json_path(path):
+            continue
+        try:
+            records = unwrap_poi_records(json.loads(path.read_text(encoding="utf-8-sig")))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if not records:
+            continue
+        sample = [merged_poi_record(item) for item in records[:20]]
+        has_coordinates = any(poi_coordinates(item) is not None for item in sample)
+        has_identity = any(
+            first_value(item, ("id", "poiId", "poi_id", "name", "title", "label", "type", "kind", "category")) is not None
+            for item in sample
+        )
+        if not has_coordinates or not has_identity:
+            continue
+        candidates.append((poi_candidate_score(path, records), path, records))
+    return [(path, records) for _, path, records in sorted(candidates, key=lambda item: (-item[0], item[1].as_posix()))]
+
+
+def normalize_pois(root: Path, source_manifest: dict[str, Any], ref: str) -> None:
+    datasets = discover_poi_datasets(root)
+    if not datasets:
+        json_candidates = sorted(
+            path.relative_to(root).as_posix()
+            for path in root.rglob("*")
+            if path.is_file() and path.suffix.lower() in {".json", ".geojson"}
+        )[:20]
+        raise ValueError(
+            "map asset repository contains no recognizable POI dataset; "
+            f"JSON candidates: {', '.join(json_candidates) or 'none'}"
+        )
+    source_version = (
+        manifest_text(source_manifest, "asset_version")
+        or manifest_text(source_manifest, "version")
+        or manifest_text(source_manifest, "source", "version")
+        or ref
+    )
+    generic = [(path, records) for path, records in datasets if path_locale(path.relative_to(root)) is None]
+    data_dir = root / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    for locale in LOCALES:
+        localized = [
+            (path, records)
+            for path, records in datasets
+            if path_locale(path.relative_to(root)) == locale
+        ]
+        selected = localized or generic or datasets
+        by_id: dict[str, dict[str, Any]] = {}
+        for source_path, records in selected:
+            default_layer = layer_from_path(source_path.relative_to(root))
+            for index, record in enumerate(records):
+                item = normalize_poi_record(
+                    record,
+                    locale,
+                    index,
+                    source_version,
+                    default_layer,
+                )
+                existing = by_id.get(item["id"])
+                if existing is not None:
+                    if any(existing[key] != item[key] for key in ("map", "category", "mapX", "mapY", "worldX", "worldY")):
+                        raise ValueError(
+                            f"conflicting duplicate POI ID {item['id']} in {source_path.relative_to(root)}"
+                        )
+                    continue
+                by_id[item["id"]] = item
+        normalized = [by_id[poi_id] for poi_id in sorted(by_id)]
+        if not normalized:
+            raise ValueError(f"no POI records were produced for locale {locale}")
+        target = data_dir / f"default-pois.{locale}.json"
+        target.write_text(json.dumps(normalized, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def tile_group_key(root: Path, tile: Path) -> Path:
+    relative = tile.relative_to(root)
+    return Path(*relative.parts[:-3])
+
+
+def tile_layer_score(path: Path, layer: str) -> int:
+    normalized = ''.join(character for character in path.as_posix().lower() if character.isalnum())
+    aliases = {
+        "palpagos": ("palpagos", "palworld", "mainmap", "overworld"),
+        "world-tree": ("worldtree", "treeworld", "worldtreemap"),
+    }[layer]
+    return max((len(alias) for alias in aliases if alias in normalized), default=0)
+
+
+def discover_tile_groups(root: Path) -> dict[Path, dict[tuple[int, int, int], Path]]:
+    groups: dict[Path, dict[tuple[int, int, int], Path]] = {}
+    for tile in sorted(root.rglob("*.webp")):
+        if not tile.is_file() or tile.is_symlink():
+            continue
+        relative = tile.relative_to(root)
+        if not is_xyz_tile_path(relative):
+            continue
+        zoom_name, x_name, y_name = relative.parts[-3:]
+        coordinate = (int(zoom_name), int(x_name), int(y_name.removesuffix(".webp")))
+        groups.setdefault(tile_group_key(root, tile), {})[coordinate] = tile
+    return groups
+
+
+def normalize_tiles(root: Path) -> None:
+    groups = discover_tile_groups(root)
+    expected = set(expected_tile_paths())
+    selected: dict[str, tuple[Path, dict[tuple[int, int, int], Path]]] = {}
+    used: set[Path] = set()
+    for layer in LAYERS:
+        ranked = sorted(
+            (
+                (tile_layer_score(path, layer), len(expected & set(files)), path, files)
+                for path, files in groups.items()
+                if path not in used
+            ),
+            key=lambda item: (-item[0], -item[1], item[2].as_posix()),
+        )
+        if ranked and ranked[0][0] > 0:
+            _, _, path, files = ranked[0]
+            selected[layer] = (path, files)
+            used.add(path)
+    unresolved = [layer for layer in LAYERS if layer not in selected]
+    remaining = sorted(
+        ((len(expected & set(files)), path, files) for path, files in groups.items() if path not in used),
+        key=lambda item: (-item[0], item[1].as_posix()),
+    )
+    if len(unresolved) == 1 and remaining:
+        _, path, files = remaining[0]
+        selected[unresolved[0]] = (path, files)
+    elif len(unresolved) == 2 and len(remaining) == 2 and all(count == len(expected) for count, _, _ in remaining):
+        for layer, (_, path, files) in zip(unresolved, sorted(remaining, key=lambda item: item[1].as_posix())):
+            selected[layer] = (path, files)
+        print(
+            "[palpanel] map tile directories did not contain layer names; "
+            "assigned them deterministically by path order",
+            file=sys.stderr,
+        )
+    if any(layer not in selected for layer in LAYERS):
+        discovered = ", ".join(f"{path.as_posix()} ({len(files)} tiles)" for path, files in groups.items()) or "none"
+        raise ValueError(f"unable to identify both map tile layers; discovered XYZ WebP groups: {discovered}")
+    temporary = root / ".palpanel-normalized-tiles"
+    shutil.rmtree(temporary, ignore_errors=True)
+    for layer, (path, files) in selected.items():
+        missing = expected - set(files)
+        if missing:
+            raise ValueError(
+                f"tile layer {layer} is incomplete: {len(expected) - len(missing)} files; "
+                f"expected {EXPECTED_TILE_COUNT_PER_LAYER} (selected from {path.as_posix()})"
+            )
+        for zoom, x, y in sorted(expected):
+            source = files[(zoom, x, y)]
+            target = temporary / layer / str(zoom) / str(x) / f"{y}.webp"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+    shutil.rmtree(root / "tiles", ignore_errors=True)
+    temporary.rename(root / "tiles")
 
 def validate_pois(destination: Path, expected_total: int) -> tuple[int, dict[str, int]]:
     canonical: dict[str, tuple[str, str, float, float, float, float]] | None = None
@@ -577,8 +1051,11 @@ def main() -> int:
         staged = temp / "staged"
         staged.mkdir()
         copy_tree(map_root, staged)
+        normalize_pois(staged, source_manifest, ref)
         if args.tiles_source_dir:
             copy_tiles(args.tiles_source_dir, staged)
+        elif any(staged.rglob("*.webp")) or not args.allow_missing_tiles:
+            normalize_tiles(staged)
 
         expected_poi_total = (
             args.expected_poi_total

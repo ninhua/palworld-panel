@@ -1,6 +1,6 @@
 # PalPanel 世界地图资源接入
 
-PalPanel `0.8.43` 将世界地图瓦片、固定 POI、图标、元数据和许可证统一切换到专用资源仓库：
+PalPanel `0.8.45` 将世界地图瓦片、固定 POI、图标、元数据和许可证统一切换到专用资源仓库：
 
 ```text
 https://github.com/ninhua/palpanel-assets
@@ -10,7 +10,7 @@ https://github.com/ninhua/palpanel-assets
 
 ## 资源仓库目录约定
 
-同步器会自动寻找包含 `data/default-pois.zh-CN.json` 的地图根目录。推荐结构：
+同步器优先识别标准化目录；若资源仓库保留自己的目录和文件名，也会自动发现 POI JSON 与 XYZ WebP 瓦片并转换为运行时结构。推荐标准结构：
 
 ```text
 map/palops/
@@ -53,6 +53,25 @@ map/palops/
 - `assets/map/palops/`
 - `frontend/public/map/palops/`
 - 旧 PalOps Web 的 `src/PalOps.Web/wwwroot/map/`
+
+### 资源仓库原生布局自动发现
+
+从 `0.8.45` 起，资源仓库不必预先改名为 `default-pois.<locale>.json`。同步器会递归扫描：
+
+- 自动检查 JSON 与 GeoJSON 内容；文件名不必包含固定关键字。
+- JSON/GeoJSON 顶层数组、FeatureCollection，或 `pois`、`items`、`markers`、`locations`、`data`、`features`、`points`、`records` 数组。
+- 按地图、类别或语言分组的嵌套对象，以及分散在多个文件中的数据。
+- 路径末尾符合 `<z>/<x>/<y>.webp` 的 XYZ 瓦片。
+- 名称包含 `palpagos`、`palworld`、`mainmap`、`worldtree` 等标识的瓦片目录。
+
+单份 POI 数据会生成三种语言运行时文件；名称字段可以是字符串，也可以是带 `zh-CN`、`en-US`、`ja-JP` 键的对象。已有三语言数据仍会分别使用。同步器会将常见的 `poiId`、`mapId`、`position.x/y`、GeoJSON `properties`/`geometry.coordinates` 等字段归一化为 PalPanel POI 契约。
+
+自动发现只改变源仓库布局要求；发布包中的路径仍固定为：
+
+```text
+/map/palops/data/default-pois.<locale>.json
+/map/palops/tiles/<map>/<z>/<x>/<y>.webp
+```
 
 ## 强制验证
 
@@ -102,7 +121,7 @@ Token 只需要对 `ninhua/palpanel-assets` 的 `contents:read` 权限。CI、Re
 PALPANEL_MAP_ASSETS_TOKEN=github_pat_xxx \
 PALPANEL_MAP_ASSETS_REPOSITORY=ninhua/palpanel-assets \
 PALPANEL_MAP_ASSETS_REF=main \
-scripts/package.sh --version v1.3.0-custom.0.8.43
+scripts/package.sh --version v1.3.0-custom.0.8.45
 ```
 
 ## 离线或本地资源构建
@@ -111,14 +130,14 @@ scripts/package.sh --version v1.3.0-custom.0.8.43
 
 ```bash
 PALPANEL_MAP_ASSETS_SOURCE_DIR=/srv/source/palpanel-assets \
-scripts/package.sh --version v1.3.0-custom.0.8.43
+scripts/package.sh --version v1.3.0-custom.0.8.45
 ```
 
 使用预下载 ZIP：
 
 ```bash
 PALPANEL_MAP_ASSETS_ARCHIVE=/srv/source/palpanel-assets.zip \
-scripts/package.sh --version v1.3.0-custom.0.8.43
+scripts/package.sh --version v1.3.0-custom.0.8.45
 ```
 
 仅在开发诊断时允许缺少瓦片：
