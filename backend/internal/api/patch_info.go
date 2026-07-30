@@ -10,7 +10,7 @@ const (
 	patchSourceRepository = "uitok/palworld-panel"
 	patchSourceRef        = "v1.3.0"
 	patchTargetVersion    = "v1.3.0"
-	patchVersion          = "0.8.41"
+	patchVersion          = "0.8.42"
 	panelRepository       = "ninhua/palworld-panel"
 )
 

@@ -65,13 +65,23 @@ jobs:
       - id: source
         name: Resolve source commit
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - name: Ensure release does not already exist
+      - name: Reject release identity reuse
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
         run: |
+          tag_exists=false
+          release_exists=false
+          if git show-ref --tags --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            tag_exists=true
+          fi
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release already exists: $RELEASE_TAG" >&2
+            release_exists=true
+          fi
+          if [[ "$tag_exists" == true || "$release_exists" == true ]]; then
+            echo "Release identity already exists: tag=$tag_exists release=$release_exists name=$RELEASE_TAG" >&2
+            echo "Published release tags are immutable for this project." >&2
+            echo "Increment patchVersion in backend/internal/api/patch_info.go and add docs/releases/<new-version>.md, then rerun this workflow." >&2
             exit 1
           fi
       - name: Source checks
