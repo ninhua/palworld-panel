@@ -3,6 +3,8 @@ package api
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -22,6 +24,7 @@ func init() {
 		"economy-game-command-api",
 		"astrbot-economy-api",
 		"configurable-game-command-prefix",
+		"astrbot-economy-sqlite-import",
 	)
 }
 
@@ -39,6 +42,8 @@ func (s Server) registerEconomyRoutes(api *gin.RouterGroup) {
 	group.POST("/reservations/:id/commit", Require(PermPlayersWrite), s.economyCommitReservation)
 	group.POST("/reservations/:id/release", Require(PermPlayersWrite), s.economyReleaseReservation)
 	group.POST("/commands/execute", Require(PermPlayersWrite), s.economyExecuteCommand)
+	group.POST("/imports/astrbot/inspect", RequireInteractiveAdmin(), s.economyInspectAstrBot)
+	group.POST("/imports/astrbot", RequireInteractiveAdmin(), s.economyImportAstrBot)
 	group.POST("/maintenance/release-expired", Require(PermPlayersWrite), s.economyReleaseExpired)
 }
 
@@ -48,6 +53,85 @@ func (s Server) economyService() (*economy.Service, error) {
 		CommandPrefix:      defaultGameCommandPrefix(),
 		DailyCheckinPoints: defaultDailyCheckinPoints(),
 	})
+}
+
+const maximumAstrBotEconomyDatabaseBytes int64 = 64 << 20
+
+func (s Server) economyInspectAstrBot(c *gin.Context) {
+	path, cleanup, err := receiveAstrBotEconomyDatabase(c)
+	if err != nil {
+		fail(c, http.StatusBadRequest, "astrbot_database_upload_failed", err.Error())
+		return
+	}
+	defer cleanup()
+	service, err := s.economyService()
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	preview, err := service.InspectLegacyAstrBot(c.Request.Context(), path)
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	ok(c, preview)
+}
+
+func (s Server) economyImportAstrBot(c *gin.Context) {
+	path, cleanup, err := receiveAstrBotEconomyDatabase(c)
+	if err != nil {
+		fail(c, http.StatusBadRequest, "astrbot_database_upload_failed", err.Error())
+		return
+	}
+	defer cleanup()
+	service, err := s.economyService()
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	result, err := service.ImportLegacyAstrBot(c.Request.Context(), path, CurrentPrincipal(c).Name)
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	created(c, result)
+}
+
+func receiveAstrBotEconomyDatabase(c *gin.Context) (string, func(), error) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maximumAstrBotEconomyDatabaseBytes+(1<<20))
+	upload, header, err := c.Request.FormFile("database")
+	if err != nil {
+		return "", func() {}, errors.New("multipart field database is required")
+	}
+	defer upload.Close()
+	if header.Size <= 0 {
+		return "", func() {}, errors.New("uploaded database is empty")
+	}
+	if header.Size > maximumAstrBotEconomyDatabaseBytes {
+		return "", func() {}, fmt.Errorf("uploaded database exceeds %d MiB", maximumAstrBotEconomyDatabaseBytes>>20)
+	}
+	temporary, err := os.CreateTemp("", "palpanel-astrbot-economy-*.sqlite3")
+	if err != nil {
+		return "", func() {}, err
+	}
+	path := temporary.Name()
+	cleanup := func() { _ = os.Remove(path) }
+	_ = temporary.Chmod(0o600)
+	written, copyErr := io.CopyN(temporary, upload, maximumAstrBotEconomyDatabaseBytes+1)
+	closeErr := temporary.Close()
+	if copyErr != nil && !errors.Is(copyErr, io.EOF) {
+		cleanup()
+		return "", func() {}, copyErr
+	}
+	if closeErr != nil {
+		cleanup()
+		return "", func() {}, closeErr
+	}
+	if written > maximumAstrBotEconomyDatabaseBytes {
+		cleanup()
+		return "", func() {}, fmt.Errorf("uploaded database exceeds %d MiB", maximumAstrBotEconomyDatabaseBytes>>20)
+	}
+	return path, cleanup, nil
 }
 
 func (s Server) economyConfig(c *gin.Context) {
@@ -429,6 +513,7 @@ func economyQueryInt(c *gin.Context, name string, fallback int) int {
 func economyFailure(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, economy.ErrInvalidPlayerUID),
+		errors.Is(err, economy.ErrInvalidLegacyAstrBotDatabase),
 		errors.Is(err, economy.ErrInvalidCommandPrefix),
 		errors.Is(err, economy.ErrInvalidCheckinPoints),
 		errors.Is(err, economy.ErrInvalidAmount),

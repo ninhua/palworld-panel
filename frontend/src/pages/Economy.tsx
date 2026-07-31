@@ -1,7 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Coins, LoaderCircle, RefreshCw, Save, Search, Settings2, WalletCards } from 'lucide-react';
-import { economyApi, type EconomyAccount } from '../api/economy';
+import {
+  AlertTriangle,
+  Coins,
+  Database,
+  FileSearch,
+  LoaderCircle,
+  RefreshCw,
+  Save,
+  Search,
+  Settings2,
+  Upload,
+  WalletCards,
+} from 'lucide-react';
+import { economyApi, type EconomyAccount, type LegacyAstrBotPreview } from '../api/economy';
 import { getErrorMessage } from '../api/client';
 
 const number = new Intl.NumberFormat('zh-CN');
@@ -14,6 +26,8 @@ export const Economy: React.FC = () => {
   const [selected, setSelected] = useState<EconomyAccount | null>(null);
   const [delta, setDelta] = useState(0);
   const [reason, setReason] = useState('管理员调整');
+  const [legacyFile, setLegacyFile] = useState<File | null>(null);
+  const [legacyPreview, setLegacyPreview] = useState<LegacyAstrBotPreview | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const configQuery = useQuery({ queryKey: ['economy', 'config'], queryFn: economyApi.config });
@@ -53,6 +67,43 @@ export const Economy: React.FC = () => {
         queryClient.invalidateQueries({ queryKey: ['economy', 'summary'] }),
         queryClient.invalidateQueries({ queryKey: ['economy', 'accounts'] }),
         queryClient.invalidateQueries({ queryKey: ['economy', 'ledger', result.account.player_uid] }),
+      ]);
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const inspectLegacy = useMutation({
+    mutationFn: () => {
+      if (!legacyFile) throw new Error('请先选择 AstrBot 插件的 palpanel.sqlite3。');
+      return economyApi.inspectAstrBot(legacyFile);
+    },
+    onSuccess: (preview) => {
+      setLegacyPreview(preview);
+      setNotice({
+        type: 'success',
+        text: `检查完成：可导入 ${number.format(preview.importable_points)} 积分，涉及 ${preview.importable_accounts} 个账户。`,
+      });
+    },
+    onError: (error) => {
+      setLegacyPreview(null);
+      setNotice({ type: 'error', text: getErrorMessage(error) });
+    },
+  });
+
+  const importLegacy = useMutation({
+    mutationFn: () => {
+      if (!legacyFile || !legacyPreview) throw new Error('请先上传并检查旧积分数据库。');
+      return economyApi.importAstrBot(legacyFile);
+    },
+    onSuccess: async (result) => {
+      setNotice({
+        type: 'success',
+        text: `迁移完成：导入 ${number.format(result.imported_points)} 积分、${result.imported_accounts} 个账户、${result.imported_checkins} 条签到记录。`,
+      });
+      setLegacyPreview(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['economy', 'summary'] }),
+        queryClient.invalidateQueries({ queryKey: ['economy', 'accounts'] }),
       ]);
     },
     onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
@@ -128,6 +179,48 @@ export const Economy: React.FC = () => {
         </div>
       </section>
 
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="max-w-2xl">
+            <div className="mb-2 flex items-center gap-2"><Database size={18} className="text-indigo-500" /><h2 className="font-black text-slate-900">AstrBot旧积分迁移</h2></div>
+            <p className="text-sm leading-6 text-slate-500">上传 AstrBot 插件目录中的 <code className="rounded bg-slate-100 px-1.5 py-0.5">palpanel.sqlite3</code>。系统按QQ绑定的PlayerUID迁移余额和签到记录，并通过差额导入防止重复加分。</p>
+            <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800"><AlertTriangle className="mt-0.5 shrink-0" size={15} />迁移前应停止旧插件的签到和积分写入。旧库余额下降时不会自动扣除面板积分，只会在检查结果中标记。</div>
+          </div>
+          <div className="w-full max-w-xl space-y-3">
+            <label className="block rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
+              <span className="mb-2 flex items-center gap-2 text-xs font-bold text-slate-600"><Upload size={15} />选择SQLite数据库</span>
+              <input
+                type="file"
+                accept=".db,.sqlite,.sqlite3,application/x-sqlite3"
+                onChange={(event) => {
+                  setLegacyFile(event.target.files?.[0] || null);
+                  setLegacyPreview(null);
+                }}
+                className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-bold file:text-slate-700 file:shadow-sm"
+              />
+              {legacyFile && <span className="mt-2 block truncate text-xs text-slate-400">{legacyFile.name} · {number.format(legacyFile.size)} bytes</span>}
+            </label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" disabled={!legacyFile || inspectLegacy.isPending || importLegacy.isPending} onClick={() => inspectLegacy.mutate()} className="pp-button justify-center"><FileSearch size={15} />{inspectLegacy.isPending ? '正在检查…' : '检查数据库'}</button>
+              <button type="button" disabled={!legacyPreview || importLegacy.isPending || inspectLegacy.isPending} onClick={() => importLegacy.mutate()} className="pp-btn pp-btn--primary justify-center"><Upload size={15} />{importLegacy.isPending ? '正在迁移…' : '确认迁移'}</button>
+            </div>
+          </div>
+        </div>
+
+        {legacyPreview && (
+          <div className="mt-5 grid gap-3 border-t border-slate-100 pt-5 sm:grid-cols-2 lg:grid-cols-4">
+            <MigrationMetric label="旧库总积分" value={legacyPreview.source_points} />
+            <MigrationMetric label="本次可导入" value={legacyPreview.importable_points} emphasis />
+            <MigrationMetric label="可导入账户" value={legacyPreview.importable_accounts} suffix="个" />
+            <MigrationMetric label="签到记录" value={legacyPreview.checkins} suffix="条" />
+            <MigrationMetric label="未绑定账户" value={legacyPreview.unbound_accounts} suffix="个" warning={legacyPreview.unbound_accounts > 0} />
+            <MigrationMetric label="余额下降" value={legacyPreview.decreased_balance} suffix="个" warning={legacyPreview.decreased_balance > 0} />
+            <MigrationMetric label="已是最新" value={legacyPreview.already_current} suffix="个" />
+            <MigrationMetric label="零余额" value={legacyPreview.zero_balance} suffix="个" />
+          </div>
+        )}
+      </section>
+
       {selected && <section className="grid gap-5 xl:grid-cols-[minmax(0,0.75fr)_minmax(0,1.65fr)]">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="font-black text-slate-900">人工调整</h2>
@@ -152,4 +245,11 @@ export const Economy: React.FC = () => {
 
 const Metric: React.FC<{ label: string; value: number; suffix?: string; icon: React.ReactNode }> = ({ label, value, suffix, icon }) => (
   <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-center justify-between text-slate-400"><span className="text-xs font-bold uppercase tracking-wider">{label}</span><span className="rounded-lg bg-sky-50 p-2 text-sky-500">{icon}</span></div><div className="text-2xl font-black tracking-tight text-slate-900">{number.format(value)}{suffix && <span className="ml-1 text-sm text-slate-400">{suffix}</span>}</div></div>
+);
+
+const MigrationMetric: React.FC<{ label: string; value: number; suffix?: string; emphasis?: boolean; warning?: boolean }> = ({ label, value, suffix, emphasis, warning }) => (
+  <div className={`rounded-xl border p-3 ${warning ? 'border-amber-200 bg-amber-50' : emphasis ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100 bg-slate-50'}`}>
+    <div className="text-[11px] font-bold text-slate-500">{label}</div>
+    <div className={`mt-1 text-lg font-black ${warning ? 'text-amber-700' : emphasis ? 'text-emerald-700' : 'text-slate-800'}`}>{number.format(value)}{suffix && <span className="ml-1 text-xs font-bold">{suffix}</span>}</div>
+  </div>
 );

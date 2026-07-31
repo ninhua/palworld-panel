@@ -160,3 +160,47 @@ POST /api/economy/reservations/<reservation_id>/release
 - 按昵称、PlayerUID 或 Steam ID 查询账户。
 - 查看单个玩家最近流水。
 - 人工增加或扣除积分。
+
+## AstrBot旧积分数据库迁移
+
+该入口只接受浏览器上传的SQLite文件，不接受服务器任意文件路径。最大文件大小为64 MiB，并要求管理员浏览器会话。
+
+检查数据库，不写入积分：
+
+```http
+POST /api/economy/imports/astrbot/inspect
+Content-Type: multipart/form-data
+```
+
+表单字段：
+
+```text
+database=<astrbot_plugin_palpanel/palpanel.sqlite3>
+```
+
+确认迁移：
+
+```http
+POST /api/economy/imports/astrbot
+Content-Type: multipart/form-data
+```
+
+迁移规则：
+
+- 从旧库 `accounts`、`bindings` 和 `checkins` 表读取数据。
+- 只将已经绑定 `PlayerUID` 的QQ账户迁入面板积分系统。
+- 余额以 `PlayerUID` 入账，QQ号只保留在迁移审计元数据中。
+- 同一QQ账户重复上传不会重复加分。
+- 如果旧库余额比上次迁移时更高，只导入新增差额。
+- 如果旧库余额下降，不自动扣除面板积分，检查结果会标记 `source_balance_decreased`。
+- 旧签到记录会写入面板签到去重表，防止迁移当天再次签到重复领取。
+- 每次确认迁移都会生成独立批次ID和积分流水。
+
+推荐步骤：
+
+1. 停止AstrBot旧插件的签到和积分写入。
+2. 备份插件目录中的 `palpanel.sqlite3`。
+3. 在积分系统页面上传并执行“检查数据库”。
+4. 核对可导入积分、未绑定账户和余额下降账户。
+5. 点击“确认迁移”。
+6. 将AstrBot签到和积分查询改为调用PalPanel统一积分接口。

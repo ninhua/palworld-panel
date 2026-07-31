@@ -42,6 +42,45 @@ export interface EconomyLedgerEntry {
   created_at: string;
 }
 
+
+export interface LegacyAstrBotCandidate {
+  qq_id: string;
+  player_uid?: string;
+  nickname?: string;
+  binding_status?: string;
+  source_balance: number;
+  previously_imported: number;
+  import_delta: number;
+  status: 'ready' | 'unbound' | 'zero_balance' | 'source_balance_decreased' | 'already_current';
+}
+
+export interface LegacyAstrBotPreview {
+  source_sha256: string;
+  accounts: number;
+  bound_accounts: number;
+  importable_accounts: number;
+  unbound_accounts: number;
+  zero_balance: number;
+  decreased_balance: number;
+  already_current: number;
+  source_points: number;
+  importable_points: number;
+  checkins: number;
+  candidates: LegacyAstrBotCandidate[];
+}
+
+export interface LegacyAstrBotImportResult {
+  batch_id: string;
+  source_sha256: string;
+  imported_accounts: number;
+  imported_points: number;
+  imported_checkins: number;
+  unbound_accounts: number;
+  decreased_balance: number;
+  already_current: number;
+  zero_balance_accounts: number;
+}
+
 interface EconomyAccountList {
   items: EconomyAccount[];
   count: number;
@@ -103,4 +142,29 @@ export const economyApi = {
     { account: { player_uid: playerUID, status: 'active', balance: 0, created_at: '', updated_at: '' } },
     { fallbackOnError: false },
   ),
+  inspectAstrBot: (file: File) => {
+    const form = new FormData();
+    form.append('database', file);
+    return handleRequest<unknown, LegacyAstrBotPreview>(
+      () => apiClient.post('/economy/imports/astrbot/inspect', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 30000 }),
+      {
+        source_sha256: '', accounts: 0, bound_accounts: 0, importable_accounts: 0, unbound_accounts: 0,
+        zero_balance: 0, decreased_balance: 0, already_current: 0, source_points: 0, importable_points: 0,
+        checkins: 0, candidates: [],
+      },
+      { fallbackOnError: false },
+    );
+  },
+  importAstrBot: (file: File) => {
+    const form = new FormData();
+    form.append('database', file);
+    return handleRequest<unknown, LegacyAstrBotImportResult>(
+      () => apiClient.post('/economy/imports/astrbot', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 }),
+      {
+        batch_id: '', source_sha256: '', imported_accounts: 0, imported_points: 0, imported_checkins: 0,
+        unbound_accounts: 0, decreased_balance: 0, already_current: 0, zero_balance_accounts: 0,
+      },
+      { fallbackOnError: false },
+    );
+  },
 };
