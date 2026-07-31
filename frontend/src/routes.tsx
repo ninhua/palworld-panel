@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Activity, Archive, BellRing, ClipboardList, Coins, Database, Dna, FileDiff, FolderArchive, Globe2, LayoutDashboard,
-  Gift, ListTodo, Map as MapIcon, PackageSearch, Puzzle, Settings as SettingsIcon, Shield, Sparkles, Target,
+  Gift, ListTodo, Map as MapIcon, PackageSearch, Puzzle, Settings as SettingsIcon, Shield, ShoppingBag, Sparkles, Target,
   SquareTerminal, UserCog, UserX, Users,
 } from 'lucide-react';
 import type { TranslationKey } from './i18n';
@@ -18,6 +18,7 @@ const Dashboard = lazyPage(() => import('./pages/Dashboard'), 'Dashboard');
 const Diagnostics = lazyPage(() => import('./pages/Diagnostics'), 'Diagnostics');
 const CommunityServers = lazyPage(() => import('./pages/CommunityServers'), 'CommunityServers');
 const Economy = lazyPage(() => import('./pages/Economy'), 'Economy');
+const EconomyShop = lazyPage(() => import('./pages/EconomyShop'), 'EconomyShop');
 const OperationsTasks = lazyPage(() => import('./pages/OperationsTasks'), 'OperationsTasks');
 const Guilds = lazyPage(() => import('./pages/Guilds'), 'Guilds');
 const Mods = lazyPage(() => import('./pages/Mods'), 'Mods');
@@ -59,6 +60,7 @@ export const appRoutes: AppRoute[] = [
   { id: 'community-servers', path: '/community-servers', title: '社区服务器', navLabel: '社区服务器', titleKey: 'route.communityServers', navGroup: 'workspace', icon: <Globe2 size={18} />, element: <CommunityServers /> },
   { id: 'player-center', path: '/player-center', title: '玩家中心', navLabel: '玩家中心', titleKey: 'route.playerCenter', navGroup: 'world', activePaths: ['/gm'], icon: <UserCog size={18} />, element: <PalDefenderGM /> },
   { id: 'economy', path: '/economy', title: '积分系统', navLabel: '积分账户', navGroup: 'world', icon: <Coins size={18} />, element: <Economy /> },
+  { id: 'economy-shop', path: '/economy-shop', title: '积分商城', navLabel: '积分商城', navGroup: 'world', icon: <ShoppingBag size={18} />, element: <EconomyShop /> },
   { id: 'operations-tasks', path: '/operations-tasks', title: '任务系统', navLabel: '任务系统', navGroup: 'world', icon: <Target size={18} />, element: <OperationsTasks /> },
   { id: 'starter-gift', path: '/starter-gift', title: '新玩家礼包', navLabel: '新玩家礼包', titleKey: 'route.starterGift', navGroup: 'world', icon: <Gift size={18} />, element: <StarterGift /> },
   { id: 'save-sources', path: '/save-sources', title: '存档中心', navLabel: '存档中心', titleKey: 'route.saveSources', navGroup: 'world', icon: <FolderArchive size={18} />, element: <SaveSources /> },

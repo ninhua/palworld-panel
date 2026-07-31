@@ -1512,6 +1512,72 @@ paths:
       x-palpanel-permission: hmac-integration
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AstrBotCommunityServerRequest'}}}}
       responses: {'200': *communityServerResult, '400': *error, '401': *error, '429': *error, '502': *error, '503': *error}
+  /shop/summary:
+    get:
+      operationId: getShopSummary
+      tags: [economy]
+      x-palpanel-permission: read
+      responses: {'200': *success, '401': *error, '500': *error}
+  /shop/products:
+    get:
+      operationId: listShopProducts
+      tags: [economy]
+      x-palpanel-permission: read
+      parameters:
+        - {name: include_disabled, in: query, required: false, schema: {type: boolean, default: false}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      responses: {'200': *success, '400': *error, '401': *error, '500': *error}
+    post:
+      operationId: createShopProduct
+      tags: [economy]
+      x-palpanel-permission: 'config:write'
+      requestBody: *jsonRequest
+      responses: {'201': *success, '400': *error, '401': *error, '403': *error, '500': *error}
+  /shop/products/{id}:
+    parameters: [*idParameter]
+    put:
+      operationId: updateShopProduct
+      tags: [economy]
+      x-palpanel-permission: 'config:write'
+      requestBody: *jsonRequest
+      responses: {'200': *success, '400': *error, '401': *error, '403': *error, '404': *error, '500': *error}
+    delete:
+      operationId: archiveShopProduct
+      tags: [economy]
+      x-palpanel-permission: 'config:write'
+      responses: {'200': *success, '401': *error, '403': *error, '404': *error, '500': *error}
+  /shop/orders:
+    get:
+      operationId: listShopOrders
+      tags: [economy]
+      x-palpanel-permission: read
+      parameters:
+        - {name: status, in: query, required: false, schema: {type: string, enum: [pending, delivered, cancelled]}}
+        - {name: player_uid, in: query, required: false, schema: {type: string}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      responses: {'200': *success, '400': *error, '401': *error, '500': *error}
+    post:
+      operationId: createShopOrder
+      tags: [economy]
+      x-palpanel-permission: 'players:write'
+      requestBody: *jsonRequest
+      responses: {'201': *success, '200': *success, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error, '500': *error}
+  /shop/orders/{id}/complete:
+    parameters: [*idParameter]
+    post:
+      operationId: completeShopOrder
+      tags: [economy]
+      x-palpanel-permission: 'players:write'
+      responses: {'200': *success, '401': *error, '403': *error, '404': *error, '409': *error, '500': *error}
+  /shop/orders/{id}/cancel:
+    parameters: [*idParameter]
+    post:
+      operationId: cancelShopOrder
+      tags: [economy]
+      x-palpanel-permission: 'players:write'
+      responses: {'200': *success, '401': *error, '403': *error, '404': *error, '409': *error, '500': *error}
   /players:
     get:
       operationId: listSavePlayers
@@ -4080,7 +4146,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.60}
+            version: {type: string, const: 0.8.61}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array
