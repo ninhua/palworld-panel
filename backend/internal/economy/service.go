@@ -8,35 +8,45 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	_ "modernc.org/sqlite"
 	_ "time/tzdata"
 )
 
 var (
-	ErrInvalidPlayerUID    = errors.New("player uid is required")
-	ErrInvalidAmount       = errors.New("amount must be greater than zero")
-	ErrInvalidDelta        = errors.New("delta must not be zero")
-	ErrInvalidReason       = errors.New("reason is required")
-	ErrInvalidReference    = errors.New("reference id is required")
-	ErrInsufficientBalance = errors.New("insufficient point balance")
-	ErrReservationNotFound = errors.New("point reservation not found")
-	ErrReservationSettled  = errors.New("point reservation is already settled")
+	ErrInvalidPlayerUID     = errors.New("player uid is required")
+	ErrInvalidAmount        = errors.New("amount must be greater than zero")
+	ErrInvalidDelta         = errors.New("delta must not be zero")
+	ErrInvalidReason        = errors.New("reason is required")
+	ErrInvalidReference     = errors.New("reference id is required")
+	ErrInsufficientBalance  = errors.New("insufficient point balance")
+	ErrReservationNotFound  = errors.New("point reservation not found")
+	ErrReservationSettled   = errors.New("point reservation is already settled")
+	ErrInvalidCommandPrefix = errors.New("command prefix must not contain whitespace and must be at most 16 characters")
+	ErrInvalidCheckinPoints = errors.New("daily checkin points must be between 0 and 1000000")
 )
 
 const (
-	defaultTimezone = "Asia/Shanghai"
-	defaultLimit    = 50
-	maximumLimit    = 500
+	defaultTimezone                 = "Asia/Shanghai"
+	defaultCommandPrefix            = "!"
+	defaultCheckinPoints      int64 = 10
+	maximumCommandPrefixRunes       = 16
+	maximumCheckinPoints      int64 = 1000000
+	defaultLimit                    = 50
+	maximumLimit                    = 500
 )
 
 type Service struct {
-	db       *sql.DB
-	location *time.Location
-	now      func() time.Time
+	db            *sql.DB
+	location      *time.Location
+	now           func() time.Time
+	defaultConfig Config
 }
 
 type Account struct {
@@ -118,6 +128,17 @@ type Summary struct {
 	LocalDate          string `json:"local_date"`
 }
 
+type Defaults struct {
+	CommandPrefix      string
+	DailyCheckinPoints int64
+}
+
+type Config struct {
+	CommandPrefix      string `json:"command_prefix"`
+	DailyCheckinPoints int64  `json:"daily_checkin_points"`
+	UpdatedAt          string `json:"updated_at"`
+}
+
 type CommandRequest struct {
 	EventID   string `json:"event_id"`
 	PlayerUID string `json:"player_uid"`
@@ -142,7 +163,7 @@ type CommandResult struct {
 
 var serviceCache sync.Map
 
-func ForPath(path, timezone string) (*Service, error) {
+func ForPath(path, timezone string, requestedDefaults ...Defaults) (*Service, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return nil, errors.New("economy database path is empty")
@@ -150,11 +171,12 @@ func ForPath(path, timezone string) (*Service, error) {
 	if strings.TrimSpace(timezone) == "" {
 		timezone = defaultTimezone
 	}
+	defaults := normalizeDefaults(requestedDefaults)
 	key := path + "\x00" + timezone
 	if cached, ok := serviceCache.Load(key); ok {
 		return cached.(*Service), nil
 	}
-	service, err := Open(path, timezone)
+	service, err := Open(path, timezone, defaults)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +188,7 @@ func ForPath(path, timezone string) (*Service, error) {
 	return service, nil
 }
 
-func Open(path, timezone string) (*Service, error) {
+func Open(path, timezone string, requestedDefaults ...Defaults) (*Service, error) {
 	location, err := time.LoadLocation(strings.TrimSpace(timezone))
 	if err != nil {
 		return nil, fmt.Errorf("load economy timezone: %w", err)
@@ -176,7 +198,11 @@ func Open(path, timezone string) (*Service, error) {
 		return nil, fmt.Errorf("open economy database: %w", err)
 	}
 	database.SetMaxOpenConns(1)
-	service := &Service{db: database, location: location, now: time.Now}
+	defaults := normalizeDefaults(requestedDefaults)
+	service := &Service{
+		db: database, location: location, now: time.Now,
+		defaultConfig: Config{CommandPrefix: defaults.CommandPrefix, DailyCheckinPoints: defaults.DailyCheckinPoints},
+	}
 	if err := service.configure(context.Background()); err != nil {
 		_ = database.Close()
 		return nil, err
@@ -263,6 +289,11 @@ func (s *Service) ensureSchema(ctx context.Context) error {
 			FOREIGN KEY(player_uid) REFERENCES economy_accounts(player_uid) ON DELETE RESTRICT
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_economy_reservations_status_expiry ON economy_reservations(status, expires_at)`,
+		`CREATE TABLE IF NOT EXISTS economy_settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS economy_command_events (
 			event_id TEXT PRIMARY KEY,
 			player_uid TEXT NOT NULL,
@@ -274,6 +305,16 @@ func (s *Service) ensureSchema(ctx context.Context) error {
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("create economy schema: %w", err)
+		}
+	}
+	now := s.timestamp()
+	defaults := []struct{ key, value string }{
+		{key: "command_prefix", value: s.defaultConfig.CommandPrefix},
+		{key: "daily_checkin_points", value: strconv.FormatInt(s.defaultConfig.DailyCheckinPoints, 10)},
+	}
+	for _, item := range defaults {
+		if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO economy_settings(key,value,updated_at) VALUES(?,?,?)`, item.key, item.value, now); err != nil {
+			return fmt.Errorf("initialize economy setting %s: %w", item.key, err)
 		}
 	}
 	return nil
@@ -617,6 +658,70 @@ func (s *Service) ReleaseExpired(ctx context.Context) (int64, error) {
 	return count, nil
 }
 
+func (s *Service) Config(ctx context.Context) (Config, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT key,value,updated_at FROM economy_settings WHERE key IN ('command_prefix','daily_checkin_points')`)
+	if err != nil {
+		return Config{}, err
+	}
+	defer rows.Close()
+	config := s.defaultConfig
+	for rows.Next() {
+		var key, value, updatedAt string
+		if err := rows.Scan(&key, &value, &updatedAt); err != nil {
+			return Config{}, err
+		}
+		if updatedAt > config.UpdatedAt {
+			config.UpdatedAt = updatedAt
+		}
+		switch key {
+		case "command_prefix":
+			config.CommandPrefix = value
+		case "daily_checkin_points":
+			if parsed, parseErr := strconv.ParseInt(value, 10, 64); parseErr == nil {
+				config.DailyCheckinPoints = parsed
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return Config{}, err
+	}
+	if err := validateCommandPrefix(config.CommandPrefix); err != nil {
+		return Config{}, err
+	}
+	if config.DailyCheckinPoints < 0 || config.DailyCheckinPoints > maximumCheckinPoints {
+		return Config{}, ErrInvalidCheckinPoints
+	}
+	return config, nil
+}
+
+func (s *Service) UpdateConfig(ctx context.Context, commandPrefix string, dailyCheckinPoints int64) (Config, error) {
+	if err := validateCommandPrefix(commandPrefix); err != nil {
+		return Config{}, err
+	}
+	if dailyCheckinPoints < 0 || dailyCheckinPoints > maximumCheckinPoints {
+		return Config{}, ErrInvalidCheckinPoints
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Config{}, err
+	}
+	defer rollback(tx)
+	now := s.timestamp()
+	values := []struct{ key, value string }{
+		{key: "command_prefix", value: commandPrefix},
+		{key: "daily_checkin_points", value: strconv.FormatInt(dailyCheckinPoints, 10)},
+	}
+	for _, item := range values {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO economy_settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`, item.key, item.value, now); err != nil {
+			return Config{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Config{}, err
+	}
+	return s.Config(ctx)
+}
+
 func (s *Service) Summary(ctx context.Context) (Summary, error) {
 	localDate := s.LocalDate()
 	cutoff := s.now().UTC().Add(-24 * time.Hour).Format(time.RFC3339Nano)
@@ -655,7 +760,14 @@ func (s *Service) ExecuteCommand(ctx context.Context, request CommandRequest) (C
 	if request.EventID == "" {
 		request.EventID = newID()
 	}
-	command, handled := parseCommand(request.Message)
+	config, err := s.Config(ctx)
+	if err != nil {
+		return CommandResult{}, err
+	}
+	command, handled := parseCommand(request.Message, config.CommandPrefix)
+	if !handled {
+		return CommandResult{EventID: request.EventID, PlayerUID: request.PlayerUID, Handled: false}, nil
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return CommandResult{}, err
@@ -678,7 +790,7 @@ func (s *Service) ExecuteCommand(ctx context.Context, request CommandRequest) (C
 	case "checkin":
 		points := request.Points
 		if points <= 0 {
-			points = 10
+			points = config.DailyCheckinPoints
 		}
 		localDate := strings.TrimSpace(request.LocalDate)
 		if localDate == "" {
@@ -709,7 +821,7 @@ func (s *Service) ExecuteCommand(ctx context.Context, request CommandRequest) (C
 			return CommandResult{}, err
 		}
 		result.Balance = account.Balance
-		result.Reply = "可用命令：!签到、!积分、!帮助。"
+		result.Reply = fmt.Sprintf("可用命令：%s、%s、%s。", commandLabel(config.CommandPrefix, "签到"), commandLabel(config.CommandPrefix, "积分"), commandLabel(config.CommandPrefix, "帮助"))
 	default:
 		result.Reply = ""
 	}
@@ -926,17 +1038,25 @@ func scanReservation(row scanner) (Reservation, error) {
 	return reservation, err
 }
 
-func parseCommand(message string) (string, bool) {
+func parseCommand(message, prefix string) (string, bool) {
 	message = strings.TrimSpace(message)
 	if message == "" {
 		return "", false
+	}
+	if prefix != "" {
+		if !strings.HasPrefix(message, prefix) {
+			return "", false
+		}
+		message = strings.TrimSpace(strings.TrimPrefix(message, prefix))
+		if message == "" {
+			return "", false
+		}
 	}
 	fields := strings.Fields(message)
 	if len(fields) == 0 {
 		return "", false
 	}
 	command := strings.ToLower(strings.TrimSpace(fields[0]))
-	command = strings.TrimLeft(command, "!！/／")
 	switch command {
 	case "签到", "qd", "checkin":
 		return "checkin", true
@@ -945,8 +1065,38 @@ func parseCommand(message string) (string, bool) {
 	case "帮助", "help", "菜单", "menu":
 		return "help", true
 	default:
-		return command, false
+		return "", false
 	}
+}
+
+func commandLabel(prefix, command string) string {
+	return prefix + command
+}
+
+func normalizeDefaults(requested []Defaults) Defaults {
+	defaults := Defaults{CommandPrefix: defaultCommandPrefix, DailyCheckinPoints: defaultCheckinPoints}
+	if len(requested) > 0 {
+		defaults = requested[0]
+	}
+	if err := validateCommandPrefix(defaults.CommandPrefix); err != nil {
+		defaults.CommandPrefix = defaultCommandPrefix
+	}
+	if defaults.DailyCheckinPoints < 0 || defaults.DailyCheckinPoints > maximumCheckinPoints {
+		defaults.DailyCheckinPoints = defaultCheckinPoints
+	}
+	return defaults
+}
+
+func validateCommandPrefix(prefix string) error {
+	if utf8.RuneCountInString(prefix) > maximumCommandPrefixRunes {
+		return ErrInvalidCommandPrefix
+	}
+	for _, r := range prefix {
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			return ErrInvalidCommandPrefix
+		}
+	}
+	return nil
 }
 
 func normalizePlayerUID(value string) string {

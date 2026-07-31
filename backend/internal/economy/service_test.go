@@ -169,3 +169,40 @@ func TestGameCommandEventIsIdempotent(t *testing.T) {
 		t.Fatalf("duplicate command was not deduplicated: %+v", second)
 	}
 }
+
+func TestParseCommandUsesConfiguredPrefix(t *testing.T) {
+	if command, handled := parseCommand("#签到", "#"); !handled || command != "checkin" {
+		t.Fatalf("custom prefix was not accepted: command=%q handled=%t", command, handled)
+	}
+	if command, handled := parseCommand("!签到", "#"); handled || command != "" {
+		t.Fatalf("old prefix should not match: command=%q handled=%t", command, handled)
+	}
+	if command, handled := parseCommand("#积分 额外参数", "#"); !handled || command != "points" {
+		t.Fatalf("custom prefix points command failed: command=%q handled=%t", command, handled)
+	}
+}
+
+func TestParseCommandAllowsEmptyPrefixWithoutCapturingChat(t *testing.T) {
+	if command, handled := parseCommand("签到", ""); !handled || command != "checkin" {
+		t.Fatalf("prefix-free checkin failed: command=%q handled=%t", command, handled)
+	}
+	if command, handled := parseCommand("积分", ""); !handled || command != "points" {
+		t.Fatalf("prefix-free points failed: command=%q handled=%t", command, handled)
+	}
+	if command, handled := parseCommand("今天一起打 Boss 吧", ""); handled || command != "" {
+		t.Fatalf("ordinary chat was captured as a command: command=%q handled=%t", command, handled)
+	}
+}
+
+func TestValidateCommandPrefix(t *testing.T) {
+	for _, prefix := range []string{"", "!", "##", "指令:", "／"} {
+		if err := validateCommandPrefix(prefix); err != nil {
+			t.Fatalf("valid prefix %q rejected: %v", prefix, err)
+		}
+	}
+	for _, prefix := range []string{"two words", "\n", "12345678901234567"} {
+		if err := validateCommandPrefix(prefix); !errors.Is(err, ErrInvalidCommandPrefix) {
+			t.Fatalf("invalid prefix %q accepted: %v", prefix, err)
+		}
+	}
+}

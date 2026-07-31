@@ -21,11 +21,14 @@ func init() {
 		"economy-reservations",
 		"economy-game-command-api",
 		"astrbot-economy-api",
+		"configurable-game-command-prefix",
 	)
 }
 
 func (s Server) registerEconomyRoutes(api *gin.RouterGroup) {
 	group := api.Group("/economy")
+	group.GET("/config", Require(PermRead), s.economyConfig)
+	group.PUT("/config", Require(PermConfigWrite), s.putEconomyConfig)
 	group.GET("/summary", Require(PermRead), s.economySummary)
 	group.GET("/accounts", Require(PermRead), s.economyAccounts)
 	group.GET("/accounts/:player_uid", Require(PermRead), s.economyAccount)
@@ -41,7 +44,57 @@ func (s Server) registerEconomyRoutes(api *gin.RouterGroup) {
 
 func (s Server) economyService() (*economy.Service, error) {
 	timezone := strings.TrimSpace(os.Getenv("PALPANEL_OPERATIONS_TIMEZONE"))
-	return economy.ForPath(s.cfg.DBPath, timezone)
+	return economy.ForPath(s.cfg.DBPath, timezone, economy.Defaults{
+		CommandPrefix:      defaultGameCommandPrefix(),
+		DailyCheckinPoints: defaultDailyCheckinPoints(),
+	})
+}
+
+func (s Server) economyConfig(c *gin.Context) {
+	service, err := s.economyService()
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	config, err := service.Config(c.Request.Context())
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	ok(c, config)
+}
+
+func (s Server) putEconomyConfig(c *gin.Context) {
+	var request struct {
+		CommandPrefix      *string `json:"command_prefix"`
+		DailyCheckinPoints *int64  `json:"daily_checkin_points"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	service, err := s.economyService()
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	current, err := service.Config(c.Request.Context())
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	if request.CommandPrefix != nil {
+		current.CommandPrefix = *request.CommandPrefix
+	}
+	if request.DailyCheckinPoints != nil {
+		current.DailyCheckinPoints = *request.DailyCheckinPoints
+	}
+	updated, err := service.UpdateConfig(c.Request.Context(), current.CommandPrefix, current.DailyCheckinPoints)
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	ok(c, updated)
 }
 
 func (s Server) economySummary(c *gin.Context) {
@@ -162,13 +215,18 @@ func (s Server) economyCheckin(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
 		return
 	}
-	if request.Points == 0 {
-		request.Points = defaultDailyCheckinPoints()
-	}
 	service, err := s.economyService()
 	if err != nil {
 		economyFailure(c, err)
 		return
+	}
+	if request.Points == 0 {
+		config, configErr := service.Config(c.Request.Context())
+		if configErr != nil {
+			economyFailure(c, configErr)
+			return
+		}
+		request.Points = config.DailyCheckinPoints
 	}
 	result, err := service.Checkin(
 		c.Request.Context(),
@@ -250,9 +308,6 @@ func (s Server) economyExecuteCommand(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
 		return
 	}
-	if request.Points == 0 {
-		request.Points = defaultDailyCheckinPoints()
-	}
 	service, err := s.economyService()
 	if err != nil {
 		economyFailure(c, err)
@@ -293,13 +348,18 @@ func (s Server) astrBotEconomyCheckin(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
 		return
 	}
-	if request.Points == 0 {
-		request.Points = defaultDailyCheckinPoints()
-	}
 	service, err := s.economyService()
 	if err != nil {
 		economyFailure(c, err)
 		return
+	}
+	if request.Points == 0 {
+		config, configErr := service.Config(c.Request.Context())
+		if configErr != nil {
+			economyFailure(c, configErr)
+			return
+		}
+		request.Points = config.DailyCheckinPoints
 	}
 	result, err := service.Checkin(
 		c.Request.Context(), request.PlayerUID, request.Nickname, request.SteamID,
@@ -335,13 +395,20 @@ func (s Server) astrBotEconomyBalance(c *gin.Context) {
 	ok(c, account)
 }
 
+func defaultGameCommandPrefix() string {
+	if value, found := os.LookupEnv("PALPANEL_GAME_COMMAND_PREFIX"); found {
+		return value
+	}
+	return "!"
+}
+
 func defaultDailyCheckinPoints() int64 {
 	value := strings.TrimSpace(os.Getenv("PALPANEL_DAILY_CHECKIN_POINTS"))
 	if value == "" {
 		return 10
 	}
 	points, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || points < 0 {
+	if err != nil || points < 0 || points > 1000000 {
 		return 10
 	}
 	return points
@@ -362,6 +429,8 @@ func economyQueryInt(c *gin.Context, name string, fallback int) int {
 func economyFailure(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, economy.ErrInvalidPlayerUID),
+		errors.Is(err, economy.ErrInvalidCommandPrefix),
+		errors.Is(err, economy.ErrInvalidCheckinPoints),
 		errors.Is(err, economy.ErrInvalidAmount),
 		errors.Is(err, economy.ErrInvalidDelta),
 		errors.Is(err, economy.ErrInvalidReason),

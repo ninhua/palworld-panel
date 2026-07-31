@@ -22,7 +22,8 @@ const formatUptime = (seconds?: number) => {
 
 interface SidebarEntry {
   id: string;
-  labelKey: TranslationKey;
+  labelKey?: TranslationKey;
+  label?: string;
   routeIDs: string[];
 }
 
@@ -41,6 +42,7 @@ const sidebarGroups: Array<{ id: string; titleKey: TranslationKey; entries: Side
     titleKey: 'nav.worldGroup',
     entries: [
       { id: 'players-world', labelKey: 'nav.playersWorld', routeIDs: ['player-center', 'starter-gift', 'world-archive'] },
+      { id: 'economy', label: '积分系统', routeIDs: ['economy'] },
       { id: 'saves-breeding', labelKey: 'nav.saveTools', routeIDs: ['save-sources', 'save-history', 'global-inventory', 'pal-inventory', 'breeding', 'live-map'] },
       { id: 'mods', labelKey: 'nav.mods', routeIDs: ['mods'] },
     ],
@@ -79,6 +81,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobile = false, onNavigate }) 
     retry: false,
   });
   const panelVersion = patchInfo.data?.patch.version || '';
+  const labelForEntry = (entry: SidebarEntry) => entry.label || (entry.labelKey ? t(entry.labelKey) : entry.id);
+  const labelForRoute = (route: AppRoute) => route.titleKey ? t(route.titleKey) : route.navLabel;
 
 
   useEffect(() => {
@@ -139,17 +143,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobile = false, onNavigate }) 
               const primaryRoute = routes[0];
               if (!primaryRoute) return null;
               const active = routes.some((route) => routeIsActive(route, currentPath));
+              const entryLabel = labelForEntry(entry);
               if (routes.length === 1 || collapsed) {
                 return (
                   <NavLink
                     key={entry.id}
                     to={primaryRoute.path}
                     onClick={onNavigate}
-                    title={collapsed ? t(entry.labelKey) : undefined}
+                    title={collapsed ? entryLabel : undefined}
                     className={`pp-nav__item ${active ? 'is-active' : ''}`}
                   >
                     {primaryRoute.icon}
-                    <span className="pp-nav__label pp-truncate">{t(entry.labelKey)}</span>
+                    <span className="pp-nav__label pp-truncate">{entryLabel}</span>
                   </NavLink>
                 );
               }
@@ -164,7 +169,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobile = false, onNavigate }) 
                     aria-expanded={expanded}
                   >
                     {primaryRoute.icon}
-                    <span className="pp-nav__label pp-truncate">{t(entry.labelKey)}</span>
+                    <span className="pp-nav__label pp-truncate">{entryLabel}</span>
                     <ChevronDown size={14} className={`pp-nav__chevron ${expanded ? 'is-open' : ''}`} />
                   </button>
                   {expanded && (
@@ -176,7 +181,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobile = false, onNavigate }) 
                           onClick={onNavigate}
                           className={`pp-nav__subitem ${routeIsActive(route, currentPath) ? 'is-active' : ''}`}
                         >
-                          {t(route.titleKey)}
+                          {labelForRoute(route)}
                         </NavLink>
                       ))}
                     </div>

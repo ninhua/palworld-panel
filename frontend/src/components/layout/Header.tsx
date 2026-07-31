@@ -22,7 +22,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, onAnnounceClick, on
   const { autoRefresh, setAutoRefresh, triggerRefresh, isSidebarCollapsed, setIsSidebarCollapsed } = useServerStore();
   const location = useLocation();
   const routeMeta = getRouteMetaByPathname(location.pathname);
-  const title = routeMeta ? t(routeMeta.titleKey) : t('route.panel');
+  const title = routeMeta ? (routeMeta.titleKey ? t(routeMeta.titleKey) : routeMeta.title) : t('route.panel');
   const groupLabel = routeMeta ? t(groupLabels[routeMeta.navGroup]) : appConfig.brand.toUpperCase();
 
   const handleNavigationClick = () => {
