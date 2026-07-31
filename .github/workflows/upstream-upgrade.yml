@@ -9,7 +9,6 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
-  workflows: write
 
 concurrency:
   group: upstream-upgrade
@@ -62,7 +61,11 @@ jobs:
           LATEST: ${{ steps.version.outputs.latest }}
         run: |
           git branch -f upstream-stable "$LATEST"
-          git push --force-with-lease origin upstream-stable
+          git switch upstream-stable
+          git rm -r --ignore-unmatch .github/workflows/
+          git commit -m "drop upstream workflows for custom-stable compatibility"
+          git push --force origin upstream-stable
+          git switch -
       - id: merge
         name: Create and merge upgrade branch
         if: steps.version.outputs.update_available == 'true'
