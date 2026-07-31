@@ -179,4 +179,4 @@ jobs:
           (cd backend && "$RUNNER_TEMP/bin/govulncheck" ./...)
           (cd sav-cli && "$RUNNER_TEMP/bin/govulncheck" ./...)
           cd frontend
-          npm audit --audit-level=high
+          npm run audit:ci
