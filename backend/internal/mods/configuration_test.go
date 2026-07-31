@@ -77,7 +77,7 @@ func TestConfigurationFieldLabelsUseChineseNamesAndKeepPaths(t *testing.T) {
 	for path, want := range map[string]string{
 		"preventAdminPasswordInChat": "防止管理员密码出现在聊天中",
 		"baseRange.multiplier":       "基地范围倍率",
-		"UnknownOption":              "UnknownOption",
+		"UnknownOption":              "自定义配置项",
 	} {
 		if labels[path] != want {
 			t.Errorf("label for %s = %q, want %q", path, labels[path], want)
@@ -302,10 +302,10 @@ func TestDedicatedConfigurationAdapters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(adapters) != 5 {
+	if len(adapters) != 7 {
 		t.Fatalf("adapters = %#v", adapters)
 	}
-	for _, adapter := range adapters {
+	for _, adapter := range adapters[:5] {
 		if !adapter.Available || len(adapter.Files) == 0 {
 			t.Fatalf("adapter unavailable: %#v", adapter)
 		}
@@ -335,6 +335,146 @@ func TestDedicatedConfigurationAdapters(t *testing.T) {
 	}); configurationErrorCode(err) != "configuration_parse_failed" {
 		t.Fatalf("invalid quality-of-life JSON error = %v", err)
 	}
+}
+
+func TestPalZonesAdapterInitializesAndValidatesConfiguration(t *testing.T) {
+	manager, _, _ := newConfigurationTestManager(t)
+	palZonesRoot := filepath.Join(manager.cfg.Win64Dir(), "UE4SS", "Mods", "PalZones")
+	if err := os.MkdirAll(palZonesRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := findConfigurationAdapter(t, manager, "palzones")
+	if !adapter.Installed || adapter.Configured || adapter.Status != ConfigurationStatusNotConfigured {
+		t.Fatalf("unexpected PalZones status: %#v", adapter)
+	}
+	if len(adapter.Actions) != 1 || adapter.Actions[0].ID != ConfigurationActionInitialize || !adapter.Actions[0].Available {
+		t.Fatalf("unexpected PalZones actions: %#v", adapter.Actions)
+	}
+
+	result, err := manager.RunConfigurationAction(t.Context(), "palzones", ConfigurationActionRequest{Action: ConfigurationActionInitialize})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Document == nil || result.Document.File.Path != "Config/zones.json" || !result.RestartRequired {
+		t.Fatalf("unexpected initialize result: %#v", result)
+	}
+	if result.Adapter.Status != ConfigurationStatusRestartRequired || !result.Adapter.Configured {
+		t.Fatalf("unexpected initialized adapter: %#v", result.Adapter)
+	}
+	if _, err := manager.RunConfigurationAction(t.Context(), "palzones", ConfigurationActionRequest{Action: ConfigurationActionInitialize}); configurationErrorCode(err) != "configuration_already_initialized" {
+		t.Fatalf("repeated initialize error = %v", err)
+	}
+
+	valid := `{"global":{"permissions":{"Player":{"world":["Build"],"damage":["Player",{"DamageMultiplier":1}]}}},"zones":[{"name":"出生点","points":[{"x":"1.00","y":"2.00"},{"x":"3.00","y":"4.00"},{"x":"5.00","y":"6.00"}],"permissions":{},"levelRequirement":1}]}`
+	document := result.Document
+	written, err := manager.WriteConfiguration(t.Context(), "palzones", document.File.ID, ConfigWriteRequest{Content: valid, Revision: document.File.Revision})
+	if err != nil || !strings.Contains(written.Content, "出生点") {
+		t.Fatalf("valid PalZones write = %#v, %v", written, err)
+	}
+
+	invalidCases := []struct {
+		name, content, path string
+	}{
+		{name: "empty name", content: `{"global":{"permissions":{}},"zones":[{"name":"","points":[{"x":1,"y":2},{"x":3,"y":4},{"x":5,"y":6}],"permissions":{},"levelRequirement":1}]}`, path: "zones[0].name"},
+		{name: "too few points", content: `{"global":{"permissions":{}},"zones":[{"name":"A","points":[{"x":1,"y":2},{"x":3,"y":4}],"permissions":{},"levelRequirement":1}]}`, path: "zones[0].points"},
+		{name: "level", content: `{"global":{"permissions":{}},"zones":[{"name":"A","points":[{"x":1,"y":2},{"x":3,"y":4},{"x":5,"y":6}],"permissions":{},"levelRequirement":101}]}`, path: "zones[0].levelRequirement"},
+		{name: "permission", content: `{"global":{"permissions":{}},"zones":[{"name":"A","points":[{"x":1,"y":2},{"x":3,"y":4},{"x":5,"y":6}],"permissions":{"Player":{"world":["Exploit"]}},"levelRequirement":1}]}`, path: "zones[0].permissions.Player.world[0]"},
+	}
+	for _, test := range invalidCases {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := manager.WriteConfiguration(t.Context(), "palzones", written.File.ID, ConfigWriteRequest{Content: test.content, Revision: written.File.Revision})
+			if configurationErrorCode(err) != "configuration_validation_failed" || !strings.Contains(err.Error(), test.path) {
+				t.Fatalf("validation error = %v, want path %s", err, test.path)
+			}
+		})
+	}
+}
+
+func TestGliderRestorationAdapterDiagnosesDependenciesAndEnablesTogether(t *testing.T) {
+	manager, store, root := newConfigurationTestManager(t)
+	records := []db.Mod{
+		{ID: "glider", Name: "Glider Restoration", PackageName: "GliderRestore", WorkshopID: "3625871847", Path: filepath.Join(root, "server", "Mods", "Workshop", "glider")},
+		{ID: "palschema", Name: "PalSchema", PackageName: "PalSchema", WorkshopID: "3625280368", Path: filepath.Join(root, "server", "Mods", "Workshop", "palschema")},
+		{ID: "ue4ss", Name: "UE4SS Experimental", PackageName: "UE4SS", WorkshopID: "3625223587", Path: filepath.Join(root, "server", "Mods", "Workshop", "ue4ss")},
+	}
+	for _, record := range records {
+		if err := os.MkdirAll(record.Path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.UpsertMod(t.Context(), record); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	adapter := findConfigurationAdapter(t, manager, "glider-restoration")
+	if adapter.Status != ConfigurationStatusDisabled || len(adapter.Dependencies) != 2 {
+		t.Fatalf("unexpected Glider status: %#v", adapter)
+	}
+	result, err := manager.RunConfigurationAction(t.Context(), "glider-restoration", ConfigurationActionRequest{Action: ConfigurationActionEnable})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.RestartRequired || result.Adapter.Status != ConfigurationStatusRestartRequired || len(result.Changed) != 3 {
+		t.Fatalf("unexpected enable result: %#v", result)
+	}
+	settings, err := ReadModSettings(manager.cfg.PalModSettingsPath())
+	if err != nil || !settings.GlobalEnabled {
+		t.Fatalf("settings = %#v, %v", settings, err)
+	}
+	for _, record := range records {
+		stored, getErr := store.GetMod(t.Context(), record.ID)
+		if getErr != nil || !stored.Enabled || !containsFold(settings.ActiveMods, record.PackageName) {
+			t.Fatalf("mod %s not enabled: %#v, settings=%#v, err=%v", record.ID, stored, settings, getErr)
+		}
+	}
+}
+
+func TestGliderRestorationEnableRejectsMissingDependency(t *testing.T) {
+	manager, store, root := newConfigurationTestManager(t)
+	path := filepath.Join(root, "server", "Mods", "Workshop", "glider")
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertMod(t.Context(), db.Mod{ID: "glider", Name: "Glider Restoration", PackageName: "GliderRestore", WorkshopID: "3625871847", Path: path}); err != nil {
+		t.Fatal(err)
+	}
+	adapter := findConfigurationAdapter(t, manager, "glider-restoration")
+	if adapter.Status != ConfigurationStatusDependencyMissing {
+		t.Fatalf("unexpected status: %#v", adapter)
+	}
+	if _, err := manager.RunConfigurationAction(t.Context(), "glider-restoration", ConfigurationActionRequest{Action: ConfigurationActionEnable}); configurationErrorCode(err) != "mod_dependency_missing" {
+		t.Fatalf("enable error = %v", err)
+	}
+}
+
+func TestConfigurationFieldMetadataUsesChineseFallback(t *testing.T) {
+	fields := configFields(".json", []byte(`{"UnknownOption":3,"Enabled":true}`))
+	byPath := map[string]ConfigurationField{}
+	for _, field := range fields {
+		byPath[field.Path] = field
+	}
+	if byPath["Enabled"].Label != "启用" || byPath["Enabled"].Group == "" {
+		t.Fatalf("known metadata = %#v", byPath["Enabled"])
+	}
+	if byPath["UnknownOption"].Label != "自定义配置项" || byPath["UnknownOption"].Description == "" {
+		t.Fatalf("fallback metadata = %#v", byPath["UnknownOption"])
+	}
+}
+
+func findConfigurationAdapter(t *testing.T, manager Manager, id string) ConfigurationAdapter {
+	t.Helper()
+	adapters, err := manager.ListConfigurations(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, adapter := range adapters {
+		if adapter.ID == id {
+			return adapter
+		}
+	}
+	t.Fatalf("adapter %s not found in %#v", id, adapters)
+	return ConfigurationAdapter{}
 }
 
 func newConfigurationTestManager(t *testing.T) (Manager, *db.Store, string) {

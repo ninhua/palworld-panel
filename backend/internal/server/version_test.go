@@ -145,16 +145,22 @@ func TestUpdateFailsWhenInstalledBuildDoesNotMatchPublicBranch(t *testing.T) {
 	}
 }
 
-func TestWithGameVersionReportsCompatibility(t *testing.T) {
+func TestWithGameVersionReportsMajorReleaseCompatibility(t *testing.T) {
 	m, cleanup := newVersionTestManager(t, "100")
 	defer cleanup()
-	info := m.WithGameVersion(context.Background(), VersionInfo{CompatibilityTarget: CompatibilityTarget}, "v1.0.1.81201")
-	if info.GameVersion != "v1.0.1.81201" || info.Compatible == nil || !*info.Compatible {
-		t.Fatalf("expected compatible semantic version, got %#v", info)
+	if CompatibilityTarget != "1.x" {
+		t.Fatalf("expected compatibility target 1.x, got %s", CompatibilityTarget)
 	}
-	info = m.WithGameVersion(context.Background(), info, "v1.1.0")
+	info := VersionInfo{CompatibilityTarget: CompatibilityTarget}
+	for _, version := range []string{"v1.0.2.100001", "v1.0.3.100002", "v1.1.0.100003"} {
+		info = m.WithGameVersion(context.Background(), info, version)
+		if info.GameVersion != version || info.Compatible == nil || !*info.Compatible {
+			t.Fatalf("expected %s to match the supported major release, got %#v", version, info)
+		}
+	}
+	info = m.WithGameVersion(context.Background(), info, "v2.0.0")
 	if info.Compatible == nil || *info.Compatible || len(info.CompatibilityWarnings) == 0 {
-		t.Fatalf("expected incompatible semantic version warning, got %#v", info)
+		t.Fatalf("expected a major-version compatibility warning, got %#v", info)
 	}
 }
 

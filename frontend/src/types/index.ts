@@ -438,10 +438,14 @@ export interface ModConfigFile {
 export interface ModConfigurationField {
   path: string;
   label: string;
+  description?: string;
+  group?: string;
   type: 'boolean' | 'integer' | 'number' | 'string';
   value: unknown;
   min?: number;
   max?: number;
+  options?: Array<{ value: unknown; label: string }>;
+  unit?: string;
 }
 
 export interface ModConfigDocument {
@@ -457,8 +461,39 @@ export interface ModConfigurationAdapter {
   description: string;
   workshop_id?: string;
   available: boolean;
+  installed: boolean;
+  configured: boolean;
+  enabled: boolean;
+  status: 'not_installed' | 'dependency_missing' | 'not_configured' | 'disabled' | 'restart_required' | 'ready';
+  status_detail?: string;
   reload_behavior: 'online_reload' | 'restart_required' | string;
+  dependencies: ModConfigurationDependency[];
+  actions: ModConfigurationAction[];
+  reference_urls?: Record<string, string>;
   files: ModConfigFile[];
+}
+
+export interface ModConfigurationDependency {
+  id: string;
+  name: string;
+  workshop_id?: string;
+  mod_id?: string;
+  installed: boolean;
+  enabled: boolean;
+  required: boolean;
+}
+
+export interface ModConfigurationAction {
+  id: 'initialize' | 'enable';
+  available: boolean;
+  restart_required: boolean;
+}
+
+export interface ModConfigurationActionResult {
+  adapter: ModConfigurationAdapter;
+  document?: ModConfigDocument;
+  changed: string[];
+  restart_required: boolean;
 }
 
 export interface ModConfigBackup {

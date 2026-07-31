@@ -52,13 +52,64 @@ func (e ConfigurationError) Error() string {
 func (e ConfigurationError) Unwrap() error { return e.Err }
 
 type ConfigurationAdapter struct {
-	ID             string       `json:"id"`
-	Name           string       `json:"name"`
-	Description    string       `json:"description"`
-	WorkshopID     string       `json:"workshop_id,omitempty"`
-	Available      bool         `json:"available"`
-	ReloadBehavior string       `json:"reload_behavior"`
-	Files          []ConfigFile `json:"files"`
+	ID             string                    `json:"id"`
+	Name           string                    `json:"name"`
+	Description    string                    `json:"description"`
+	WorkshopID     string                    `json:"workshop_id,omitempty"`
+	Available      bool                      `json:"available"`
+	Installed      bool                      `json:"installed"`
+	Configured     bool                      `json:"configured"`
+	Enabled        bool                      `json:"enabled"`
+	Status         ConfigurationStatus       `json:"status"`
+	StatusDetail   string                    `json:"status_detail,omitempty"`
+	ReloadBehavior string                    `json:"reload_behavior"`
+	Dependencies   []ConfigurationDependency `json:"dependencies"`
+	Actions        []ConfigurationAction     `json:"actions"`
+	ReferenceURLs  map[string]string         `json:"reference_urls,omitempty"`
+	Files          []ConfigFile              `json:"files"`
+}
+
+type ConfigurationStatus string
+
+const (
+	ConfigurationStatusNotInstalled      ConfigurationStatus = "not_installed"
+	ConfigurationStatusDependencyMissing ConfigurationStatus = "dependency_missing"
+	ConfigurationStatusNotConfigured     ConfigurationStatus = "not_configured"
+	ConfigurationStatusDisabled          ConfigurationStatus = "disabled"
+	ConfigurationStatusRestartRequired   ConfigurationStatus = "restart_required"
+	ConfigurationStatusReady             ConfigurationStatus = "ready"
+)
+
+const (
+	ConfigurationActionInitialize = "initialize"
+	ConfigurationActionEnable     = "enable"
+)
+
+type ConfigurationDependency struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	WorkshopID string `json:"workshop_id,omitempty"`
+	ModID      string `json:"mod_id,omitempty"`
+	Installed  bool   `json:"installed"`
+	Enabled    bool   `json:"enabled"`
+	Required   bool   `json:"required"`
+}
+
+type ConfigurationAction struct {
+	ID              string `json:"id"`
+	Available       bool   `json:"available"`
+	RestartRequired bool   `json:"restart_required"`
+}
+
+type ConfigurationActionRequest struct {
+	Action string `json:"action"`
+}
+
+type ConfigurationActionResult struct {
+	Adapter         ConfigurationAdapter `json:"adapter"`
+	Document        *ConfigDocument      `json:"document,omitempty"`
+	Changed         []string             `json:"changed"`
+	RestartRequired bool                 `json:"restart_required"`
 }
 
 type ConfigFile struct {
@@ -74,12 +125,21 @@ type ConfigFile struct {
 }
 
 type ConfigurationField struct {
-	Path  string `json:"path"`
-	Label string `json:"label"`
-	Type  string `json:"type"`
+	Path        string                     `json:"path"`
+	Label       string                     `json:"label"`
+	Description string                     `json:"description,omitempty"`
+	Group       string                     `json:"group,omitempty"`
+	Type        string                     `json:"type"`
+	Value       any                        `json:"value"`
+	Options     []ConfigurationFieldOption `json:"options,omitempty"`
+	Unit        string                     `json:"unit,omitempty"`
+	Min         *int64                     `json:"min,omitempty"`
+	Max         *int64                     `json:"max,omitempty"`
+}
+
+type ConfigurationFieldOption struct {
 	Value any    `json:"value"`
-	Min   *int64 `json:"min,omitempty"`
-	Max   *int64 `json:"max,omitempty"`
+	Label string `json:"label"`
 }
 
 type ConfigDocument struct {
@@ -121,6 +181,8 @@ func adapterRegistry() []adapterDefinition {
 		{ID: "palschema", Name: "PalSchema", Description: "PalSchema 运行设置与模块 JSON 配置", WorkshopID: "3625280368", ReloadBehavior: "restart_required", resolve: resolvePalSchemaAdapter},
 		{ID: "extended-base-range", Name: "Extended Base Range", Description: "基地范围 Lua 数值参数", WorkshopID: "3625907101", ReloadBehavior: "restart_required", resolve: resolveExtendedBaseRangeAdapter},
 		{ID: "quality-of-life", Name: "QualityOfLife", Description: "多人服务器专用 JSON 文件（字段随 Mod 版本）", WorkshopID: "3761921027", ReloadBehavior: "restart_required", resolve: resolveQualityOfLifeAdapter},
+		{ID: "palzones", Name: "PalZones", Description: "区域权限、等级限制与伤害规则配置", ReloadBehavior: "restart_required", resolve: resolvePalZonesAdapter},
+		{ID: "glider-restoration", Name: "滑翔帕鲁外观恢复", Description: "恢复滑翔帕鲁外观，并检查 PalSchema 与 UE4SS 依赖", WorkshopID: gliderRestorationWorkshopID, ReloadBehavior: "restart_required", resolve: resolveGliderRestorationAdapter},
 	}
 }
 
@@ -140,11 +202,21 @@ func (m Manager) ListConfigurations(ctx context.Context) ([]ConfigurationAdapter
 				return nil, fileErr
 			}
 		}
-		out = append(out, ConfigurationAdapter{
+		adapter := ConfigurationAdapter{
 			ID: definition.ID, Name: definition.Name, Description: definition.Description,
-			WorkshopID: definition.WorkshopID, Available: len(files) > 0,
-			ReloadBehavior: definition.ReloadBehavior, Files: files,
-		})
+			WorkshopID: definition.WorkshopID, Available: len(files) > 0, Installed: len(files) > 0,
+			Configured: len(files) > 0, Enabled: len(files) > 0, Status: ConfigurationStatusNotInstalled,
+			ReloadBehavior: definition.ReloadBehavior, Dependencies: []ConfigurationDependency{},
+			Actions: []ConfigurationAction{}, Files: files,
+		}
+		if adapter.Available {
+			adapter.Status = ConfigurationStatusReady
+		}
+		adapter, err = m.enrichConfigurationAdapter(ctx, adapter)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, adapter)
 	}
 	return out, nil
 }
@@ -162,7 +234,16 @@ func (m Manager) WriteConfiguration(ctx context.Context, adapterID, fileID strin
 	if err != nil {
 		return ConfigDocument{}, err
 	}
-	return m.writeConfigTarget(target, request)
+	if adapterID == "palzones" {
+		if err := validatePalZonesContent([]byte(request.Content)); err != nil {
+			return ConfigDocument{}, err
+		}
+	}
+	document, err := m.writeConfigTarget(target, request)
+	if err == nil && adapterReloadBehavior(adapterID) == "restart_required" {
+		_ = m.store.SetKV(ctx, "pending_restart", "true")
+	}
+	return document, err
 }
 
 func (m Manager) ListConfigurationBackups(ctx context.Context, adapterID, fileID string) ([]ConfigBackup, error) {
@@ -996,15 +1077,15 @@ func flattenJSONFields(path string, value any, out *[]ConfigurationField) {
 			flattenJSONFields(next, typed[key], out)
 		}
 	case bool:
-		*out = append(*out, ConfigurationField{Path: path, Label: fieldLabel(path), Type: "boolean", Value: typed})
+		*out = append(*out, decorateConfigurationField(ConfigurationField{Path: path, Type: "boolean", Value: typed}))
 	case float64:
 		fieldType := "number"
 		if typed == float64(int64(typed)) {
 			fieldType = "integer"
 		}
-		*out = append(*out, ConfigurationField{Path: path, Label: fieldLabel(path), Type: fieldType, Value: typed})
+		*out = append(*out, decorateConfigurationField(ConfigurationField{Path: path, Type: fieldType, Value: typed}))
 	case string:
-		*out = append(*out, ConfigurationField{Path: path, Label: fieldLabel(path), Type: "string", Value: typed})
+		*out = append(*out, decorateConfigurationField(ConfigurationField{Path: path, Type: "string", Value: typed}))
 	}
 }
 
@@ -1030,7 +1111,7 @@ func keyValueFields(content string) []ConfigurationField {
 			path = section + "." + key
 		}
 		value, fieldType := parseScalar(strings.TrimSpace(raw))
-		out = append(out, ConfigurationField{Path: path, Label: fieldLabel(path), Type: fieldType, Value: value})
+		out = append(out, decorateConfigurationField(ConfigurationField{Path: path, Type: fieldType, Value: value}))
 		if len(out) >= 160 {
 			break
 		}
@@ -1059,7 +1140,7 @@ func luaNumericFields(content string) []ConfigurationField {
 			continue
 		}
 		min, max := int64(0), int64(1000000)
-		out = append(out, ConfigurationField{Path: name, Label: fieldLabel(name), Type: "number", Value: value, Min: &min, Max: &max})
+		out = append(out, decorateConfigurationField(ConfigurationField{Path: name, Type: "number", Value: value, Min: &min, Max: &max}))
 		if len(out) >= 80 {
 			break
 		}
@@ -1102,6 +1183,22 @@ func fieldLabel(path string) string {
 		return strings.Join(localized, " ")
 	}
 	return leaf
+}
+
+func decorateConfigurationField(field ConfigurationField) ConfigurationField {
+	field.Label = fieldLabel(field.Path)
+	field.Group = "常规设置"
+	field.Description = "配置路径：" + field.Path
+	leaf := field.Path
+	if separator := strings.LastIndex(field.Path, "."); separator >= 0 {
+		leaf = field.Path[separator+1:]
+	}
+	if field.Label == leaf {
+		field.Label = "自定义配置项"
+		field.Group = "自定义设置"
+		field.Description = "此字段尚未收录中文说明，请结合原始配置路径确认含义。"
+	}
+	return field
 }
 
 var chineseConfigFieldLabels = map[string]string{

@@ -217,6 +217,46 @@ describe('Setup', () => {
     await waitFor(() => expect(serverApiMock.getVersion).toHaveBeenCalledTimes(3));
   });
 
+  it('offers the safe game update as the primary action when a newer Build is available', async () => {
+    const updateJob: Job = {
+      id: 'job_smart_update',
+      type: 'smart_update',
+      status: 'waiting',
+      progress: 0,
+      message: 'queued smart update',
+      created_at: '2026-07-31T00:00:00Z',
+    };
+    serverApiMock.getStatus.mockResolvedValue({
+      ...baseStatus(),
+      status: 'running',
+      installed: true,
+      config_exists: true,
+      container: { exists: true, status: 'running' },
+      setup_step: 'ready',
+    });
+    serverApiMock.getVersion.mockResolvedValue({
+      ...baseVersion(),
+      installed: true,
+      current_build_id: '24181105',
+      latest_build_id: '24466863',
+      update_available: true,
+      compatibility_target: '1.x',
+    });
+    setupApiMock.getPrerequisites.mockResolvedValue([{ id: 'docker', label: 'Docker CLI', ok: true, required: true }]);
+    setupApiMock.getHost.mockResolvedValue(linuxHost({ dockerReady: true }));
+    setupApiMock.getDockerPlan.mockResolvedValue(linuxDockerPlan({ docker_ready: true, docker_installed: true, requires_manual: false }));
+    serverApiMock.updateIfNeeded.mockResolvedValue(updateJob);
+    tasksApiMock.waitForJob.mockResolvedValue({ ...updateJob, status: 'success', progress: 100, message: 'smart update completed' });
+
+    render(<Setup />);
+
+    const updateButton = await screen.findByRole('button', { name: '更新游戏服务端' });
+    expect(updateButton).not.toBeDisabled();
+    fireEvent.click(updateButton);
+    await waitFor(() => expect(serverApiMock.updateIfNeeded).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(tasksApiMock.waitForJob).toHaveBeenCalledWith('job_smart_update', expect.any(Function), expect.any(Function)));
+  });
+
   it('shows the SteamCMD primary action and hides the Docker install flow on Windows', async () => {
     setupApiMock.getRuntime.mockResolvedValue({ mode: 'windows_steamcmd' as RuntimeMode });
     setupApiMock.getPrerequisites.mockResolvedValue([

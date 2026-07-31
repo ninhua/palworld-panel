@@ -17,9 +17,9 @@ import (
 
 const (
 	palworldServerAppID = "2394010"
-	// CompatibilityTarget is the Palworld release covered by the panel's
-	// configuration schema, REST contracts, and save parser regression suite.
-	CompatibilityTarget = "1.0.1"
+	// CompatibilityTarget controls the semantic compatibility indicator only.
+	// Steam Build IDs independently determine whether an update is available.
+	CompatibilityTarget = "1.x"
 
 	kvLatestBuildID      = "server_version_latest_build_id"
 	kvVersionLastChecked = "server_version_last_checked_at"
@@ -122,7 +122,7 @@ func (m Manager) compatibilityWarnings(ctx context.Context) []string {
 		warnings = append(warnings, "已安装 PalDefender；Build 变化后请确认其版本兼容")
 	}
 	if hasLevelSave(filepath.Join(m.cfg.ServerDirectory(), "Pal", "Saved", "SaveGames")) {
-		warnings = append(warnings, "存档解析器兼容目标为 1.0.1；更新后请重建索引确认存档结构")
+		warnings = append(warnings, "存档解析器兼容范围为 1.x；更新后请重建索引确认存档结构")
 	}
 	return warnings
 }
@@ -137,15 +137,18 @@ func semanticVersionMatches(version, target string) bool {
 	}
 	actualParts := normalize(version)
 	targetParts := normalize(target)
-	if len(actualParts) < 3 || len(targetParts) < 3 {
+	if len(actualParts) < 3 || len(targetParts) == 0 || len(actualParts) < len(targetParts) {
 		return false
 	}
-	for index := 0; index < 3; index++ {
-		if actualParts[index] != targetParts[index] {
+	for index, targetPart := range targetParts {
+		if targetPart == "x" || targetPart == "*" {
+			return index == len(targetParts)-1
+		}
+		if actualParts[index] != targetPart {
 			return false
 		}
 	}
-	return true
+	return len(targetParts) >= 3
 }
 
 func hasLevelSave(root string) bool {

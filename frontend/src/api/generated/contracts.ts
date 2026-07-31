@@ -324,13 +324,42 @@ export interface components {
       "content": string;
       "revision": string;
     };
+    "ModConfigurationActionRequest": {
+      "action": "initialize" | "enable";
+    };
+    "ModConfigurationActionResult": {
+      "adapter": components["schemas"]["ModConfigurationAdapter"];
+      "changed": Array<string>;
+      "document"?: components["schemas"]["ModConfigDocument"];
+      "restart_required": boolean;
+    };
     "ModConfigurationAdapter": {
+      "actions": Array<{
+        "available": boolean;
+        "id": "initialize" | "enable";
+        "restart_required": boolean;
+      }>;
       "available": boolean;
+      "configured": boolean;
+      "dependencies": Array<{
+        "enabled": boolean;
+        "id": string;
+        "installed": boolean;
+        "mod_id"?: string;
+        "name": string;
+        "required": boolean;
+        "workshop_id"?: string;
+      }>;
       "description": string;
+      "enabled": boolean;
       "files": Array<components["schemas"]["ModConfigFile"]>;
       "id": string;
+      "installed": boolean;
       "name": string;
+      "reference_urls"?: Record<string, string>;
       "reload_behavior": "online_reload" | "restart_required";
+      "status": "not_installed" | "dependency_missing" | "not_configured" | "disabled" | "restart_required" | "ready";
+      "status_detail"?: string;
       "workshop_id"?: string;
     };
     "ModConfigurationAdapterListEnvelope": {
@@ -338,11 +367,18 @@ export interface components {
       "ok": true;
     };
     "ModConfigurationField": {
+      "description"?: string;
+      "group"?: string;
       "label": string;
       "max"?: number;
       "min"?: number;
+      "options"?: Array<{
+        "label": string;
+        "value": unknown;
+      }>;
       "path": string;
       "type": "boolean" | "integer" | "number" | "string";
+      "unit"?: string;
       "value": unknown;
     };
     "ModImportInspectRequest": {

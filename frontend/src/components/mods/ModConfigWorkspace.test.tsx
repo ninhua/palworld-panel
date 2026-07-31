@@ -6,11 +6,13 @@ const mocks = vi.hoisted(() => ({
   listAdapters: vi.fn(), getAdapter: vi.fn(), saveAdapter: vi.fn(),
   listAdapterBackups: vi.fn(), restoreAdapter: vi.fn(), listFiles: vi.fn(),
   getFile: vi.fn(), saveFile: vi.fn(), listFileBackups: vi.fn(), restoreFile: vi.fn(),
+  runAction: vi.fn(),
   reloadConfig: vi.fn(),
 }));
 
 vi.mock('../../api/modConfigurations', () => ({ modConfigurationsApi: mocks }));
 vi.mock('../../api/security', () => ({ securityApi: { reloadConfig: mocks.reloadConfig } }));
+vi.mock('./palzones/PalZonesEditorWorkspace', () => ({ default: () => <div>PalZones 专用编辑器已加载</div> }));
 
 const file = {
   id: 'opaque-lua', name: 'main.lua', path: 'Scripts/main.lua', extension: '.lua', size: 20,
@@ -68,5 +70,32 @@ describe('ModConfigWorkspace', () => {
     fireEvent.click(await screen.findByRole('button', { name: '恢复' }));
     await waitFor(() => expect(mocks.restoreAdapter).toHaveBeenCalledWith('extended-base-range', 'opaque-lua', 'backup-1', 'revision-1'));
     expect(await screen.findByText('历史版本已恢复。')).toBeInTheDocument();
+  });
+
+  it('initializes an installed PalZones adapter only after an explicit click', async () => {
+    const zonesFile = { ...file, id: 'zones', name: 'zones.json', path: 'Config/zones.json', extension: '.json', executable: false };
+    const configured = {
+      id: 'palzones', name: 'PalZones', description: '区域权限配置', available: true,
+      installed: true, configured: true, enabled: true, status: 'restart_required' as const,
+      status_detail: '等待安全重启', dependencies: [], actions: [],
+      reload_behavior: 'restart_required', files: [zonesFile],
+    };
+    mocks.listAdapters.mockResolvedValue([{
+      ...configured, configured: false, status: 'not_configured', files: [],
+      actions: [{ id: 'initialize', available: true, restart_required: true }],
+    }]);
+    mocks.runAction.mockResolvedValue({
+      adapter: configured,
+      document: { file: zonesFile, content: '{\n  "global": {"permissions": {}},\n  "zones": []\n}\n', format: 'json', fields: [] },
+      changed: ['Config/zones.json'], restart_required: true,
+    });
+
+    render(<ModConfigWorkspace mods={[]} localFindings={[]} canWrite canReloadPalDefender={false} />);
+
+    expect(await screen.findByText('尚未创建区域配置')).toBeInTheDocument();
+    expect(mocks.runAction).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '创建默认配置' }));
+    await waitFor(() => expect(mocks.runAction).toHaveBeenCalledWith('palzones', 'initialize'));
+    expect(await screen.findByText('PalZones 专用编辑器已加载')).toBeInTheDocument();
   });
 });

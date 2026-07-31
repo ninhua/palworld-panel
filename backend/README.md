@@ -168,7 +168,7 @@ The sidecar is the self-developed Go `sav-cli` in `sav-cli/` and never writes ba
 
 Steam Build IDs remain the authoritative update signal for AppID `2394010`. The local Build ID comes from `data/server/steamapps/appmanifest_2394010.acf`; the latest public Build ID comes from SteamCMD `app_info_print 2394010`.
 
-While the server is running, `GET /api/server/version` also reads the semantic game version from the official `/info` endpoint. The response reports the `1.0.1` compatibility target, a compatibility result, and warnings for enabled Workshop mods, PalDefender, and save-parser verification. An offline server still reports Build IDs without pretending the configuration schema version is the game version.
+While the server is running, `GET /api/server/version` also reads the semantic game version from the official `/info` endpoint. The response reports the supported `1.x` compatibility range, a compatibility result, and warnings for enabled Workshop mods, PalDefender, and save-parser verification. Steam Build IDs remain the update authority, so future releases do not require a hard-coded semantic version before they can be detected and installed. An offline server still reports Build IDs without pretending the configuration schema version is the game version.
 
 ## Palworld 1.0 REST
 

@@ -344,7 +344,7 @@ func TestOpenAPIAuthenticationAndModImportSchemas(t *testing.T) {
 			t.Errorf("OpenAPI is missing schema %s", schema)
 		}
 	}
-	for _, schema := range []string{"SafeLifecycleRequest", "BreedingStatus", "AstrBotControlRequest", "AstrBotCommunityServerRequest", "AstrBotServerStatus", "ModConfigFile", "ModConfigDocument", "ModConfigWriteRequest", "ModConfigRestoreRequest", "ModConfigBackup", "ModConfigurationAdapter"} {
+	for _, schema := range []string{"SafeLifecycleRequest", "BreedingStatus", "AstrBotControlRequest", "AstrBotCommunityServerRequest", "AstrBotServerStatus", "ModConfigFile", "ModConfigDocument", "ModConfigWriteRequest", "ModConfigRestoreRequest", "ModConfigBackup", "ModConfigurationAdapter", "ModConfigurationActionRequest", "ModConfigurationActionResult"} {
 		if _, ok := spec.Components.Schemas[schema]; !ok {
 			t.Errorf("OpenAPI is missing schema %s", schema)
 		}
@@ -418,6 +418,7 @@ func TestOpenAPIAuthenticationAndModImportSchemas(t *testing.T) {
 	assertRequestSchema("/integrations/astrbot/server-control", "application/json", "AstrBotControlRequest")
 	assertRequestSchema("/integrations/astrbot/community-servers", "application/json", "AstrBotCommunityServerRequest")
 	assertRequestSchema("/mods/configurations/{adapter}/backups/{backup}/restore", "application/json", "ModConfigRestoreRequest")
+	assertRequestSchema("/mods/configurations/{adapter}/actions", "application/json", "ModConfigurationActionRequest")
 	assertRequestSchema("/mods/{id}/files/{file}/backups/{backup}/restore", "application/json", "ModConfigRestoreRequest")
 	if got := spec.Paths["/mods/configurations/{adapter}"].Put.RequestBody.Content["application/json"].Schema.Ref; got != "#/components/schemas/ModConfigWriteRequest" {
 		t.Errorf("PUT /mods/configurations/{adapter} request schema = %q", got)
@@ -483,6 +484,9 @@ func TestOpenAPIAuthenticationAndModImportSchemas(t *testing.T) {
 	}
 	if permission := spec.Paths["/mods/local/findings/{id}/actions"].Post.Permission; permission != "mods:write" {
 		t.Errorf("POST /mods/local/findings/{id}/actions permission = %q, want mods:write", permission)
+	}
+	if permission := spec.Paths["/mods/configurations/{adapter}/actions"].Post.Permission; permission != "mods:write" {
+		t.Errorf("POST /mods/configurations/{adapter}/actions permission = %q, want mods:write", permission)
 	}
 	if permission := spec.Paths["/mods/workshop/auth/start"].Post.Permission; permission != "security:write" {
 		t.Errorf("POST /mods/workshop/auth/start permission = %q, want security:write", permission)

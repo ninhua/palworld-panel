@@ -699,6 +699,31 @@ paths:
       parameters: *modConfigFileQuery
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ModConfigWriteRequest'}}}}
       responses: {'200': *modConfigDocument, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error, '413': *error}
+  /mods/configurations/{adapter}/actions:
+    parameters: [{name: adapter, in: path, required: true, schema: {type: string}}]
+    post:
+      operationId: runModConfigurationAction
+      tags: [content]
+      x-palpanel-permission: 'mods:write'
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ModConfigurationActionRequest'}}}}
+      responses:
+        '200':
+          description: Configuration action result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, data]
+                properties:
+                  ok: {type: boolean}
+                  data: {$ref: '#/components/schemas/ModConfigurationActionResult'}
+        '400': *error
+        '401': *error
+        '403': *error
+        '404': *error
+        '409': *error
+        '422': *error
+        '500': *error
   /mods/configurations/{adapter}/backups:
     parameters: [{name: adapter, in: path, required: true, schema: {type: string}}]
     get:
@@ -1877,10 +1902,21 @@ components:
       properties:
         path: {type: string}
         label: {type: string}
+        description: {type: string}
+        group: {type: string}
         type: {type: string, enum: [boolean, integer, number, string]}
         value: {}
         min: {type: integer, format: int64}
         max: {type: integer, format: int64}
+        options:
+          type: array
+          items:
+            type: object
+            required: [value, label]
+            properties:
+              value: {}
+              label: {type: string}
+        unit: {type: string}
     ModConfigDocument:
       type: object
       required: [file, content, format]
@@ -1913,15 +1949,57 @@ components:
         created_at: {type: string, format: date-time}
     ModConfigurationAdapter:
       type: object
-      required: [id, name, description, available, reload_behavior, files]
+      required: [id, name, description, available, installed, configured, enabled, status, reload_behavior, dependencies, actions, files]
       properties:
         id: {type: string}
         name: {type: string}
         description: {type: string}
         workshop_id: {type: string}
         available: {type: boolean}
+        installed: {type: boolean}
+        configured: {type: boolean}
+        enabled: {type: boolean}
+        status: {type: string, enum: [not_installed, dependency_missing, not_configured, disabled, restart_required, ready]}
+        status_detail: {type: string}
         reload_behavior: {type: string, enum: [online_reload, restart_required]}
+        dependencies:
+          type: array
+          items:
+            type: object
+            required: [id, name, installed, enabled, required]
+            properties:
+              id: {type: string}
+              name: {type: string}
+              workshop_id: {type: string}
+              mod_id: {type: string}
+              installed: {type: boolean}
+              enabled: {type: boolean}
+              required: {type: boolean}
+        actions:
+          type: array
+          items:
+            type: object
+            required: [id, available, restart_required]
+            properties:
+              id: {type: string, enum: [initialize, enable]}
+              available: {type: boolean}
+              restart_required: {type: boolean}
+        reference_urls: {type: object, additionalProperties: {type: string, format: uri}}
         files: {type: array, items: {$ref: '#/components/schemas/ModConfigFile'}}
+    ModConfigurationActionRequest:
+      type: object
+      required: [action]
+      additionalProperties: false
+      properties:
+        action: {type: string, enum: [initialize, enable]}
+    ModConfigurationActionResult:
+      type: object
+      required: [adapter, changed, restart_required]
+      properties:
+        adapter: {$ref: '#/components/schemas/ModConfigurationAdapter'}
+        document: {$ref: '#/components/schemas/ModConfigDocument'}
+        changed: {type: array, items: {type: string}}
+        restart_required: {type: boolean}
     ModImportInspectRequest:
       type: object
       required: [source]
