@@ -47,6 +47,9 @@ func (s Server) registerRoutes(router *gin.Engine) {
 	integration.POST("/community-servers", s.astrBotCommunityServers)
 	integration.POST("/economy/checkin", s.astrBotEconomyCheckin)
 	integration.POST("/economy/balance", s.astrBotEconomyBalance)
+	gameIntegration := router.Group("/api/integrations/game")
+	gameIntegration.Use(s.gameIntegrationSignatureAuth())
+	gameIntegration.POST("/events", s.ingestGameEvent)
 
 	api := router.Group("/api")
 	api.Use(Auth(s.cfg, s.auth), DetailedAuditMiddleware(s.store))
@@ -56,6 +59,7 @@ func (s Server) registerRoutes(router *gin.Engine) {
 	s.registerSecurityRoutes(api)
 	s.registerWorldRoutes(api)
 	s.registerEconomyRoutes(api)
+	s.registerGameEventRoutes(api)
 	api.GET("/catalog", s.apiCatalog(router))
 	s.registerFrontendRoutes(router)
 }
