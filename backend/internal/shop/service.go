@@ -18,22 +18,39 @@ import (
 )
 
 var (
-	ErrInvalidProduct      = errors.New("shop product is invalid")
-	ErrProductNotFound     = errors.New("shop product not found")
-	ErrProductDisabled     = errors.New("shop product is disabled")
-	ErrInvalidQuantity     = errors.New("quantity must be between 1 and 1000")
-	ErrInsufficientStock   = errors.New("shop product stock is insufficient")
-	ErrPlayerLimit         = errors.New("shop product per-player limit exceeded")
-	ErrInvalidOrder        = errors.New("shop order is invalid")
-	ErrOrderNotFound       = errors.New("shop order not found")
-	ErrOrderSettled        = errors.New("shop order is already settled")
-	ErrReservationConflict = errors.New("shop order reservation state conflicts with the order")
+	ErrInvalidProduct        = errors.New("shop product is invalid")
+	ErrProductNotFound       = errors.New("shop product not found")
+	ErrProductDisabled       = errors.New("shop product is disabled")
+	ErrInvalidQuantity       = errors.New("quantity must be between 1 and 1000")
+	ErrInsufficientStock     = errors.New("shop product stock is insufficient")
+	ErrPlayerLimit           = errors.New("shop product per-player limit exceeded")
+	ErrInvalidOrder          = errors.New("shop order is invalid")
+	ErrOrderNotFound         = errors.New("shop order not found")
+	ErrOrderSettled          = errors.New("shop order is already settled")
+	ErrReservationConflict   = errors.New("shop order reservation state conflicts with the order")
+	ErrDeliveryNotAutomatic  = errors.New("shop order does not use automatic delivery")
+	ErrDeliveryInProgress    = errors.New("shop order delivery is in progress and requires reconciliation")
+	ErrDeliveryUncertain     = errors.New("shop delivery result is uncertain and requires reconciliation")
+	ErrDeliveryUnsafeCancel  = errors.New("shop order may already have been delivered and cannot be cancelled safely")
+	ErrDeliveryResetInvalid  = errors.New("shop order delivery cannot be reset from its current state")
+	ErrDeliveryPlayerMissing = errors.New("PalDefender could not resolve the order player")
+	ErrDeliveryFailed        = errors.New("shop automatic delivery failed")
 )
 
 const (
 	defaultLimit        = 50
 	maximumLimit        = 500
 	orderReservationTTL = 3650 * 24 * time.Hour
+
+	DeliveryModeManual                  = "manual"
+	DeliveryModePalDefenderItems        = "paldefender_items"
+	DeliveryModePalDefenderPalTemplates = "paldefender_pal_templates"
+
+	DeliveryStateManual     = "manual"
+	DeliveryStatePending    = "pending"
+	DeliveryStateProcessing = "processing"
+	DeliveryStateFailed     = "failed"
+	DeliveryStateSucceeded  = "succeeded"
 )
 
 type Economy interface {
@@ -43,9 +60,33 @@ type Economy interface {
 	ReleaseReservation(context.Context, string, string) (economy.ReservationResult, error)
 }
 
+type Dispatcher interface {
+	ResolvePlayer(context.Context, []string) (string, error)
+	GiveItems(context.Context, string, []ItemGrant) error
+	GivePalTemplates(context.Context, string, []string) error
+}
+
 type Service struct {
 	db  *sql.DB
 	now func() time.Time
+}
+
+type ItemGrant struct {
+	ItemID string `json:"item_id"`
+	Count  int64  `json:"count"`
+}
+
+type DeliveryPayload struct {
+	Items        []ItemGrant `json:"items,omitempty"`
+	PalTemplates []string    `json:"pal_templates,omitempty"`
+}
+
+type DeliveryReceipt struct {
+	Mode           string   `json:"mode"`
+	ResolvedPlayer string   `json:"resolved_player"`
+	ItemGrants     int      `json:"item_grants,omitempty"`
+	PalTemplates   []string `json:"pal_templates,omitempty"`
+	DeliveredAt    string   `json:"delivered_at"`
 }
 
 type Product struct {
@@ -74,25 +115,29 @@ type ProductInput struct {
 }
 
 type Order struct {
-	ID             string         `json:"id"`
-	IdempotencyKey string         `json:"idempotency_key"`
-	ProductID      string         `json:"product_id"`
-	ProductName    string         `json:"product_name"`
-	PlayerUID      string         `json:"player_uid"`
-	Nickname       string         `json:"nickname,omitempty"`
-	SteamID        string         `json:"steam_id,omitempty"`
-	Quantity       int64          `json:"quantity"`
-	UnitPrice      int64          `json:"unit_price"`
-	TotalPoints    int64          `json:"total_points"`
-	Status         string         `json:"status"`
-	ReservationID  string         `json:"reservation_id"`
-	DeliveryMode   string         `json:"delivery_mode"`
-	Payload        map[string]any `json:"payload,omitempty"`
-	Failure        string         `json:"failure,omitempty"`
-	CreatedAt      string         `json:"created_at"`
-	UpdatedAt      string         `json:"updated_at"`
-	DeliveredAt    string         `json:"delivered_at,omitempty"`
-	CancelledAt    string         `json:"cancelled_at,omitempty"`
+	ID               string         `json:"id"`
+	IdempotencyKey   string         `json:"idempotency_key"`
+	ProductID        string         `json:"product_id"`
+	ProductName      string         `json:"product_name"`
+	PlayerUID        string         `json:"player_uid"`
+	Nickname         string         `json:"nickname,omitempty"`
+	SteamID          string         `json:"steam_id,omitempty"`
+	Quantity         int64          `json:"quantity"`
+	UnitPrice        int64          `json:"unit_price"`
+	TotalPoints      int64          `json:"total_points"`
+	Status           string         `json:"status"`
+	ReservationID    string         `json:"reservation_id"`
+	DeliveryMode     string         `json:"delivery_mode"`
+	DeliveryState    string         `json:"delivery_state"`
+	DeliveryAttempts int            `json:"delivery_attempts"`
+	LastDeliveryAt   string         `json:"last_delivery_at,omitempty"`
+	Payload          map[string]any `json:"payload,omitempty"`
+	DeliveryReceipt  map[string]any `json:"delivery_receipt,omitempty"`
+	Failure          string         `json:"failure,omitempty"`
+	CreatedAt        string         `json:"created_at"`
+	UpdatedAt        string         `json:"updated_at"`
+	DeliveredAt      string         `json:"delivered_at,omitempty"`
+	CancelledAt      string         `json:"cancelled_at,omitempty"`
 }
 
 type CreateOrderRequest struct {
@@ -111,11 +156,12 @@ type OrderResult struct {
 }
 
 type Summary struct {
-	Products        int64 `json:"products"`
-	EnabledProducts int64 `json:"enabled_products"`
-	PendingOrders   int64 `json:"pending_orders"`
-	DeliveredOrders int64 `json:"delivered_orders"`
-	SpentPoints     int64 `json:"spent_points"`
+	Products         int64 `json:"products"`
+	EnabledProducts  int64 `json:"enabled_products"`
+	PendingOrders    int64 `json:"pending_orders"`
+	DeliveredOrders  int64 `json:"delivered_orders"`
+	SpentPoints      int64 `json:"spent_points"`
+	FailedDeliveries int64 `json:"failed_deliveries"`
 }
 
 var serviceCache sync.Map
@@ -180,52 +226,164 @@ func (s *Service) configure(ctx context.Context) error {
 
 func (s *Service) ensureSchema(ctx context.Context) error {
 	statements := []string{
-		`CREATE TABLE IF NOT EXISTS shop_products (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			description TEXT NOT NULL DEFAULT '',
-			price INTEGER NOT NULL CHECK(price > 0),
-			stock INTEGER NOT NULL DEFAULT -1 CHECK(stock >= -1),
-			per_player_limit INTEGER NOT NULL DEFAULT 0 CHECK(per_player_limit >= 0),
-			enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
-			delivery_mode TEXT NOT NULL DEFAULT 'manual' CHECK(delivery_mode IN ('manual')),
-			payload_json TEXT NOT NULL DEFAULT '{}',
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_shop_products_enabled ON shop_products(enabled,updated_at DESC)`,
-		`CREATE TABLE IF NOT EXISTS shop_orders (
-			id TEXT PRIMARY KEY,
-			idempotency_key TEXT NOT NULL,
-			product_id TEXT NOT NULL,
-			product_name TEXT NOT NULL,
-			player_uid TEXT NOT NULL,
-			nickname TEXT NOT NULL DEFAULT '',
-			steam_id TEXT NOT NULL DEFAULT '',
-			quantity INTEGER NOT NULL CHECK(quantity > 0),
-			unit_price INTEGER NOT NULL CHECK(unit_price > 0),
-			total_points INTEGER NOT NULL CHECK(total_points > 0),
-			status TEXT NOT NULL CHECK(status IN ('pending','delivered','cancelled')),
-			reservation_id TEXT NOT NULL,
-			delivery_mode TEXT NOT NULL,
-			payload_json TEXT NOT NULL DEFAULT '{}',
-			failure TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL,
-			delivered_at TEXT NOT NULL DEFAULT '',
-			cancelled_at TEXT NOT NULL DEFAULT '',
-			UNIQUE(player_uid,idempotency_key)
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_shop_orders_created ON shop_orders(created_at DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_shop_orders_player ON shop_orders(player_uid,created_at DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_shop_orders_product ON shop_orders(product_id,status)`,
+		createProductsTable("shop_products", true),
+		createOrdersTable("shop_orders", true),
 	}
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("ensure shop schema: %w", err)
 		}
 	}
+	if err := s.migrateDeliverySchema(ctx); err != nil {
+		return err
+	}
+	return s.ensureIndexes(ctx)
+}
+
+func createProductsTable(name string, ifNotExists bool) string {
+	prefix := "CREATE TABLE "
+	if ifNotExists {
+		prefix += "IF NOT EXISTS "
+	}
+	return prefix + name + ` (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		price INTEGER NOT NULL CHECK(price > 0),
+		stock INTEGER NOT NULL DEFAULT -1 CHECK(stock >= -1),
+		per_player_limit INTEGER NOT NULL DEFAULT 0 CHECK(per_player_limit >= 0),
+		enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+		delivery_mode TEXT NOT NULL DEFAULT 'manual' CHECK(delivery_mode IN ('manual','paldefender_items','paldefender_pal_templates')),
+		payload_json TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	)`
+}
+
+func createOrdersTable(name string, ifNotExists bool) string {
+	prefix := "CREATE TABLE "
+	if ifNotExists {
+		prefix += "IF NOT EXISTS "
+	}
+	return prefix + name + ` (
+		id TEXT PRIMARY KEY,
+		idempotency_key TEXT NOT NULL,
+		product_id TEXT NOT NULL,
+		product_name TEXT NOT NULL,
+		player_uid TEXT NOT NULL,
+		nickname TEXT NOT NULL DEFAULT '',
+		steam_id TEXT NOT NULL DEFAULT '',
+		quantity INTEGER NOT NULL CHECK(quantity > 0),
+		unit_price INTEGER NOT NULL CHECK(unit_price > 0),
+		total_points INTEGER NOT NULL CHECK(total_points > 0),
+		status TEXT NOT NULL CHECK(status IN ('pending','delivered','cancelled')),
+		reservation_id TEXT NOT NULL,
+		delivery_mode TEXT NOT NULL CHECK(delivery_mode IN ('manual','paldefender_items','paldefender_pal_templates')),
+		delivery_state TEXT NOT NULL DEFAULT 'manual' CHECK(delivery_state IN ('manual','pending','processing','failed','succeeded')),
+		delivery_attempts INTEGER NOT NULL DEFAULT 0 CHECK(delivery_attempts >= 0),
+		last_delivery_at TEXT NOT NULL DEFAULT '',
+		payload_json TEXT NOT NULL DEFAULT '{}',
+		delivery_receipt_json TEXT NOT NULL DEFAULT '{}',
+		failure TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		delivered_at TEXT NOT NULL DEFAULT '',
+		cancelled_at TEXT NOT NULL DEFAULT '',
+		UNIQUE(player_uid,idempotency_key)
+	)`
+}
+
+func (s *Service) ensureIndexes(ctx context.Context) error {
+	for _, statement := range []string{
+		`CREATE INDEX IF NOT EXISTS idx_shop_products_enabled ON shop_products(enabled,updated_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_shop_orders_created ON shop_orders(created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_shop_orders_player ON shop_orders(player_uid,created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_shop_orders_product ON shop_orders(product_id,status)`,
+		`CREATE INDEX IF NOT EXISTS idx_shop_orders_delivery ON shop_orders(status,delivery_state,updated_at)`,
+	} {
+		if _, err := s.db.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("ensure shop indexes: %w", err)
+		}
+	}
 	return nil
+}
+
+func (s *Service) migrateDeliverySchema(ctx context.Context) error {
+	var productSQL string
+	if err := s.db.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type='table' AND name='shop_products'`).Scan(&productSQL); err != nil {
+		return fmt.Errorf("inspect shop product schema: %w", err)
+	}
+	hasDeliveryColumns, err := s.tableHasColumn(ctx, "shop_orders", "delivery_state")
+	if err != nil {
+		return err
+	}
+	if strings.Contains(productSQL, "paldefender_items") && hasDeliveryColumns {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin shop delivery migration: %w", err)
+	}
+	defer rollback(tx)
+	for _, statement := range []string{
+		`DROP TABLE IF EXISTS shop_products_delivery_v2`,
+		`DROP TABLE IF EXISTS shop_orders_delivery_v2`,
+		createProductsTable("shop_products_delivery_v2", false),
+		createOrdersTable("shop_orders_delivery_v2", false),
+		`INSERT INTO shop_products_delivery_v2(id,name,description,price,stock,per_player_limit,enabled,delivery_mode,payload_json,created_at,updated_at)
+		 SELECT id,name,description,price,stock,per_player_limit,enabled,delivery_mode,payload_json,created_at,updated_at FROM shop_products`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("migrate shop delivery schema: %w", err)
+		}
+	}
+	if hasDeliveryColumns {
+		_, err = tx.ExecContext(ctx, `INSERT INTO shop_orders_delivery_v2(id,idempotency_key,product_id,product_name,player_uid,nickname,steam_id,quantity,unit_price,total_points,status,reservation_id,delivery_mode,delivery_state,delivery_attempts,last_delivery_at,payload_json,delivery_receipt_json,failure,created_at,updated_at,delivered_at,cancelled_at)
+		 SELECT id,idempotency_key,product_id,product_name,player_uid,nickname,steam_id,quantity,unit_price,total_points,status,reservation_id,delivery_mode,delivery_state,delivery_attempts,last_delivery_at,payload_json,delivery_receipt_json,failure,created_at,updated_at,delivered_at,cancelled_at FROM shop_orders`)
+	} else {
+		_, err = tx.ExecContext(ctx, `INSERT INTO shop_orders_delivery_v2(id,idempotency_key,product_id,product_name,player_uid,nickname,steam_id,quantity,unit_price,total_points,status,reservation_id,delivery_mode,delivery_state,delivery_attempts,last_delivery_at,payload_json,delivery_receipt_json,failure,created_at,updated_at,delivered_at,cancelled_at)
+		 SELECT id,idempotency_key,product_id,product_name,player_uid,nickname,steam_id,quantity,unit_price,total_points,status,reservation_id,delivery_mode,
+		 CASE WHEN status='delivered' THEN 'succeeded' ELSE 'manual' END,0,'',payload_json,'{}',failure,created_at,updated_at,delivered_at,cancelled_at FROM shop_orders`)
+	}
+	if err != nil {
+		return fmt.Errorf("copy shop orders during delivery migration: %w", err)
+	}
+	for _, statement := range []string{
+		`DROP TABLE shop_orders`,
+		`DROP TABLE shop_products`,
+		`ALTER TABLE shop_products_delivery_v2 RENAME TO shop_products`,
+		`ALTER TABLE shop_orders_delivery_v2 RENAME TO shop_orders`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("finish shop delivery migration: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit shop delivery migration: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) tableHasColumn(ctx context.Context, table, column string) (bool, error) {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(`+table+`)`)
+	if err != nil {
+		return false, fmt.Errorf("inspect shop table columns: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, kind string
+		var notNull int
+		var defaultValue any
+		var primaryKey int
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func (s *Service) CreateProduct(ctx context.Context, input ProductInput) (Product, error) {
@@ -347,6 +505,9 @@ func (s *Service) CreateOrder(ctx context.Context, ledger Economy, request Creat
 	if product.Stock >= 0 && product.Stock < request.Quantity {
 		return OrderResult{}, ErrInsufficientStock
 	}
+	if _, _, err := deliveryPlan(product.DeliveryMode, product.Payload, request.Quantity); err != nil {
+		return OrderResult{}, err
+	}
 	if product.Price > (1<<63-1)/request.Quantity {
 		return OrderResult{}, ErrInvalidOrder
 	}
@@ -371,7 +532,8 @@ func (s *Service) CreateOrder(ctx context.Context, ledger Economy, request Creat
 		ID: orderID, IdempotencyKey: request.IdempotencyKey, ProductID: product.ID, ProductName: product.Name,
 		PlayerUID: request.PlayerUID, Nickname: request.Nickname, SteamID: request.SteamID, Quantity: request.Quantity,
 		UnitPrice: product.Price, TotalPoints: total, Status: "pending", ReservationID: reservation.Reservation.ID,
-		DeliveryMode: product.DeliveryMode, Payload: product.Payload, CreatedAt: s.timestamp(), UpdatedAt: s.timestamp(),
+		DeliveryMode: product.DeliveryMode, DeliveryState: initialDeliveryState(product.DeliveryMode), Payload: product.Payload,
+		DeliveryReceipt: map[string]any{}, CreatedAt: s.timestamp(), UpdatedAt: s.timestamp(),
 	}
 	if err := s.insertOrder(ctx, order, product); err != nil {
 		if existing, existingErr := s.orderByIdempotency(ctx, request.PlayerUID, request.IdempotencyKey); existingErr == nil {
@@ -418,9 +580,11 @@ func (s *Service) insertOrder(ctx context.Context, order Order, product Product)
 		}
 	}
 	payload, _ := json.Marshal(order.Payload)
-	_, err = tx.ExecContext(ctx, `INSERT INTO shop_orders(id,idempotency_key,product_id,product_name,player_uid,nickname,steam_id,quantity,unit_price,total_points,status,reservation_id,delivery_mode,payload_json,failure,created_at,updated_at,delivered_at,cancelled_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	receipt, _ := json.Marshal(order.DeliveryReceipt)
+	_, err = tx.ExecContext(ctx, `INSERT INTO shop_orders(id,idempotency_key,product_id,product_name,player_uid,nickname,steam_id,quantity,unit_price,total_points,status,reservation_id,delivery_mode,delivery_state,delivery_attempts,last_delivery_at,payload_json,delivery_receipt_json,failure,created_at,updated_at,delivered_at,cancelled_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		order.ID, order.IdempotencyKey, order.ProductID, order.ProductName, order.PlayerUID, order.Nickname, order.SteamID,
-		order.Quantity, order.UnitPrice, order.TotalPoints, order.Status, order.ReservationID, order.DeliveryMode, string(payload), order.Failure,
+		order.Quantity, order.UnitPrice, order.TotalPoints, order.Status, order.ReservationID, order.DeliveryMode, order.DeliveryState,
+		order.DeliveryAttempts, order.LastDeliveryAt, string(payload), string(receipt), order.Failure,
 		order.CreatedAt, order.UpdatedAt, order.DeliveredAt, order.CancelledAt)
 	if err != nil {
 		return err
@@ -448,14 +612,19 @@ func (s *Service) CompleteOrder(ctx context.Context, ledger Economy, id, actor s
 		return OrderResult{}, err
 	}
 	now := s.timestamp()
-	result, err := s.db.ExecContext(ctx, `UPDATE shop_orders SET status='delivered',delivered_at=?,updated_at=?,failure='' WHERE id=? AND status='pending'`, now, now, order.ID)
+	reconciliationReceipt, _ := json.Marshal(map[string]any{
+		"reconciliation": "administrator_confirmed_delivery",
+		"actor":          strings.TrimSpace(actor),
+		"confirmed_at":   now,
+	})
+	result, err := s.db.ExecContext(ctx, `UPDATE shop_orders SET status='delivered',delivery_state='succeeded',delivery_receipt_json=CASE WHEN delivery_mode<>'manual' AND delivery_state<>'succeeded' THEN ? ELSE delivery_receipt_json END,delivered_at=?,updated_at=?,failure='' WHERE id=? AND status='pending'`, string(reconciliationReceipt), now, now, order.ID)
 	if err != nil {
 		return OrderResult{}, err
 	}
 	if count, _ := result.RowsAffected(); count == 0 {
 		return OrderResult{}, ErrOrderSettled
 	}
-	order.Status, order.DeliveredAt, order.UpdatedAt, order.Failure = "delivered", now, now, ""
+	order.Status, order.DeliveryState, order.DeliveredAt, order.UpdatedAt, order.Failure = "delivered", DeliveryStateSucceeded, now, now, ""
 	return OrderResult{Order: order, Account: reservation.Account}, nil
 }
 
@@ -474,6 +643,9 @@ func (s *Service) CancelOrder(ctx context.Context, ledger Economy, id, actor str
 	if order.Status != "pending" {
 		return OrderResult{}, ErrOrderSettled
 	}
+	if order.DeliveryMode != DeliveryModeManual && (order.DeliveryState == DeliveryStateProcessing || order.DeliveryState == DeliveryStateSucceeded) {
+		return OrderResult{}, ErrDeliveryUnsafeCancel
+	}
 	reservation, err := ledger.ReleaseReservation(ctx, order.ReservationID, actor)
 	if err != nil {
 		return OrderResult{}, err
@@ -484,7 +656,7 @@ func (s *Service) CancelOrder(ctx context.Context, ledger Economy, id, actor str
 	}
 	defer rollback(tx)
 	now := s.timestamp()
-	result, err := tx.ExecContext(ctx, `UPDATE shop_orders SET status='cancelled',cancelled_at=?,updated_at=? WHERE id=? AND status='pending'`, now, now, order.ID)
+	result, err := tx.ExecContext(ctx, `UPDATE shop_orders SET status='cancelled',cancelled_at=?,updated_at=?,failure='' WHERE id=? AND status='pending'`, now, now, order.ID)
 	if err != nil {
 		return OrderResult{}, err
 	}
@@ -499,6 +671,143 @@ func (s *Service) CancelOrder(ctx context.Context, ledger Economy, id, actor str
 	}
 	order.Status, order.CancelledAt, order.UpdatedAt = "cancelled", now, now
 	return OrderResult{Order: order, Account: reservation.Account}, nil
+}
+
+func (s *Service) DeliverOrder(ctx context.Context, ledger Economy, dispatcher Dispatcher, id, actor string) (OrderResult, error) {
+	order, err := s.GetOrder(ctx, id)
+	if err != nil {
+		return OrderResult{}, err
+	}
+	if order.Status == "delivered" {
+		return s.CompleteOrder(ctx, ledger, order.ID, actor)
+	}
+	if order.Status != "pending" {
+		return OrderResult{}, ErrOrderSettled
+	}
+	if order.DeliveryMode == DeliveryModeManual {
+		return OrderResult{}, ErrDeliveryNotAutomatic
+	}
+	if dispatcher == nil {
+		return OrderResult{}, fmt.Errorf("%w: dispatcher is unavailable", ErrDeliveryFailed)
+	}
+	if order.DeliveryState == DeliveryStateSucceeded {
+		return s.CompleteOrder(ctx, ledger, order.ID, actor)
+	}
+	if order.DeliveryState == DeliveryStateProcessing {
+		return OrderResult{}, ErrDeliveryInProgress
+	}
+	items, templates, err := deliveryPlan(order.DeliveryMode, order.Payload, order.Quantity)
+	if err != nil {
+		return OrderResult{}, err
+	}
+	order, err = s.beginDelivery(ctx, order.ID)
+	if err != nil {
+		return OrderResult{}, err
+	}
+	aliases := []string{order.PlayerUID, order.SteamID}
+	player, err := dispatcher.ResolvePlayer(ctx, aliases)
+	if err != nil {
+		_ = s.recordDeliveryFailure(ctx, order.ID, err)
+		if errors.Is(err, ErrDeliveryPlayerMissing) {
+			return OrderResult{}, err
+		}
+		return OrderResult{}, fmt.Errorf("%w: %v", ErrDeliveryFailed, err)
+	}
+	switch order.DeliveryMode {
+	case DeliveryModePalDefenderItems:
+		err = dispatcher.GiveItems(ctx, player, items)
+	case DeliveryModePalDefenderPalTemplates:
+		err = dispatcher.GivePalTemplates(ctx, player, templates)
+	default:
+		err = ErrDeliveryNotAutomatic
+	}
+	if err != nil {
+		if errors.Is(err, ErrDeliveryUncertain) {
+			_ = s.recordDeliveryUncertain(ctx, order.ID, err)
+			return OrderResult{}, err
+		}
+		_ = s.recordDeliveryFailure(ctx, order.ID, err)
+		return OrderResult{}, fmt.Errorf("%w: %v", ErrDeliveryFailed, err)
+	}
+	receipt := DeliveryReceipt{
+		Mode: order.DeliveryMode, ResolvedPlayer: player, ItemGrants: len(items),
+		PalTemplates: templates, DeliveredAt: s.timestamp(),
+	}
+	if err := s.recordDeliverySuccess(ctx, order.ID, receipt); err != nil {
+		return OrderResult{}, fmt.Errorf("record successful shop delivery: %w", err)
+	}
+	return s.CompleteOrder(ctx, ledger, order.ID, actor)
+}
+
+func (s *Service) ResetDelivery(ctx context.Context, id, actor string) (Order, error) {
+	order, err := s.GetOrder(ctx, id)
+	if err != nil {
+		return Order{}, err
+	}
+	if order.Status != "pending" || order.DeliveryMode == DeliveryModeManual || (order.DeliveryState != DeliveryStateProcessing && order.DeliveryState != DeliveryStateFailed) {
+		return Order{}, ErrDeliveryResetInvalid
+	}
+	now := s.timestamp()
+	receipt, _ := json.Marshal(map[string]any{
+		"reconciliation": "reset",
+		"actor":          strings.TrimSpace(actor),
+		"reset_at":       now,
+	})
+	result, err := s.db.ExecContext(ctx, `UPDATE shop_orders SET delivery_state='pending',delivery_receipt_json=?,failure='',updated_at=? WHERE id=? AND status='pending' AND delivery_state IN ('processing','failed')`, string(receipt), now, order.ID)
+	if err != nil {
+		return Order{}, err
+	}
+	if count, _ := result.RowsAffected(); count == 0 {
+		return Order{}, ErrDeliveryResetInvalid
+	}
+	return s.GetOrder(ctx, order.ID)
+}
+
+func (s *Service) beginDelivery(ctx context.Context, id string) (Order, error) {
+	now := s.timestamp()
+	result, err := s.db.ExecContext(ctx, `UPDATE shop_orders SET delivery_state='processing',delivery_attempts=delivery_attempts+1,last_delivery_at=?,updated_at=?,failure='' WHERE id=? AND status='pending' AND delivery_state IN ('pending','failed')`, now, now, strings.TrimSpace(id))
+	if err != nil {
+		return Order{}, err
+	}
+	if count, _ := result.RowsAffected(); count == 0 {
+		order, loadErr := s.GetOrder(ctx, id)
+		if loadErr != nil {
+			return Order{}, loadErr
+		}
+		if order.DeliveryState == DeliveryStateProcessing {
+			return Order{}, ErrDeliveryInProgress
+		}
+		return Order{}, ErrOrderSettled
+	}
+	return s.GetOrder(ctx, id)
+}
+
+func (s *Service) recordDeliveryFailure(ctx context.Context, id string, cause error) error {
+	now := s.timestamp()
+	_, err := s.db.ExecContext(ctx, `UPDATE shop_orders SET delivery_state='failed',failure=?,last_delivery_at=?,updated_at=? WHERE id=? AND status='pending' AND delivery_state='processing'`, sanitizeDeliveryFailure(cause), now, now, strings.TrimSpace(id))
+	return err
+}
+
+func (s *Service) recordDeliveryUncertain(ctx context.Context, id string, cause error) error {
+	now := s.timestamp()
+	_, err := s.db.ExecContext(ctx, `UPDATE shop_orders SET failure=?,last_delivery_at=?,updated_at=? WHERE id=? AND status='pending' AND delivery_state='processing'`, sanitizeDeliveryFailure(cause), now, now, strings.TrimSpace(id))
+	return err
+}
+
+func (s *Service) recordDeliverySuccess(ctx context.Context, id string, receipt DeliveryReceipt) error {
+	body, err := json.Marshal(receipt)
+	if err != nil {
+		return err
+	}
+	now := s.timestamp()
+	result, err := s.db.ExecContext(ctx, `UPDATE shop_orders SET delivery_state='succeeded',delivery_receipt_json=?,failure='',last_delivery_at=?,updated_at=? WHERE id=? AND status='pending' AND delivery_state='processing'`, string(body), now, now, strings.TrimSpace(id))
+	if err != nil {
+		return err
+	}
+	if count, _ := result.RowsAffected(); count == 0 {
+		return ErrDeliveryInProgress
+	}
+	return nil
 }
 
 func (s *Service) GetOrder(ctx context.Context, id string) (Order, error) {
@@ -546,7 +855,7 @@ func (s *Service) Summary(ctx context.Context) (Summary, error) {
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(CASE WHEN enabled=1 THEN 1 ELSE 0 END),0) FROM shop_products`).Scan(&result.Products, &result.EnabledProducts); err != nil {
 		return Summary{}, err
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN status='delivered' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN status='delivered' THEN total_points ELSE 0 END),0) FROM shop_orders`).Scan(&result.PendingOrders, &result.DeliveredOrders, &result.SpentPoints); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN status='delivered' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN status='delivered' THEN total_points ELSE 0 END),0),COALESCE(SUM(CASE WHEN status='pending' AND delivery_state IN ('failed','processing') THEN 1 ELSE 0 END),0) FROM shop_orders`).Scan(&result.PendingOrders, &result.DeliveredOrders, &result.SpentPoints, &result.FailedDeliveries); err != nil {
 		return Summary{}, err
 	}
 	return result, nil
@@ -556,7 +865,7 @@ func (s *Service) orderByIdempotency(ctx context.Context, playerUID, key string)
 	return scanOrder(s.db.QueryRowContext(ctx, orderSelect+` WHERE player_uid=? AND idempotency_key=?`, playerUID, key))
 }
 
-const orderSelect = `SELECT id,idempotency_key,product_id,product_name,player_uid,nickname,steam_id,quantity,unit_price,total_points,status,reservation_id,delivery_mode,payload_json,failure,created_at,updated_at,delivered_at,cancelled_at FROM shop_orders`
+const orderSelect = `SELECT id,idempotency_key,product_id,product_name,player_uid,nickname,steam_id,quantity,unit_price,total_points,status,reservation_id,delivery_mode,delivery_state,delivery_attempts,last_delivery_at,payload_json,delivery_receipt_json,failure,created_at,updated_at,delivered_at,cancelled_at FROM shop_orders`
 
 type scanner interface{ Scan(...any) error }
 
@@ -578,9 +887,10 @@ func scanProduct(row scanner) (Product, error) {
 
 func scanOrder(row scanner) (Order, error) {
 	var order Order
-	var payload string
+	var payload, receipt string
 	err := row.Scan(&order.ID, &order.IdempotencyKey, &order.ProductID, &order.ProductName, &order.PlayerUID, &order.Nickname, &order.SteamID,
-		&order.Quantity, &order.UnitPrice, &order.TotalPoints, &order.Status, &order.ReservationID, &order.DeliveryMode, &payload, &order.Failure,
+		&order.Quantity, &order.UnitPrice, &order.TotalPoints, &order.Status, &order.ReservationID, &order.DeliveryMode,
+		&order.DeliveryState, &order.DeliveryAttempts, &order.LastDeliveryAt, &payload, &receipt, &order.Failure,
 		&order.CreatedAt, &order.UpdatedAt, &order.DeliveredAt, &order.CancelledAt)
 	if err != nil {
 		return Order{}, err
@@ -588,6 +898,10 @@ func scanOrder(row scanner) (Order, error) {
 	_ = json.Unmarshal([]byte(payload), &order.Payload)
 	if order.Payload == nil {
 		order.Payload = map[string]any{}
+	}
+	_ = json.Unmarshal([]byte(receipt), &order.DeliveryReceipt)
+	if order.DeliveryReceipt == nil {
+		order.DeliveryReceipt = map[string]any{}
 	}
 	return order, nil
 }
@@ -597,19 +911,152 @@ func normalizeProductInput(input ProductInput) (ProductInput, error) {
 	input.Description = strings.TrimSpace(input.Description)
 	input.DeliveryMode = strings.TrimSpace(strings.ToLower(input.DeliveryMode))
 	if input.DeliveryMode == "" {
-		input.DeliveryMode = "manual"
+		input.DeliveryMode = DeliveryModeManual
 	}
-	if input.Name == "" || len([]rune(input.Name)) > 80 || len([]rune(input.Description)) > 500 || input.Price <= 0 || input.Price > 1_000_000_000 || input.Stock < -1 || input.PerPlayerLimit < 0 || input.DeliveryMode != "manual" {
+	allowedMode := input.DeliveryMode == DeliveryModeManual || input.DeliveryMode == DeliveryModePalDefenderItems || input.DeliveryMode == DeliveryModePalDefenderPalTemplates
+	if input.Name == "" || len([]rune(input.Name)) > 80 || len([]rune(input.Description)) > 500 || input.Price <= 0 || input.Price > 1_000_000_000 || input.Stock < -1 || input.PerPlayerLimit < 0 || !allowedMode {
 		return ProductInput{}, ErrInvalidProduct
 	}
 	if input.Payload == nil {
 		input.Payload = map[string]any{}
 	}
-	payload, err := json.Marshal(input.Payload)
-	if err != nil || len(payload) > 64*1024 {
-		return ProductInput{}, ErrInvalidProduct
+	normalized, err := normalizeDeliveryPayload(input.DeliveryMode, input.Payload)
+	if err != nil {
+		return ProductInput{}, err
 	}
+	input.Payload = normalized
 	return input, nil
+}
+
+func normalizeDeliveryPayload(mode string, payload map[string]any) (map[string]any, error) {
+	body, err := json.Marshal(payload)
+	if err != nil || len(body) > 64*1024 {
+		return nil, ErrInvalidProduct
+	}
+	if mode == DeliveryModeManual {
+		return payload, nil
+	}
+	var typed DeliveryPayload
+	if err := json.Unmarshal(body, &typed); err != nil {
+		return nil, ErrInvalidProduct
+	}
+	switch mode {
+	case DeliveryModePalDefenderItems:
+		if len(payload) != 1 || payload["items"] == nil || len(typed.Items) == 0 || len(typed.Items) > 100 || len(typed.PalTemplates) != 0 {
+			return nil, ErrInvalidProduct
+		}
+		for _, item := range typed.Items {
+			if !validItemID(item.ItemID) || item.Count < 1 || item.Count > 2_147_483_647 {
+				return nil, ErrInvalidProduct
+			}
+		}
+	case DeliveryModePalDefenderPalTemplates:
+		if len(payload) != 1 || payload["pal_templates"] == nil || len(typed.PalTemplates) == 0 || len(typed.PalTemplates) > 20 || len(typed.Items) != 0 {
+			return nil, ErrInvalidProduct
+		}
+		for index := range typed.PalTemplates {
+			typed.PalTemplates[index] = strings.TrimSpace(typed.PalTemplates[index])
+			if !validTemplateName(typed.PalTemplates[index]) {
+				return nil, ErrInvalidProduct
+			}
+		}
+	default:
+		return nil, ErrInvalidProduct
+	}
+	canonical, err := json.Marshal(typed)
+	if err != nil {
+		return nil, ErrInvalidProduct
+	}
+	var result map[string]any
+	if err := json.Unmarshal(canonical, &result); err != nil {
+		return nil, ErrInvalidProduct
+	}
+	return result, nil
+}
+
+func deliveryPlan(mode string, payload map[string]any, quantity int64) ([]ItemGrant, []string, error) {
+	if quantity < 1 {
+		return nil, nil, ErrInvalidQuantity
+	}
+	if mode == DeliveryModeManual {
+		return nil, nil, nil
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, nil, ErrInvalidProduct
+	}
+	var typed DeliveryPayload
+	if err := json.Unmarshal(body, &typed); err != nil {
+		return nil, nil, ErrInvalidProduct
+	}
+	switch mode {
+	case DeliveryModePalDefenderItems:
+		items := make([]ItemGrant, 0, len(typed.Items))
+		for _, item := range typed.Items {
+			if item.Count > 2_147_483_647/quantity {
+				return nil, nil, ErrInvalidQuantity
+			}
+			items = append(items, ItemGrant{ItemID: item.ItemID, Count: item.Count * quantity})
+		}
+		return items, nil, nil
+	case DeliveryModePalDefenderPalTemplates:
+		if int64(len(typed.PalTemplates))*quantity > 20 {
+			return nil, nil, ErrInvalidQuantity
+		}
+		templates := make([]string, 0, int64(len(typed.PalTemplates))*quantity)
+		for count := int64(0); count < quantity; count++ {
+			templates = append(templates, typed.PalTemplates...)
+		}
+		return nil, templates, nil
+	default:
+		return nil, nil, ErrInvalidProduct
+	}
+}
+
+func initialDeliveryState(mode string) string {
+	if mode == DeliveryModeManual {
+		return DeliveryStateManual
+	}
+	return DeliveryStatePending
+}
+
+func validItemID(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for _, char := range value {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '_' || char == ':' || char == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validTemplateName(value string) bool {
+	value = strings.TrimSpace(value)
+	if strings.HasSuffix(value, ".json") {
+		value = strings.TrimSuffix(value, ".json")
+	}
+	if value == "" || len(value) > 64 {
+		return false
+	}
+	for index, char := range value {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || (index > 0 && (char == '_' || char == '-')) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func sanitizeDeliveryFailure(err error) string {
+	message := strings.TrimSpace(err.Error())
+	if len(message) > 500 {
+		message = message[:500]
+	}
+	return message
 }
 
 func normalizePlayerUID(value string) string {

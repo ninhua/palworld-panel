@@ -19,6 +19,10 @@ func init() {
 		"economy-shop-orders",
 		"economy-shop-idempotent-redemption",
 		"economy-shop-manual-fulfillment",
+		"economy-shop-paldefender-item-delivery",
+		"economy-shop-paldefender-pal-template-delivery",
+		"economy-shop-delivery-retry",
+		"economy-shop-delivery-reconciliation",
 	)
 }
 
@@ -31,6 +35,8 @@ func (s Server) registerShopRoutes(api *gin.RouterGroup) {
 	group.DELETE("/products/:id", Require(PermConfigWrite), s.archiveShopProduct)
 	group.GET("/orders", Require(PermRead), s.shopOrders)
 	group.POST("/orders", Require(PermPlayersWrite), s.createShopOrder)
+	group.POST("/orders/:id/deliver", Require(PermPlayersWrite), s.deliverShopOrder)
+	group.POST("/orders/:id/delivery/reset", Require(PermPlayersWrite), s.resetShopOrderDelivery)
 	group.POST("/orders/:id/complete", Require(PermPlayersWrite), s.completeShopOrder)
 	group.POST("/orders/:id/cancel", Require(PermPlayersWrite), s.cancelShopOrder)
 }
@@ -156,7 +162,50 @@ func (s Server) createShopOrder(c *gin.Context) {
 		ok(c, result)
 		return
 	}
+	if result.Order.DeliveryMode != shop.DeliveryModeManual {
+		delivered, deliveryErr := service.DeliverOrder(c.Request.Context(), ledger, shop.NewPalDefenderDispatcher(s.defender), result.Order.ID, CurrentPrincipal(c).Name)
+		if deliveryErr == nil {
+			created(c, delivered)
+			return
+		}
+		if current, loadErr := service.GetOrder(c.Request.Context(), result.Order.ID); loadErr == nil {
+			result.Order = current
+		}
+	}
 	created(c, result)
+}
+
+func (s Server) deliverShopOrder(c *gin.Context) {
+	service, err := s.shopService()
+	if err != nil {
+		shopFailure(c, err)
+		return
+	}
+	ledger, err := s.economyService()
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	result, err := service.DeliverOrder(c.Request.Context(), ledger, shop.NewPalDefenderDispatcher(s.defender), c.Param("id"), CurrentPrincipal(c).Name)
+	if err != nil {
+		shopFailure(c, err)
+		return
+	}
+	ok(c, result)
+}
+
+func (s Server) resetShopOrderDelivery(c *gin.Context) {
+	service, err := s.shopService()
+	if err != nil {
+		shopFailure(c, err)
+		return
+	}
+	order, err := service.ResetDelivery(c.Request.Context(), c.Param("id"), CurrentPrincipal(c).Name)
+	if err != nil {
+		shopFailure(c, err)
+		return
+	}
+	ok(c, order)
 }
 
 func (s Server) completeShopOrder(c *gin.Context) {
@@ -204,12 +253,14 @@ func shopQueryBool(c *gin.Context, key string) bool {
 
 func shopFailure(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, shop.ErrInvalidProduct), errors.Is(err, shop.ErrInvalidQuantity), errors.Is(err, shop.ErrInvalidOrder):
+	case errors.Is(err, shop.ErrInvalidProduct), errors.Is(err, shop.ErrInvalidQuantity), errors.Is(err, shop.ErrInvalidOrder), errors.Is(err, shop.ErrDeliveryNotAutomatic):
 		fail(c, http.StatusBadRequest, "shop_request_invalid", err.Error())
 	case errors.Is(err, shop.ErrProductNotFound), errors.Is(err, shop.ErrOrderNotFound), errors.Is(err, sql.ErrNoRows):
 		fail(c, http.StatusNotFound, "shop_resource_not_found", err.Error())
-	case errors.Is(err, shop.ErrProductDisabled), errors.Is(err, shop.ErrInsufficientStock), errors.Is(err, shop.ErrPlayerLimit), errors.Is(err, shop.ErrOrderSettled), errors.Is(err, shop.ErrReservationConflict), errors.Is(err, economy.ErrInsufficientBalance), errors.Is(err, economy.ErrReservationSettled):
+	case errors.Is(err, shop.ErrProductDisabled), errors.Is(err, shop.ErrInsufficientStock), errors.Is(err, shop.ErrPlayerLimit), errors.Is(err, shop.ErrOrderSettled), errors.Is(err, shop.ErrReservationConflict), errors.Is(err, shop.ErrDeliveryInProgress), errors.Is(err, shop.ErrDeliveryUncertain), errors.Is(err, shop.ErrDeliveryUnsafeCancel), errors.Is(err, shop.ErrDeliveryResetInvalid), errors.Is(err, shop.ErrDeliveryPlayerMissing), errors.Is(err, economy.ErrInsufficientBalance), errors.Is(err, economy.ErrReservationSettled):
 		fail(c, http.StatusConflict, "shop_order_conflict", err.Error())
+	case errors.Is(err, shop.ErrDeliveryFailed):
+		fail(c, http.StatusBadGateway, "shop_delivery_failed", err.Error())
 	default:
 		fail(c, http.StatusInternalServerError, "shop_operation_failed", err.Error())
 	}

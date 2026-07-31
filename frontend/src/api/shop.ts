@@ -1,6 +1,8 @@
 import { apiClient, handleRequest } from './client';
 
 export type ShopOrderStatus = 'pending' | 'delivered' | 'cancelled';
+export type ShopDeliveryMode = 'manual' | 'paldefender_items' | 'paldefender_pal_templates';
+export type ShopDeliveryState = 'manual' | 'pending' | 'processing' | 'failed' | 'succeeded';
 
 export interface ShopProductInput {
   name: string;
@@ -9,7 +11,7 @@ export interface ShopProductInput {
   stock: number;
   per_player_limit: number;
   enabled: boolean;
-  delivery_mode: 'manual';
+  delivery_mode: ShopDeliveryMode;
   payload?: Record<string, unknown>;
 }
 
@@ -32,8 +34,12 @@ export interface ShopOrder {
   total_points: number;
   status: ShopOrderStatus;
   reservation_id: string;
-  delivery_mode: 'manual';
+  delivery_mode: ShopDeliveryMode;
+  delivery_state: ShopDeliveryState;
+  delivery_attempts: number;
+  last_delivery_at?: string;
   payload?: Record<string, unknown>;
+  delivery_receipt?: Record<string, unknown>;
   failure?: string;
   created_at: string;
   updated_at: string;
@@ -47,6 +53,7 @@ export interface ShopSummary {
   pending_orders: number;
   delivered_orders: number;
   spent_points: number;
+  failed_deliveries: number;
 }
 
 export interface ShopOrderCreateInput {
@@ -108,7 +115,10 @@ const emptyOrder: ShopOrder = {
   status: 'pending',
   reservation_id: '',
   delivery_mode: 'manual',
+  delivery_state: 'manual',
+  delivery_attempts: 0,
   payload: {},
+  delivery_receipt: {},
   created_at: '',
   updated_at: '',
 };
@@ -128,7 +138,7 @@ const emptyOrderResult: ShopOrderResult = {
 export const shopApi = {
   summary: () => handleRequest<unknown, ShopSummary>(
     () => apiClient.get('/shop/summary'),
-    { products: 0, enabled_products: 0, pending_orders: 0, delivered_orders: 0, spent_points: 0 },
+    { products: 0, enabled_products: 0, pending_orders: 0, delivered_orders: 0, spent_points: 0, failed_deliveries: 0 },
     { fallbackOnError: false },
   ),
   products: (includeDisabled = true) => handleRequest<unknown, ProductListResult>(
@@ -159,6 +169,16 @@ export const shopApi = {
   createOrder: (input: ShopOrderCreateInput) => handleRequest<unknown, ShopOrderResult>(
     () => apiClient.post('/shop/orders', input),
     emptyOrderResult,
+    { fallbackOnError: false },
+  ),
+  deliverOrder: (id: string) => handleRequest<unknown, ShopOrderResult>(
+    () => apiClient.post(`/shop/orders/${encodeURIComponent(id)}/deliver`),
+    emptyOrderResult,
+    { fallbackOnError: false },
+  ),
+  resetDelivery: (id: string) => handleRequest<unknown, ShopOrder>(
+    () => apiClient.post(`/shop/orders/${encodeURIComponent(id)}/delivery/reset`),
+    { ...emptyOrder, id },
     { fallbackOnError: false },
   ),
   completeOrder: (id: string) => handleRequest<unknown, ShopOrderResult>(
