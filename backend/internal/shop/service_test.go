@@ -273,7 +273,7 @@ func TestProcessingDeliveryRequiresAdministratorReconciliation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.beginDelivery(ctx, created.Order.ID); err != nil {
+	if _, err := service.beginDelivery(ctx, created.Order.ID, "test"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.CancelOrder(ctx, ledger, created.Order.ID, "test"); !errors.Is(err, ErrDeliveryUnsafeCancel) {
@@ -410,5 +410,126 @@ func TestUncertainExternalResultStaysLockedForReconciliation(t *testing.T) {
 	}
 	if _, err := service.DeliverOrder(ctx, ledger, dispatcher, created.Order.ID, "test"); !errors.Is(err, ErrDeliveryInProgress) {
 		t.Fatalf("retry err=%v want ErrDeliveryInProgress", err)
+	}
+}
+
+func TestBatchDeliveryAndAuditTrail(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "palpanel.db")
+	ledger, err := economy.Open(path, "Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	service, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	ctx := context.Background()
+	player := "11112222333344445555666677778888"
+	if _, err := ledger.Adjust(ctx, economy.Adjustment{PlayerUID: player, Delta: 1000, Reason: "test", ReferenceType: "test", ReferenceID: "batch-seed", Actor: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	product, err := service.CreateProduct(ctx, ProductInput{
+		Name: "批量自动物品", Price: 10, Stock: -1, Enabled: true, DeliveryMode: DeliveryModePalDefenderItems,
+		Payload: map[string]any{"items": []any{map[string]any{"item_id": "PalSphere", "count": 1}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var orderIDs []string
+	for index := 0; index < 2; index++ {
+		created, createErr := service.CreateOrder(ctx, ledger, CreateOrderRequest{
+			IdempotencyKey: fmt.Sprintf("batch-%d", index), ProductID: product.ID, PlayerUID: player, Quantity: 1,
+		}, "operator")
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		orderIDs = append(orderIDs, created.Order.ID)
+	}
+	dispatcher := &fakeDispatcher{resolved: "resolved-player"}
+	batch, err := service.DeliverBatch(ctx, ledger, dispatcher, BatchDeliveryRequest{Limit: 10}, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if batch.Selected != 2 || batch.Delivered != 2 || batch.Failed != 0 || batch.Uncertain != 0 || batch.Skipped != 0 {
+		t.Fatalf("unexpected batch result: %+v", batch)
+	}
+	for _, id := range orderIDs {
+		order, loadErr := service.GetOrder(ctx, id)
+		if loadErr != nil {
+			t.Fatal(loadErr)
+		}
+		if order.Status != "delivered" || order.DeliveryAttempts != 1 {
+			t.Fatalf("order %s was not delivered exactly once: %+v", id, order)
+		}
+		events, eventErr := service.ListDeliveryEvents(ctx, DeliveryEventFilter{OrderID: id, Limit: 20})
+		if eventErr != nil {
+			t.Fatal(eventErr)
+		}
+		seen := map[string]bool{}
+		for _, event := range events {
+			seen[event.EventType] = true
+		}
+		for _, eventType := range []string{DeliveryEventCreated, DeliveryEventStarted, DeliveryEventSucceeded, DeliveryEventCompleted} {
+			if !seen[eventType] {
+				t.Fatalf("order %s audit trail is missing %s: %+v", id, eventType, events)
+			}
+		}
+	}
+	summary, err := service.Summary(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.DeliveryEvents < 8 || summary.DeliveredOrders != 2 {
+		t.Fatalf("unexpected summary: %+v", summary)
+	}
+}
+
+func TestBatchRetryRequiresExplicitFailedOptIn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "palpanel.db")
+	ledger, err := economy.Open(path, "Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	service, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	ctx := context.Background()
+	player := "99990000111122223333444455556666"
+	if _, err := ledger.Adjust(ctx, economy.Adjustment{PlayerUID: player, Delta: 100, Reason: "test", ReferenceType: "test", ReferenceID: "batch-failed-seed", Actor: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	product, err := service.CreateProduct(ctx, ProductInput{
+		Name: "失败重试商品", Price: 10, Stock: -1, Enabled: true, DeliveryMode: DeliveryModePalDefenderItems,
+		Payload: map[string]any{"items": []any{map[string]any{"item_id": "PalSphere", "count": 1}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.CreateOrder(ctx, ledger, CreateOrderRequest{IdempotencyKey: "failed-batch", ProductID: product.ID, PlayerUID: player, Quantity: 1}, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	failureDispatcher := &fakeDispatcher{giveErr: errors.New("offline")}
+	if _, err := service.DeliverOrder(ctx, ledger, failureDispatcher, created.Order.ID, "operator"); !errors.Is(err, ErrDeliveryFailed) {
+		t.Fatalf("err=%v want ErrDeliveryFailed", err)
+	}
+	withoutFailed, err := service.DeliverBatch(ctx, ledger, &fakeDispatcher{}, BatchDeliveryRequest{Limit: 10}, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withoutFailed.Selected != 0 {
+		t.Fatalf("failed orders must not be selected without opt-in: %+v", withoutFailed)
+	}
+	withFailed, err := service.DeliverBatch(ctx, ledger, &fakeDispatcher{}, BatchDeliveryRequest{IncludeFailed: true, Limit: 10}, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withFailed.Selected != 1 || withFailed.Delivered != 1 {
+		t.Fatalf("failed order was not retried: %+v", withFailed)
 	}
 }

@@ -1555,6 +1555,8 @@ paths:
       parameters:
         - {name: status, in: query, required: false, schema: {type: string, enum: [pending, delivered, cancelled]}}
         - {name: player_uid, in: query, required: false, schema: {type: string}}
+        - {name: delivery_state, in: query, required: false, schema: {type: string, enum: [manual, pending, processing, failed, succeeded]}}
+        - {name: delivery_mode, in: query, required: false, schema: {type: string, enum: [manual, paldefender_items, paldefender_pal_templates, automatic]}}
         - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
         - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
       responses: {'200': *success, '400': *error, '401': *error, '500': *error}
@@ -1564,6 +1566,34 @@ paths:
       x-palpanel-permission: 'players:write'
       requestBody: *jsonRequest
       responses: {'201': *success, '200': *success, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error, '500': *error}
+  /shop/delivery-events:
+    get:
+      operationId: listShopDeliveryEvents
+      tags: [economy]
+      x-palpanel-permission: read
+      parameters:
+        - {name: order_id, in: query, required: false, schema: {type: string}}
+        - {name: event_type, in: query, required: false, schema: {type: string, enum: [created, started, failed, uncertain, succeeded, reset, completed, cancelled]}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      responses: {'200': *success, '400': *error, '401': *error, '500': *error}
+  /shop/maintenance/deliver:
+    post:
+      operationId: deliverShopOrdersBatch
+      tags: [economy]
+      x-palpanel-permission: 'players:write'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                order_ids: {type: array, maxItems: 50, uniqueItems: true, items: {type: string}}
+                include_failed: {type: boolean, default: false}
+                limit: {type: integer, minimum: 1, maximum: 50, default: 20}
+      responses: {'200': *success, '400': *error, '401': *error, '403': *error, '409': *error, '502': *error, '500': *error}
   /shop/orders/{id}/deliver:
     parameters: [*idParameter]
     post:
@@ -4160,7 +4190,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.62}
+            version: {type: string, const: 0.8.63}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

@@ -23,6 +23,8 @@ func init() {
 		"economy-shop-paldefender-pal-template-delivery",
 		"economy-shop-delivery-retry",
 		"economy-shop-delivery-reconciliation",
+		"economy-shop-delivery-audit",
+		"economy-shop-batch-delivery",
 	)
 }
 
@@ -34,6 +36,8 @@ func (s Server) registerShopRoutes(api *gin.RouterGroup) {
 	group.PUT("/products/:id", Require(PermConfigWrite), s.updateShopProduct)
 	group.DELETE("/products/:id", Require(PermConfigWrite), s.archiveShopProduct)
 	group.GET("/orders", Require(PermRead), s.shopOrders)
+	group.GET("/delivery-events", Require(PermRead), s.shopDeliveryEvents)
+	group.POST("/maintenance/deliver", Require(PermPlayersWrite), s.deliverShopOrdersBatch)
 	group.POST("/orders", Require(PermPlayersWrite), s.createShopOrder)
 	group.POST("/orders/:id/deliver", Require(PermPlayersWrite), s.deliverShopOrder)
 	group.POST("/orders/:id/delivery/reset", Require(PermPlayersWrite), s.resetShopOrderDelivery)
@@ -129,12 +133,56 @@ func (s Server) shopOrders(c *gin.Context) {
 		shopFailure(c, err)
 		return
 	}
-	items, err := service.ListOrders(c.Request.Context(), c.Query("status"), c.Query("player_uid"), economyQueryInt(c, "limit", 100), economyQueryInt(c, "offset", 0))
+	items, err := service.ListOrdersFiltered(c.Request.Context(), shop.OrderFilter{
+		Status: c.Query("status"), PlayerUID: c.Query("player_uid"), DeliveryState: c.Query("delivery_state"), DeliveryMode: c.Query("delivery_mode"),
+		Limit: economyQueryInt(c, "limit", 100), Offset: economyQueryInt(c, "offset", 0),
+	})
 	if err != nil {
 		shopFailure(c, err)
 		return
 	}
 	ok(c, gin.H{"items": items, "count": len(items)})
+}
+
+func (s Server) shopDeliveryEvents(c *gin.Context) {
+	service, err := s.shopService()
+	if err != nil {
+		shopFailure(c, err)
+		return
+	}
+	items, err := service.ListDeliveryEvents(c.Request.Context(), shop.DeliveryEventFilter{
+		OrderID: c.Query("order_id"), EventType: c.Query("event_type"),
+		Limit: economyQueryInt(c, "limit", 100), Offset: economyQueryInt(c, "offset", 0),
+	})
+	if err != nil {
+		shopFailure(c, err)
+		return
+	}
+	ok(c, gin.H{"items": items, "count": len(items)})
+}
+
+func (s Server) deliverShopOrdersBatch(c *gin.Context) {
+	var request shop.BatchDeliveryRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	service, err := s.shopService()
+	if err != nil {
+		shopFailure(c, err)
+		return
+	}
+	ledger, err := s.economyService()
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	result, err := service.DeliverBatch(c.Request.Context(), ledger, shop.NewPalDefenderDispatcher(s.defender), request, CurrentPrincipal(c).Name)
+	if err != nil {
+		shopFailure(c, err)
+		return
+	}
+	ok(c, result)
 }
 
 func (s Server) createShopOrder(c *gin.Context) {
@@ -253,7 +301,7 @@ func shopQueryBool(c *gin.Context, key string) bool {
 
 func shopFailure(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, shop.ErrInvalidProduct), errors.Is(err, shop.ErrInvalidQuantity), errors.Is(err, shop.ErrInvalidOrder), errors.Is(err, shop.ErrDeliveryNotAutomatic):
+	case errors.Is(err, shop.ErrInvalidProduct), errors.Is(err, shop.ErrInvalidQuantity), errors.Is(err, shop.ErrInvalidOrder), errors.Is(err, shop.ErrDeliveryNotAutomatic), errors.Is(err, shop.ErrInvalidBatch):
 		fail(c, http.StatusBadRequest, "shop_request_invalid", err.Error())
 	case errors.Is(err, shop.ErrProductNotFound), errors.Is(err, shop.ErrOrderNotFound), errors.Is(err, sql.ErrNoRows):
 		fail(c, http.StatusNotFound, "shop_resource_not_found", err.Error())

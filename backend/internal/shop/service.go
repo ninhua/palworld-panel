@@ -35,6 +35,7 @@ var (
 	ErrDeliveryResetInvalid  = errors.New("shop order delivery cannot be reset from its current state")
 	ErrDeliveryPlayerMissing = errors.New("PalDefender could not resolve the order player")
 	ErrDeliveryFailed        = errors.New("shop automatic delivery failed")
+	ErrInvalidBatch          = errors.New("shop delivery batch is invalid")
 )
 
 const (
@@ -51,6 +52,17 @@ const (
 	DeliveryStateProcessing = "processing"
 	DeliveryStateFailed     = "failed"
 	DeliveryStateSucceeded  = "succeeded"
+
+	DeliveryEventCreated   = "created"
+	DeliveryEventStarted   = "started"
+	DeliveryEventFailed    = "failed"
+	DeliveryEventUncertain = "uncertain"
+	DeliveryEventSucceeded = "succeeded"
+	DeliveryEventReset     = "reset"
+	DeliveryEventCompleted = "completed"
+	DeliveryEventCancelled = "cancelled"
+
+	maximumBatchDeliveries = 50
 )
 
 type Economy interface {
@@ -156,12 +168,65 @@ type OrderResult struct {
 }
 
 type Summary struct {
-	Products         int64 `json:"products"`
-	EnabledProducts  int64 `json:"enabled_products"`
-	PendingOrders    int64 `json:"pending_orders"`
-	DeliveredOrders  int64 `json:"delivered_orders"`
-	SpentPoints      int64 `json:"spent_points"`
-	FailedDeliveries int64 `json:"failed_deliveries"`
+	Products             int64 `json:"products"`
+	EnabledProducts      int64 `json:"enabled_products"`
+	PendingOrders        int64 `json:"pending_orders"`
+	DeliveredOrders      int64 `json:"delivered_orders"`
+	SpentPoints          int64 `json:"spent_points"`
+	FailedDeliveries     int64 `json:"failed_deliveries"`
+	ProcessingDeliveries int64 `json:"processing_deliveries"`
+	DeliveryEvents       int64 `json:"delivery_events"`
+}
+
+type OrderFilter struct {
+	Status        string
+	PlayerUID     string
+	DeliveryState string
+	DeliveryMode  string
+	Limit         int
+	Offset        int
+}
+
+type DeliveryEvent struct {
+	ID            int64          `json:"id"`
+	OrderID       string         `json:"order_id"`
+	EventType     string         `json:"event_type"`
+	DeliveryState string         `json:"delivery_state"`
+	Attempt       int            `json:"attempt"`
+	Actor         string         `json:"actor,omitempty"`
+	Message       string         `json:"message,omitempty"`
+	Details       map[string]any `json:"details,omitempty"`
+	CreatedAt     string         `json:"created_at"`
+}
+
+type DeliveryEventFilter struct {
+	OrderID   string
+	EventType string
+	Limit     int
+	Offset    int
+}
+
+type BatchDeliveryRequest struct {
+	OrderIDs      []string `json:"order_ids"`
+	IncludeFailed bool     `json:"include_failed"`
+	Limit         int      `json:"limit"`
+}
+
+type BatchDeliveryItem struct {
+	OrderID       string `json:"order_id"`
+	Result        string `json:"result"`
+	Status        string `json:"status"`
+	DeliveryState string `json:"delivery_state"`
+	Error         string `json:"error,omitempty"`
+}
+
+type BatchDeliveryResult struct {
+	Selected  int                 `json:"selected"`
+	Delivered int                 `json:"delivered"`
+	Failed    int                 `json:"failed"`
+	Uncertain int                 `json:"uncertain"`
+	Skipped   int                 `json:"skipped"`
+	Items     []BatchDeliveryItem `json:"items"`
 }
 
 var serviceCache sync.Map
@@ -228,6 +293,7 @@ func (s *Service) ensureSchema(ctx context.Context) error {
 	statements := []string{
 		createProductsTable("shop_products", true),
 		createOrdersTable("shop_orders", true),
+		createDeliveryEventsTable("shop_delivery_events", true),
 	}
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
@@ -293,6 +359,24 @@ func createOrdersTable(name string, ifNotExists bool) string {
 	)`
 }
 
+func createDeliveryEventsTable(name string, ifNotExists bool) string {
+	prefix := "CREATE TABLE "
+	if ifNotExists {
+		prefix += "IF NOT EXISTS "
+	}
+	return prefix + name + ` (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		order_id TEXT NOT NULL,
+		event_type TEXT NOT NULL CHECK(event_type IN ('created','started','failed','uncertain','succeeded','reset','completed','cancelled')),
+		delivery_state TEXT NOT NULL DEFAULT '',
+		attempt INTEGER NOT NULL DEFAULT 0 CHECK(attempt >= 0),
+		actor TEXT NOT NULL DEFAULT '',
+		message TEXT NOT NULL DEFAULT '',
+		details_json TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL
+	)`
+}
+
 func (s *Service) ensureIndexes(ctx context.Context) error {
 	for _, statement := range []string{
 		`CREATE INDEX IF NOT EXISTS idx_shop_products_enabled ON shop_products(enabled,updated_at DESC)`,
@@ -300,6 +384,8 @@ func (s *Service) ensureIndexes(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_shop_orders_player ON shop_orders(player_uid,created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_shop_orders_product ON shop_orders(product_id,status)`,
 		`CREATE INDEX IF NOT EXISTS idx_shop_orders_delivery ON shop_orders(status,delivery_state,updated_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_shop_delivery_events_order ON shop_delivery_events(order_id,id DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_shop_delivery_events_type ON shop_delivery_events(event_type,id DESC)`,
 	} {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("ensure shop indexes: %w", err)
@@ -535,7 +621,7 @@ func (s *Service) CreateOrder(ctx context.Context, ledger Economy, request Creat
 		DeliveryMode: product.DeliveryMode, DeliveryState: initialDeliveryState(product.DeliveryMode), Payload: product.Payload,
 		DeliveryReceipt: map[string]any{}, CreatedAt: s.timestamp(), UpdatedAt: s.timestamp(),
 	}
-	if err := s.insertOrder(ctx, order, product); err != nil {
+	if err := s.insertOrder(ctx, order, product, actor); err != nil {
 		if existing, existingErr := s.orderByIdempotency(ctx, request.PlayerUID, request.IdempotencyKey); existingErr == nil {
 			return OrderResult{Order: existing, Account: reservation.Account, Duplicate: true}, nil
 		}
@@ -547,7 +633,7 @@ func (s *Service) CreateOrder(ctx context.Context, ledger Economy, request Creat
 	return OrderResult{Order: order, Account: reservation.Account}, nil
 }
 
-func (s *Service) insertOrder(ctx context.Context, order Order, product Product) error {
+func (s *Service) insertOrder(ctx context.Context, order Order, product Product, actor string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -589,6 +675,13 @@ func (s *Service) insertOrder(ctx context.Context, order Order, product Product)
 	if err != nil {
 		return err
 	}
+	if err := s.insertDeliveryEvent(ctx, tx, DeliveryEvent{
+		OrderID: order.ID, EventType: DeliveryEventCreated, DeliveryState: order.DeliveryState, Attempt: 0, Actor: actor,
+		Message: "shop order created and points reserved",
+		Details: map[string]any{"product_id": order.ProductID, "quantity": order.Quantity, "total_points": order.TotalPoints},
+	}); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -611,18 +704,33 @@ func (s *Service) CompleteOrder(ctx context.Context, ledger Economy, id, actor s
 	if err != nil {
 		return OrderResult{}, err
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return OrderResult{}, err
+	}
+	defer rollback(tx)
 	now := s.timestamp()
 	reconciliationReceipt, _ := json.Marshal(map[string]any{
 		"reconciliation": "administrator_confirmed_delivery",
 		"actor":          strings.TrimSpace(actor),
 		"confirmed_at":   now,
 	})
-	result, err := s.db.ExecContext(ctx, `UPDATE shop_orders SET status='delivered',delivery_state='succeeded',delivery_receipt_json=CASE WHEN delivery_mode<>'manual' AND delivery_state<>'succeeded' THEN ? ELSE delivery_receipt_json END,delivered_at=?,updated_at=?,failure='' WHERE id=? AND status='pending'`, string(reconciliationReceipt), now, now, order.ID)
+	result, err := tx.ExecContext(ctx, `UPDATE shop_orders SET status='delivered',delivery_state='succeeded',delivery_receipt_json=CASE WHEN delivery_mode<>'manual' AND delivery_state<>'succeeded' THEN ? ELSE delivery_receipt_json END,delivered_at=?,updated_at=?,failure='' WHERE id=? AND status='pending'`, string(reconciliationReceipt), now, now, order.ID)
 	if err != nil {
 		return OrderResult{}, err
 	}
 	if count, _ := result.RowsAffected(); count == 0 {
 		return OrderResult{}, ErrOrderSettled
+	}
+	if err := s.insertDeliveryEvent(ctx, tx, DeliveryEvent{
+		OrderID: order.ID, EventType: DeliveryEventCompleted, DeliveryState: DeliveryStateSucceeded, Attempt: order.DeliveryAttempts, Actor: actor,
+		Message: "shop order delivery confirmed and points committed",
+		Details: map[string]any{"manual_confirmation": order.DeliveryMode == DeliveryModeManual || order.DeliveryState != DeliveryStateSucceeded},
+	}); err != nil {
+		return OrderResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return OrderResult{}, err
 	}
 	order.Status, order.DeliveryState, order.DeliveredAt, order.UpdatedAt, order.Failure = "delivered", DeliveryStateSucceeded, now, now, ""
 	return OrderResult{Order: order, Account: reservation.Account}, nil
@@ -666,6 +774,12 @@ func (s *Service) CancelOrder(ctx context.Context, ledger Economy, id, actor str
 	if _, err := tx.ExecContext(ctx, `UPDATE shop_products SET stock=CASE WHEN stock<0 THEN stock ELSE stock+? END,updated_at=? WHERE id=?`, order.Quantity, now, order.ProductID); err != nil {
 		return OrderResult{}, err
 	}
+	if err := s.insertDeliveryEvent(ctx, tx, DeliveryEvent{
+		OrderID: order.ID, EventType: DeliveryEventCancelled, DeliveryState: order.DeliveryState, Attempt: order.DeliveryAttempts, Actor: actor,
+		Message: "shop order cancelled, points released, and stock restored",
+	}); err != nil {
+		return OrderResult{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return OrderResult{}, err
 	}
@@ -700,14 +814,14 @@ func (s *Service) DeliverOrder(ctx context.Context, ledger Economy, dispatcher D
 	if err != nil {
 		return OrderResult{}, err
 	}
-	order, err = s.beginDelivery(ctx, order.ID)
+	order, err = s.beginDelivery(ctx, order.ID, actor)
 	if err != nil {
 		return OrderResult{}, err
 	}
 	aliases := []string{order.PlayerUID, order.SteamID}
 	player, err := dispatcher.ResolvePlayer(ctx, aliases)
 	if err != nil {
-		_ = s.recordDeliveryFailure(ctx, order.ID, err)
+		_ = s.recordDeliveryFailure(ctx, order.ID, actor, err)
 		if errors.Is(err, ErrDeliveryPlayerMissing) {
 			return OrderResult{}, err
 		}
@@ -723,17 +837,17 @@ func (s *Service) DeliverOrder(ctx context.Context, ledger Economy, dispatcher D
 	}
 	if err != nil {
 		if errors.Is(err, ErrDeliveryUncertain) {
-			_ = s.recordDeliveryUncertain(ctx, order.ID, err)
+			_ = s.recordDeliveryUncertain(ctx, order.ID, actor, err)
 			return OrderResult{}, err
 		}
-		_ = s.recordDeliveryFailure(ctx, order.ID, err)
+		_ = s.recordDeliveryFailure(ctx, order.ID, actor, err)
 		return OrderResult{}, fmt.Errorf("%w: %v", ErrDeliveryFailed, err)
 	}
 	receipt := DeliveryReceipt{
 		Mode: order.DeliveryMode, ResolvedPlayer: player, ItemGrants: len(items),
 		PalTemplates: templates, DeliveredAt: s.timestamp(),
 	}
-	if err := s.recordDeliverySuccess(ctx, order.ID, receipt); err != nil {
+	if err := s.recordDeliverySuccess(ctx, order.ID, actor, receipt); err != nil {
 		return OrderResult{}, fmt.Errorf("record successful shop delivery: %w", err)
 	}
 	return s.CompleteOrder(ctx, ledger, order.ID, actor)
@@ -747,30 +861,49 @@ func (s *Service) ResetDelivery(ctx context.Context, id, actor string) (Order, e
 	if order.Status != "pending" || order.DeliveryMode == DeliveryModeManual || (order.DeliveryState != DeliveryStateProcessing && order.DeliveryState != DeliveryStateFailed) {
 		return Order{}, ErrDeliveryResetInvalid
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Order{}, err
+	}
+	defer rollback(tx)
 	now := s.timestamp()
 	receipt, _ := json.Marshal(map[string]any{
 		"reconciliation": "reset",
 		"actor":          strings.TrimSpace(actor),
 		"reset_at":       now,
 	})
-	result, err := s.db.ExecContext(ctx, `UPDATE shop_orders SET delivery_state='pending',delivery_receipt_json=?,failure='',updated_at=? WHERE id=? AND status='pending' AND delivery_state IN ('processing','failed')`, string(receipt), now, order.ID)
+	result, err := tx.ExecContext(ctx, `UPDATE shop_orders SET delivery_state='pending',delivery_receipt_json=?,failure='',updated_at=? WHERE id=? AND status='pending' AND delivery_state IN ('processing','failed')`, string(receipt), now, order.ID)
 	if err != nil {
 		return Order{}, err
 	}
 	if count, _ := result.RowsAffected(); count == 0 {
 		return Order{}, ErrDeliveryResetInvalid
 	}
+	if err := s.insertDeliveryEvent(ctx, tx, DeliveryEvent{
+		OrderID: order.ID, EventType: DeliveryEventReset, DeliveryState: DeliveryStatePending, Attempt: order.DeliveryAttempts, Actor: actor,
+		Message: "administrator confirmed no delivery and reset the order for retry",
+	}); err != nil {
+		return Order{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Order{}, err
+	}
 	return s.GetOrder(ctx, order.ID)
 }
 
-func (s *Service) beginDelivery(ctx context.Context, id string) (Order, error) {
+func (s *Service) beginDelivery(ctx context.Context, id, actor string) (Order, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Order{}, err
+	}
+	defer rollback(tx)
 	now := s.timestamp()
-	result, err := s.db.ExecContext(ctx, `UPDATE shop_orders SET delivery_state='processing',delivery_attempts=delivery_attempts+1,last_delivery_at=?,updated_at=?,failure='' WHERE id=? AND status='pending' AND delivery_state IN ('pending','failed')`, now, now, strings.TrimSpace(id))
+	result, err := tx.ExecContext(ctx, `UPDATE shop_orders SET delivery_state='processing',delivery_attempts=delivery_attempts+1,last_delivery_at=?,updated_at=?,failure='' WHERE id=? AND status='pending' AND delivery_state IN ('pending','failed')`, now, now, strings.TrimSpace(id))
 	if err != nil {
 		return Order{}, err
 	}
 	if count, _ := result.RowsAffected(); count == 0 {
-		order, loadErr := s.GetOrder(ctx, id)
+		order, loadErr := scanOrder(tx.QueryRowContext(ctx, orderSelect+` WHERE id=?`, strings.TrimSpace(id)))
 		if loadErr != nil {
 			return Order{}, loadErr
 		}
@@ -779,35 +912,81 @@ func (s *Service) beginDelivery(ctx context.Context, id string) (Order, error) {
 		}
 		return Order{}, ErrOrderSettled
 	}
-	return s.GetOrder(ctx, id)
+	order, err := scanOrder(tx.QueryRowContext(ctx, orderSelect+` WHERE id=?`, strings.TrimSpace(id)))
+	if err != nil {
+		return Order{}, err
+	}
+	if err := s.insertDeliveryEvent(ctx, tx, DeliveryEvent{
+		OrderID: order.ID, EventType: DeliveryEventStarted, DeliveryState: DeliveryStateProcessing, Attempt: order.DeliveryAttempts, Actor: actor,
+		Message: "automatic delivery started",
+	}); err != nil {
+		return Order{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Order{}, err
+	}
+	return order, nil
 }
 
-func (s *Service) recordDeliveryFailure(ctx context.Context, id string, cause error) error {
-	now := s.timestamp()
-	_, err := s.db.ExecContext(ctx, `UPDATE shop_orders SET delivery_state='failed',failure=?,last_delivery_at=?,updated_at=? WHERE id=? AND status='pending' AND delivery_state='processing'`, sanitizeDeliveryFailure(cause), now, now, strings.TrimSpace(id))
-	return err
+func (s *Service) recordDeliveryFailure(ctx context.Context, id, actor string, cause error) error {
+	return s.recordDeliveryOutcome(ctx, id, actor, DeliveryEventFailed, DeliveryStateFailed, cause, nil)
 }
 
-func (s *Service) recordDeliveryUncertain(ctx context.Context, id string, cause error) error {
-	now := s.timestamp()
-	_, err := s.db.ExecContext(ctx, `UPDATE shop_orders SET failure=?,last_delivery_at=?,updated_at=? WHERE id=? AND status='pending' AND delivery_state='processing'`, sanitizeDeliveryFailure(cause), now, now, strings.TrimSpace(id))
-	return err
+func (s *Service) recordDeliveryUncertain(ctx context.Context, id, actor string, cause error) error {
+	return s.recordDeliveryOutcome(ctx, id, actor, DeliveryEventUncertain, DeliveryStateProcessing, cause, nil)
 }
 
-func (s *Service) recordDeliverySuccess(ctx context.Context, id string, receipt DeliveryReceipt) error {
-	body, err := json.Marshal(receipt)
+func (s *Service) recordDeliverySuccess(ctx context.Context, id, actor string, receipt DeliveryReceipt) error {
+	return s.recordDeliveryOutcome(ctx, id, actor, DeliveryEventSucceeded, DeliveryStateSucceeded, nil, receipt)
+}
+
+func (s *Service) recordDeliveryOutcome(ctx context.Context, id, actor, eventType, state string, cause error, receipt any) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
+	defer rollback(tx)
 	now := s.timestamp()
-	result, err := s.db.ExecContext(ctx, `UPDATE shop_orders SET delivery_state='succeeded',delivery_receipt_json=?,failure='',last_delivery_at=?,updated_at=? WHERE id=? AND status='pending' AND delivery_state='processing'`, string(body), now, now, strings.TrimSpace(id))
+	failure := ""
+	if cause != nil {
+		failure = sanitizeDeliveryFailure(cause)
+	}
+	receiptJSON := ""
+	if receipt != nil {
+		body, marshalErr := json.Marshal(receipt)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		receiptJSON = string(body)
+	}
+	var result sql.Result
+	if state == DeliveryStateSucceeded {
+		result, err = tx.ExecContext(ctx, `UPDATE shop_orders SET delivery_state='succeeded',delivery_receipt_json=?,failure='',last_delivery_at=?,updated_at=? WHERE id=? AND status='pending' AND delivery_state='processing'`, receiptJSON, now, now, strings.TrimSpace(id))
+	} else if state == DeliveryStateFailed {
+		result, err = tx.ExecContext(ctx, `UPDATE shop_orders SET delivery_state='failed',failure=?,last_delivery_at=?,updated_at=? WHERE id=? AND status='pending' AND delivery_state='processing'`, failure, now, now, strings.TrimSpace(id))
+	} else {
+		result, err = tx.ExecContext(ctx, `UPDATE shop_orders SET failure=?,last_delivery_at=?,updated_at=? WHERE id=? AND status='pending' AND delivery_state='processing'`, failure, now, now, strings.TrimSpace(id))
+	}
 	if err != nil {
 		return err
 	}
 	if count, _ := result.RowsAffected(); count == 0 {
 		return ErrDeliveryInProgress
 	}
-	return nil
+	order, err := scanOrder(tx.QueryRowContext(ctx, orderSelect+` WHERE id=?`, strings.TrimSpace(id)))
+	if err != nil {
+		return err
+	}
+	details := map[string]any{}
+	if receipt != nil {
+		details["receipt"] = receipt
+	}
+	if err := s.insertDeliveryEvent(ctx, tx, DeliveryEvent{
+		OrderID: order.ID, EventType: eventType, DeliveryState: state, Attempt: order.DeliveryAttempts, Actor: actor, Message: failure, Details: details,
+	}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Service) GetOrder(ctx context.Context, id string) (Order, error) {
@@ -820,20 +999,34 @@ func (s *Service) GetOrder(ctx context.Context, id string) (Order, error) {
 }
 
 func (s *Service) ListOrders(ctx context.Context, status, playerUID string, limit, offset int) ([]Order, error) {
-	limit, offset = normalizePage(limit, offset)
+	return s.ListOrdersFiltered(ctx, OrderFilter{Status: status, PlayerUID: playerUID, Limit: limit, Offset: offset})
+}
+
+func (s *Service) ListOrdersFiltered(ctx context.Context, filter OrderFilter) ([]Order, error) {
+	filter.Limit, filter.Offset = normalizePage(filter.Limit, filter.Offset)
 	conditions := []string{"1=1"}
 	args := []any{}
-	status = strings.TrimSpace(status)
-	if status != "" {
+	if value := strings.TrimSpace(filter.Status); value != "" {
 		conditions = append(conditions, "status=?")
-		args = append(args, status)
+		args = append(args, value)
 	}
-	playerUID = normalizePlayerUID(playerUID)
-	if playerUID != "" {
+	if value := normalizePlayerUID(filter.PlayerUID); value != "" {
 		conditions = append(conditions, "player_uid=?")
-		args = append(args, playerUID)
+		args = append(args, value)
 	}
-	args = append(args, limit, offset)
+	if value := strings.TrimSpace(filter.DeliveryState); value != "" {
+		conditions = append(conditions, "delivery_state=?")
+		args = append(args, value)
+	}
+	if value := strings.TrimSpace(filter.DeliveryMode); value != "" {
+		if value == "automatic" {
+			conditions = append(conditions, "delivery_mode<>'manual'")
+		} else {
+			conditions = append(conditions, "delivery_mode=?")
+			args = append(args, value)
+		}
+	}
+	args = append(args, filter.Limit, filter.Offset)
 	rows, err := s.db.QueryContext(ctx, orderSelect+` WHERE `+strings.Join(conditions, " AND ")+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, err
@@ -850,15 +1043,178 @@ func (s *Service) ListOrders(ctx context.Context, status, playerUID string, limi
 	return items, rows.Err()
 }
 
+func (s *Service) ListDeliveryEvents(ctx context.Context, filter DeliveryEventFilter) ([]DeliveryEvent, error) {
+	filter.Limit, filter.Offset = normalizePage(filter.Limit, filter.Offset)
+	conditions := []string{"1=1"}
+	args := []any{}
+	if value := strings.TrimSpace(filter.OrderID); value != "" {
+		conditions = append(conditions, "order_id=?")
+		args = append(args, value)
+	}
+	if value := strings.TrimSpace(filter.EventType); value != "" {
+		conditions = append(conditions, "event_type=?")
+		args = append(args, value)
+	}
+	args = append(args, filter.Limit, filter.Offset)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,order_id,event_type,delivery_state,attempt,actor,message,details_json,created_at FROM shop_delivery_events WHERE `+strings.Join(conditions, " AND ")+` ORDER BY id DESC LIMIT ? OFFSET ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DeliveryEvent{}
+	for rows.Next() {
+		var event DeliveryEvent
+		var details string
+		if err := rows.Scan(&event.ID, &event.OrderID, &event.EventType, &event.DeliveryState, &event.Attempt, &event.Actor, &event.Message, &details, &event.CreatedAt); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal([]byte(details), &event.Details)
+		if event.Details == nil {
+			event.Details = map[string]any{}
+		}
+		items = append(items, event)
+	}
+	return items, rows.Err()
+}
+
+func (s *Service) DeliverBatch(ctx context.Context, ledger Economy, dispatcher Dispatcher, request BatchDeliveryRequest, actor string) (BatchDeliveryResult, error) {
+	orders, err := s.selectBatchOrders(ctx, request)
+	if err != nil {
+		return BatchDeliveryResult{}, err
+	}
+	result := BatchDeliveryResult{Selected: len(orders), Items: make([]BatchDeliveryItem, 0, len(orders))}
+	for _, order := range orders {
+		item := BatchDeliveryItem{OrderID: order.ID, Status: order.Status, DeliveryState: order.DeliveryState}
+		if order.Status != "pending" || order.DeliveryMode == DeliveryModeManual || order.DeliveryState == DeliveryStateProcessing || (order.DeliveryState == DeliveryStateFailed && !request.IncludeFailed) {
+			item.Result = "skipped"
+			item.Error = "order is not eligible for safe automatic delivery"
+			result.Skipped++
+			result.Items = append(result.Items, item)
+			continue
+		}
+		delivered, deliverErr := s.DeliverOrder(ctx, ledger, dispatcher, order.ID, actor)
+		if deliverErr == nil {
+			item.Result = "delivered"
+			item.Status = delivered.Order.Status
+			item.DeliveryState = delivered.Order.DeliveryState
+			result.Delivered++
+		} else {
+			item.Error = sanitizeDeliveryFailure(deliverErr)
+			if current, loadErr := s.GetOrder(ctx, order.ID); loadErr == nil {
+				item.Status = current.Status
+				item.DeliveryState = current.DeliveryState
+			}
+			switch {
+			case errors.Is(deliverErr, ErrDeliveryUncertain), errors.Is(deliverErr, ErrDeliveryInProgress):
+				item.Result = "uncertain"
+				result.Uncertain++
+			case errors.Is(deliverErr, ErrDeliveryFailed), errors.Is(deliverErr, ErrDeliveryPlayerMissing):
+				item.Result = "failed"
+				result.Failed++
+			default:
+				item.Result = "skipped"
+				result.Skipped++
+			}
+		}
+		result.Items = append(result.Items, item)
+	}
+	return result, nil
+}
+
+func (s *Service) selectBatchOrders(ctx context.Context, request BatchDeliveryRequest) ([]Order, error) {
+	limit := request.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > maximumBatchDeliveries {
+		return nil, ErrInvalidBatch
+	}
+	if len(request.OrderIDs) > maximumBatchDeliveries {
+		return nil, ErrInvalidBatch
+	}
+	if len(request.OrderIDs) > 0 {
+		seen := map[string]bool{}
+		orders := make([]Order, 0, len(request.OrderIDs))
+		for _, id := range request.OrderIDs {
+			id = strings.TrimSpace(id)
+			if id == "" || seen[id] {
+				continue
+			}
+			seen[id] = true
+			order, err := s.GetOrder(ctx, id)
+			if err != nil {
+				if errors.Is(err, ErrOrderNotFound) {
+					continue
+				}
+				return nil, err
+			}
+			orders = append(orders, order)
+			if len(orders) >= limit {
+				break
+			}
+		}
+		return orders, nil
+	}
+	states := "('pending','succeeded')"
+	if request.IncludeFailed {
+		states = "('pending','failed','succeeded')"
+	}
+	rows, err := s.db.QueryContext(ctx, orderSelect+` WHERE status='pending' AND delivery_mode<>'manual' AND delivery_state IN `+states+` ORDER BY created_at ASC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	orders := []Order{}
+	for rows.Next() {
+		order, scanErr := scanOrder(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		orders = append(orders, order)
+	}
+	return orders, rows.Err()
+}
+
 func (s *Service) Summary(ctx context.Context) (Summary, error) {
 	var result Summary
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(CASE WHEN enabled=1 THEN 1 ELSE 0 END),0) FROM shop_products`).Scan(&result.Products, &result.EnabledProducts); err != nil {
 		return Summary{}, err
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN status='delivered' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN status='delivered' THEN total_points ELSE 0 END),0),COALESCE(SUM(CASE WHEN status='pending' AND delivery_state IN ('failed','processing') THEN 1 ELSE 0 END),0) FROM shop_orders`).Scan(&result.PendingOrders, &result.DeliveredOrders, &result.SpentPoints, &result.FailedDeliveries); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN status='delivered' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN status='delivered' THEN total_points ELSE 0 END),0),COALESCE(SUM(CASE WHEN status='pending' AND delivery_state='failed' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN status='pending' AND delivery_state='processing' THEN 1 ELSE 0 END),0) FROM shop_orders`).Scan(&result.PendingOrders, &result.DeliveredOrders, &result.SpentPoints, &result.FailedDeliveries, &result.ProcessingDeliveries); err != nil {
+		return Summary{}, err
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM shop_delivery_events`).Scan(&result.DeliveryEvents); err != nil {
 		return Summary{}, err
 	}
 	return result, nil
+}
+
+type sqlExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func (s *Service) insertDeliveryEvent(ctx context.Context, execer sqlExecer, event DeliveryEvent) error {
+	if event.Details == nil {
+		event.Details = map[string]any{}
+	}
+	details, err := json.Marshal(event.Details)
+	if err != nil {
+		return err
+	}
+	if event.CreatedAt == "" {
+		event.CreatedAt = s.timestamp()
+	}
+	_, err = execer.ExecContext(ctx, `INSERT INTO shop_delivery_events(order_id,event_type,delivery_state,attempt,actor,message,details_json,created_at) VALUES(?,?,?,?,?,?,?,?)`,
+		strings.TrimSpace(event.OrderID), event.EventType, event.DeliveryState, event.Attempt, strings.TrimSpace(event.Actor), sanitizeEventMessage(event.Message), string(details), event.CreatedAt)
+	return err
+}
+
+func sanitizeEventMessage(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) > 500 {
+		value = value[:500]
+	}
+	return value
 }
 
 func (s *Service) orderByIdempotency(ctx context.Context, playerUID, key string) (Order, error) {

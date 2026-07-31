@@ -118,25 +118,49 @@ Content-Type: application/json
 
 自动商品会在订单持久化和积分预留成功后立即尝试 PalDefender 交付。交付失败不会删除订单；响应中的 `delivery_state` 和 `failure` 用于后续处理。
 
-余额不足、库存不足、商品下架、超过每人限购或自动交付数量超限时返回 HTTP `409` 或 `400`。
-
 ### 查询订单
 
 ```http
-GET /api/shop/orders?status=pending&player_uid=001122...&limit=100&offset=0
+GET /api/shop/orders?status=pending&player_uid=001122...&delivery_state=failed&delivery_mode=automatic&limit=100&offset=0
 ```
 
-### 自动交付或重试
+筛选参数：
+
+- `status`：`pending`、`delivered`、`cancelled`。
+- `player_uid`：规范化后的 PlayerUID。
+- `delivery_state`：`manual`、`pending`、`processing`、`failed`、`succeeded`。
+- `delivery_mode`：具体模式，或 `automatic` 表示所有非人工模式。
+
+### 单个自动交付或重试
 
 ```http
 POST /api/shop/orders/{id}/deliver
 ```
 
-仅适用于自动交付订单：
-
 - `pending` 或 `failed`：执行 PalDefender 发放。
 - `succeeded`：只重试积分结算，不再次发放。
 - `processing`：拒绝执行，要求管理员先核对。
+
+### 批量自动交付
+
+```http
+POST /api/shop/maintenance/deliver
+Content-Type: application/json
+```
+
+```json
+{
+  "order_ids": [],
+  "include_failed": false,
+  "limit": 20
+}
+```
+
+- `order_ids` 为空时按创建时间选择安全可处理的自动订单。
+- 单次最多 50 个订单，按顺序串行执行。
+- 默认不重试 `failed`；只有 `include_failed=true` 才会纳入。
+- `processing` 永不自动重试。
+- 可传入明确的 `order_ids`，不符合安全条件的订单会返回 `skipped`。
 
 ### 重置不确定交付状态
 
@@ -162,14 +186,33 @@ POST /api/shop/orders/{id}/cancel
 
 仅允许取消人工订单，或自动订单的 `pending` / `failed` 状态。取消后积分退还，有限库存恢复。`processing` 和 `succeeded` 禁止退款。
 
+## 交付审计
+
+```http
+GET /api/shop/delivery-events?order_id=order_xxx&event_type=failed&limit=100&offset=0
+```
+
+事件类型：
+
+- `created`
+- `started`
+- `failed`
+- `uncertain`
+- `succeeded`
+- `reset`
+- `completed`
+- `cancelled`
+
+审计表为追加式记录，不包含 PalDefender 令牌或其他密钥。失败信息限制为 500 字节。
+
 ## 汇总
 
 ```http
 GET /api/shop/summary
 ```
 
-返回商品总数、上架数、待交付订单、已交付订单、已消费积分以及需要处理的异常交付订单数。
+返回商品总数、上架数、待交付订单、已交付订单、已消费积分、明确失败数、待人工核对数以及审计事件总数。
 
 ## 数据库升级
 
-`0.8.62` 会自动重建 `0.8.61` 的商城表约束，以允许新的自动交付模式，并为旧订单补充交付状态字段。旧人工订单迁移后保持 `delivery_mode=manual`、`delivery_state=manual`，不会触发自动发放。
+`0.8.63` 自动创建 `shop_delivery_events` 表和索引。现有商品、订单、积分预留、库存和 `0.8.62` 交付状态保持不变。

@@ -3,6 +3,7 @@ import { apiClient, handleRequest } from './client';
 export type ShopOrderStatus = 'pending' | 'delivered' | 'cancelled';
 export type ShopDeliveryMode = 'manual' | 'paldefender_items' | 'paldefender_pal_templates';
 export type ShopDeliveryState = 'manual' | 'pending' | 'processing' | 'failed' | 'succeeded';
+export type ShopDeliveryEventType = 'created' | 'started' | 'failed' | 'uncertain' | 'succeeded' | 'reset' | 'completed' | 'cancelled';
 
 export interface ShopProductInput {
   name: string;
@@ -54,6 +55,43 @@ export interface ShopSummary {
   delivered_orders: number;
   spent_points: number;
   failed_deliveries: number;
+  processing_deliveries: number;
+  delivery_events: number;
+}
+
+export interface ShopDeliveryEvent {
+  id: number;
+  order_id: string;
+  event_type: ShopDeliveryEventType;
+  delivery_state: ShopDeliveryState | '';
+  attempt: number;
+  actor?: string;
+  message?: string;
+  details?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ShopBatchDeliveryInput {
+  order_ids?: string[];
+  include_failed: boolean;
+  limit: number;
+}
+
+export interface ShopBatchDeliveryItem {
+  order_id: string;
+  result: 'delivered' | 'failed' | 'uncertain' | 'skipped';
+  status: ShopOrderStatus;
+  delivery_state: ShopDeliveryState;
+  error?: string;
+}
+
+export interface ShopBatchDeliveryResult {
+  selected: number;
+  delivered: number;
+  failed: number;
+  uncertain: number;
+  skipped: number;
+  items: ShopBatchDeliveryItem[];
 }
 
 export interface ShopOrderCreateInput {
@@ -86,6 +124,11 @@ interface ProductListResult {
 
 interface OrderListResult {
   items: ShopOrder[];
+  count: number;
+}
+
+interface DeliveryEventListResult {
+  items: ShopDeliveryEvent[];
   count: number;
 }
 
@@ -138,7 +181,7 @@ const emptyOrderResult: ShopOrderResult = {
 export const shopApi = {
   summary: () => handleRequest<unknown, ShopSummary>(
     () => apiClient.get('/shop/summary'),
-    { products: 0, enabled_products: 0, pending_orders: 0, delivered_orders: 0, spent_points: 0, failed_deliveries: 0 },
+    { products: 0, enabled_products: 0, pending_orders: 0, delivered_orders: 0, spent_points: 0, failed_deliveries: 0, processing_deliveries: 0, delivery_events: 0 },
     { fallbackOnError: false },
   ),
   products: (includeDisabled = true) => handleRequest<unknown, ProductListResult>(
@@ -161,9 +204,25 @@ export const shopApi = {
     { ...emptyProduct, id, enabled: false },
     { fallbackOnError: false },
   ),
-  orders: (status = '', playerUID = '') => handleRequest<unknown, OrderListResult>(
-    () => apiClient.get('/shop/orders', { params: { status: status || undefined, player_uid: playerUID || undefined, limit: 500 } }),
+  orders: (status = '', playerUID = '', deliveryState = '', deliveryMode = '') => handleRequest<unknown, OrderListResult>(
+    () => apiClient.get('/shop/orders', { params: {
+      status: status || undefined,
+      player_uid: playerUID || undefined,
+      delivery_state: deliveryState || undefined,
+      delivery_mode: deliveryMode || undefined,
+      limit: 500,
+    } }),
     { items: [], count: 0 },
+    { fallbackOnError: false },
+  ),
+  deliveryEvents: (orderID = '', eventType = '') => handleRequest<unknown, DeliveryEventListResult>(
+    () => apiClient.get('/shop/delivery-events', { params: { order_id: orderID || undefined, event_type: eventType || undefined, limit: 500 } }),
+    { items: [], count: 0 },
+    { fallbackOnError: false },
+  ),
+  deliverBatch: (input: ShopBatchDeliveryInput) => handleRequest<unknown, ShopBatchDeliveryResult>(
+    () => apiClient.post('/shop/maintenance/deliver', input),
+    { selected: 0, delivered: 0, failed: 0, uncertain: 0, skipped: 0, items: [] },
     { fallbackOnError: false },
   ),
   createOrder: (input: ShopOrderCreateInput) => handleRequest<unknown, ShopOrderResult>(
