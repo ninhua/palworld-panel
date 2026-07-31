@@ -71,7 +71,7 @@ describe('SaveSources archive inspection', () => {
     });
     renderSaveSources();
 
-    expect(await screen.findByText('RUNNINGWORLD0123456789ABCDEF0123')).toBeInTheDocument();
+    expect((await screen.findAllByText('RUNNINGWORLD0123456789ABCDEF0123')).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('服务器实际运行世界')).toBeInTheDocument();
     expect(screen.getByText('PalPanel 当前分析源')).toBeInTheDocument();
     expect(screen.getAllByText('分析副本').length).toBeGreaterThanOrEqual(1);

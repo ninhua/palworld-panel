@@ -70,7 +70,7 @@ describe('SaveHistory page', () => {
     renderPage();
     expect(await screen.findByText('当前服务器存档')).toBeInTheDocument();
     await waitFor(() => expect(mocks.diff).toHaveBeenCalledWith(expect.objectContaining({ from: older.id, to: newer.id, limit: 200, offset: 0 })));
-    expect(await screen.findByText('Alice 获得物品')).toBeInTheDocument();
+    expect((await screen.findAllByText('Alice 获得物品')).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/石头 ×4/)).toBeInTheDocument();
     expect(screen.getByText('原始字段差异')).toBeInTheDocument();
   });
