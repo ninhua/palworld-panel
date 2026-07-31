@@ -6,7 +6,7 @@
 
 PalPanel 是给《幻兽帕鲁》专用服务器用的自托管面板。后端用 Go，前端用 React，存档解析由 `sav-cli` 处理，配种计算通过独立的 `palcalc-bridge` 运行。
 
-项目现在可以完成开服、启停、更新、监控、备份、Mod 管理和存档查询；当前版本也已经加入多存档、PalCalc 配种、AstrBot QQ 插件、WebDAV 归档，以及支持简体中文/English 切换的新客户端界面。
+PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更新、备份、Mod、存档索引和配种查询集中在一个面板里，同时支持多存档、简体中文/English 切换、PalDefender GM、WebDAV 归档和 AstrBot QQ 插件。
 
 <p align="center">
   <a href="https://github.com/uitok/palworld-panel/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/uitok/palworld-panel?display_name=tag&sort=semver"></a>
@@ -39,7 +39,7 @@ PalPanel 是给《幻兽帕鲁》专用服务器用的自托管面板。后端�
 
 - 在 Windows 上通过 SteamCMD 安装或接管现有 `PalServer.exe`
 - 在 Linux 上使用 Docker + Wine 管理服务端
-- 启动、停止、保存世界、安全重启、检查更新和查看日志
+- 启动、停止、保存世界、安全重启、检查更新和查看日志；日志支持按来源查看：游戏日志、启动器日志和 PalDefender REST 日志
 - 查看 CPU、内存、磁盘、在线人数、Server FPS 和运行时间
 - 编辑启动参数与 `PalWorldSettings.ini`
 - 管理 Workshop、Pak、LogicMods、UE4SS 和 PalDefender
@@ -55,11 +55,18 @@ PalPanel 是给《幻兽帕鲁》专用服务器用的自托管面板。后端�
 - 导入带有 `Level.sav` 的标准 ZIP、TAR、TAR.GZ 或 TGZ 存档
 - 切换、重命名、重建和删除导入的数据源
 - 通过五步迁移向导把旧存档玩家自动迁移到新 SteamID；自动识别 Steam/NoSteam UID 模式，预检目标冲突，停服前创建完整备份，失败时自动回滚
+- 使用 `sav-cli` 为服务器和导入存档建立索引；存档文件变化会标记索引过期，有可用缓存时会保留上一次成功的索引，并显示重建错误和警告
 - 查询玩家、公会、基地、容器和帕鲁
 - 读取帕鲁的性别、IV、星级、技能、被动词条、主人和所在容器
 - 在 Palpagos 游戏地图上显示玩家、基地和存档实体
 
-存档归档导入会检查路径穿越、软链接/硬链接、文件数量和解压大小。当前支持 Steam 与 Palworld Dedicated Server 存档，不支持 Xbox WGS。
+导入流程是先上传归档，再在检查页确认结果。面板会检查路径穿越、软链接/硬链接、文件数量和解压大小，并验证 `Level.sav` 是否可读取、非空且能被索引器解析；归档里有多个世界时，需要选择具体世界后才能导入。导入后的存档可以激活，用于面板查看和分析，但激活不会直接覆盖正在运行的游戏存档。当前支持 Steam 与 Palworld Dedicated Server 存档，不支持 Xbox WGS。
+
+### 玩家与 GM
+
+- 在线玩家状态会和存档历史数据合并展示，并按可用的玩家 UID/Steam ID 去重
+- PalDefender 支持物品、帕鲁和自定义模板发放，也支持批量发放
+- 发放功能需要 PalDefender 已安装并通过启动日志确认加载，PalDefender REST 已启用，且目标玩家在线；缺少这些条件时面板会拒绝请求
 
 ### 配种实验室
 
@@ -187,9 +194,9 @@ sudo /opt/palpanel/current/palpanelctl uninstall
 
 ```bash
 sha256sum -c checksums.txt
-sudo ./palpanelctl install --docker --listen 0.0.0.0:63101
+sudo ./palpanelctl install --docker --listen 0.0.0.0:8080
 sudo /opt/palpanel/current/palpanelctl status
-curl --fail http://127.0.0.1:63101/api/health
+curl --fail http://127.0.0.1:8080/api/health
 ```
 
 升级默认保留 `/etc/palpanel`、`/var/lib/palpanel`、游戏存档、游戏日志和
