@@ -151,6 +151,18 @@ type historyDiskSnapshot struct {
 }
 
 func (m *Manager) EnsureHistorySnapshot() error {
+	return m.captureCachedHistorySnapshot(false)
+}
+
+// ForceHistorySnapshot stores the current cached index even when the automatic
+// semantic sampling interval has not elapsed. It is intended for explicit
+// baselines and deterministic API tests; normal rebuilds must continue to use
+// EnsureHistorySnapshot or captureHistorySnapshotIfDue.
+func (m *Manager) ForceHistorySnapshot() error {
+	return m.captureCachedHistorySnapshot(true)
+}
+
+func (m *Manager) captureCachedHistorySnapshot(force bool) error {
 	if !m.cfg.SaveIndexerEnabled {
 		return ErrDisabled
 	}
@@ -161,6 +173,9 @@ func (m *Manager) EnsureHistorySnapshot() error {
 	cached, err := m.loadCache()
 	if err != nil {
 		return err
+	}
+	if force {
+		return m.captureHistorySnapshot(worldDir, cached.Fingerprint, cached.Index)
 	}
 	return m.captureHistorySnapshotIfDue(worldDir, cached.Fingerprint, cached.Index)
 }

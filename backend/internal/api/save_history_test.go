@@ -85,6 +85,12 @@ func TestSaveHistoryAPIListsSanitizedSnapshotsAndDiffs(t *testing.T) {
 	if _, _, err := manager.Rebuild(ctx); err != nil {
 		t.Fatal(err)
 	}
+	// Automatic rebuilds intentionally skip dense history snapshots. This API
+	// contract test needs two deterministic baselines, so explicitly capture the
+	// current cached index rather than weakening the production sampling policy.
+	if err := manager.ForceHistorySnapshot(); err != nil {
+		t.Fatal(err)
+	}
 
 	server := Server{cfg: cfg, store: store, saveIndex: manager}
 	gin.SetMode(gin.TestMode)
