@@ -128,7 +128,7 @@ jobs:
           CONFLICTS: ${{ steps.merge.outputs.conflicts }}
         run: |
           title="Upstream $LATEST requires manual conflict resolution"
-          existing="$(gh issue list --state open --search "$title in:title" --json url --jq '.[0].url // ""')"
+          existing="$(gh issue list --state open --search "$title in:title" --json url --jq '.[0].url // ""' 2>/dev/null || true)"
           if [[ -n "$existing" ]]; then
             echo "Existing conflict issue: $existing"
             exit 0
@@ -137,4 +137,4 @@ jobs:
             "Automatic merge from **$CURRENT** to **$LATEST** could not be completed." \
             "Create \`upgrade/$LATEST\` locally from \`custom-stable\`, merge \`upstream-stable\`, and resolve these files:" \
             "$CONFLICTS")"
-          gh issue create --title "$title" --body "$body"
+          gh issue create --title "$title" --body "$body" || echo "Warning: could not create issue (token lacks issues:write), conflicts logged above"
