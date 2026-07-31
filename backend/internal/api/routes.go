@@ -45,6 +45,8 @@ func (s Server) registerRoutes(router *gin.Engine) {
 	integration.POST("/server-status", s.astrBotServerStatus)
 	integration.POST("/server-control", s.astrBotServerControl)
 	integration.POST("/community-servers", s.astrBotCommunityServers)
+	integration.POST("/economy/checkin", s.astrBotEconomyCheckin)
+	integration.POST("/economy/balance", s.astrBotEconomyBalance)
 
 	api := router.Group("/api")
 	api.Use(Auth(s.cfg, s.auth), DetailedAuditMiddleware(s.store))
@@ -53,6 +55,7 @@ func (s Server) registerRoutes(router *gin.Engine) {
 	s.registerContentRoutes(api)
 	s.registerSecurityRoutes(api)
 	s.registerWorldRoutes(api)
+	s.registerEconomyRoutes(api)
 	api.GET("/catalog", s.apiCatalog(router))
 	s.registerFrontendRoutes(router)
 }
