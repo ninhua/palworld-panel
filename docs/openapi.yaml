@@ -1772,6 +1772,49 @@ paths:
       x-palpanel-permission: hmac-integration
       requestBody: *jsonRequest
       responses: {'200': *success, '400': *error, '401': *error, '404': *error, '500': *error}
+  /tasks:
+    get:
+      operationId: listOperationsTasks
+      tags: [operations, tasks]
+      x-palpanel-permission: read
+      parameters:
+        - {name: include_archived, in: query, required: false, schema: {type: boolean, default: false}}
+      responses: *readResponses
+    post:
+      operationId: createOperationsTask
+      tags: [operations, tasks]
+      x-palpanel-permission: 'config:write'
+      requestBody: *jsonRequest
+      responses: *writeResponses
+  /tasks/progress/{player_uid}:
+    parameters:
+      - {name: player_uid, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
+    get:
+      operationId: getPlayerTaskProgress
+      tags: [operations, tasks]
+      x-palpanel-permission: read
+      responses: *readResponses
+  /tasks/maintenance/retry-rewards:
+    post:
+      operationId: retryTaskRewards
+      tags: [operations, tasks]
+      x-palpanel-permission: 'players:write'
+      parameters:
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      responses: *writeResponses
+  /tasks/{id}:
+    parameters: [*idParameter]
+    put:
+      operationId: updateOperationsTask
+      tags: [operations, tasks]
+      x-palpanel-permission: 'config:write'
+      requestBody: *jsonRequest
+      responses: *writeResponses
+    delete:
+      operationId: archiveOperationsTask
+      tags: [operations, tasks]
+      x-palpanel-permission: 'config:write'
+      responses: *writeResponses
   /integrations/game/events:
     post:
       operationId: ingestGameEvent
@@ -4037,7 +4080,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.57}
+            version: {type: string, const: 0.8.58}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

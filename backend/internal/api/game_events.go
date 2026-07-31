@@ -16,6 +16,7 @@ import (
 	"palpanel/internal/economy"
 	"palpanel/internal/gameevents"
 	"palpanel/internal/paldefender"
+	"palpanel/internal/tasks"
 )
 
 func init() {
@@ -128,6 +129,29 @@ func (s Server) ingestGameEvent(c *gin.Context) {
 			}
 		}
 	}
+	taskService, taskErr := s.taskService()
+	if taskErr != nil {
+		_, _ = service.Fail(c.Request.Context(), claim.Record.EventID, taskErr)
+		taskFailure(c, taskErr)
+		return
+	}
+	pointService, pointErr := s.economyService()
+	if pointErr != nil {
+		_, _ = service.Fail(c.Request.Context(), claim.Record.EventID, pointErr)
+		economyFailure(c, pointErr)
+		return
+	}
+	taskUpdates, taskErr := taskService.ProcessEvent(c.Request.Context(), tasks.Event{
+		EventID: claim.Record.EventID, Type: claim.Record.Type, PlayerUID: claim.Record.PlayerUID,
+		Nickname: claim.Record.Nickname, SteamID: claim.Record.SteamID, OccurredAt: claim.Record.OccurredAt,
+		Payload: claim.Record.Payload,
+	}, pointService)
+	if taskErr != nil {
+		_, _ = service.Fail(c.Request.Context(), claim.Record.EventID, taskErr)
+		taskFailure(c, taskErr)
+		return
+	}
+	result["tasks"] = taskUpdates
 	completed, err := service.Complete(c.Request.Context(), claim.Record.EventID, result)
 	if err != nil {
 		fail(c, http.StatusInternalServerError, "game_event_complete_failed", err.Error())
