@@ -10,7 +10,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.10`
+- PalPanelBridge：`0.1.11`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -58,7 +58,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.10",
+  "bridge_version": "0.1.11",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -130,6 +130,18 @@ GET http://127.0.0.1:18083/v1/jobs/<job_id>
 `PalUtility.GetAllPlayerStates`，返回 `pal_utility_available`、
 `pal_utility_player_state_count` 和 `pal_utility_error`。当前阶段不读取 SteamID、
 背包或帕鲁数据，也不修改对象。
+
+## 响应与任务时间
+
+所有 JSON 响应均包含 `response_time_unix_ms` 和 UTC 格式的
+`response_time_utc`。任务详情同时包含：
+
+- `queued_at_unix_ms` / `queued_at_utc`：进入队列的时间。
+- `executed_at_unix_ms` / `executed_at_utc`：游戏线程开始执行该任务的时间。
+- `game_thread_tick_count_at_execution`：执行时的游戏线程 Tick 计数。
+
+在线玩家结果还返回 `query_world_found` 和 `query_world`，用于确认每次查询实际使用
+的 World 是否为 `PL_MainWorld5`。连续创建新任务时，任务 ID、时间和 Tick 计数都应变化。
 
 ## 故障判断
 

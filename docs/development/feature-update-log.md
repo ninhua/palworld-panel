@@ -1,5 +1,15 @@
 # 功能移植更新记录
 
+## 2026-08-02：PalPanelBridge 全响应时间与在线查询上下文
+
+已完成：
+
+- PalPanelBridge 升级至 `0.1.11`，所有成功与错误 JSON 响应统一返回 Unix 毫秒时间和 UTC 时间。
+- 任务保存排队时间、游戏线程执行时间及执行时 Tick 计数，便于确认连续查询不是旧缓存。
+- 在线玩家结果返回实际用于 `PalUtility.GetAllPlayerStates` 的 World 对象信息。
+- 时间字段在 HTTP 响应生成时注入，任务执行字段在 UE4SS 游戏线程中记录。
+- 不改变在线玩家查询逻辑，不执行任何玩家写操作。
+
 ## 2026-08-02：PalPanelBridge 使用 PalUtility 获取在线玩家
 
 已完成：
