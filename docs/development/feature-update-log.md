@@ -1,5 +1,15 @@
 # 功能移植更新记录
 
+## 2026-08-01：PalPanelBridge 在线玩家对象只读探针
+
+已完成：
+
+- `0.1.6` 已在实机找到 World：`PL_MainWorld5`，类名为 `World`。
+- PalPanelBridge 升级至 `0.1.7`，新增只读 `POST /v1/players/online` 任务接口。
+- 在 UE4SS `on_update` 游戏线程枚举当前 `PalPlayerController` 实例；离线玩家不进入结果。
+- 返回在线对象数量、对象名、完整名和类名，不读取背包/帕鲁，不修改任何玩家数据。
+- 同步更新 Action 安装包名称和中英文验证文档。
+
 ## 2026-08-01：PalPanelBridge World 对象只读探针
 
 已完成：
