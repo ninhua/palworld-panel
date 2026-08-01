@@ -6,9 +6,9 @@
 
 PalPanel 是给《幻兽帕鲁》专用服务器用的自托管面板。后端用 Go，前端用 React，存档解析由 `sav-cli` 处理，配种计算通过独立的 `palcalc-bridge` 运行。
 
-PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更新、备份、Mod、存档索引和配种查询集中在一个面板里，同时支持多存档、简体中文/English 切换、PalDefender GM、WebDAV 归档和 AstrBot QQ 插件。
+PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更新、备份、Mod、存档索引、配种查询和 PalZones 区域权限编辑集中在一个面板里，同时支持多存档、v26 帕鲁图标、简体中文/English 切换、PalDefender GM、WebDAV 归档和 AstrBot QQ 插件。
 
-本仓库是基于 [`uitok/palworld-panel`](https://github.com/uitok/palworld-panel) 维护的自定义源码 Fork。实际发布源码位于 `custom-stable`，`upstream-stable` 只用于同步官方稳定版本。面板完整版本采用 `v<上游版本>-custom.<自定义版本>` 格式。
+本仓库是基于 [`uitok/palworld-panel`](https://github.com/uitok/palworld-panel) 维护的自定义源码 Fork。实际发布源码位于 `custom-stable`，`upstream-stable` 只用于同步官方稳定版本。面板完整版本采用 `v<上游版本>-custom.<自定义版本>` 格式。当前版本：`v1.3.1-custom.0.8.67`（已同步上游 v1.3.1 帕鲁图标、存档迁移、PalZones 编辑器等）。
 
 维护本 Fork、同步上游或发布新版本前，请先阅读 [`MAINTENANCE.md`](MAINTENANCE.md)。其中记录了版本与分支规则、强制中文更新日志、Actions 发布流程，以及面板更新、PalDefender、玩家身份归并和新玩家礼包等高风险注意事项。
 
@@ -96,7 +96,7 @@ PalCalc 通过 .NET 9 侧车运行。侧车不可用时只会关闭配种功能�
 
 ### Mod 配置中心
 
-- PalDefender、UE4SS Experimental、PalSchema、Extended Base Range 和 QualityOfLife 提供专用配置界面
+- PalDefender、UE4SS Experimental、PalSchema、Extended Base Range、QualityOfLife 和 PalZones 提供专用配置界面
 - 其他已识别 Mod 可以安全编辑受支持的 UTF-8 文本配置，并查看差异、备份时间线和恢复入口
 - Lua 保存需要额外确认；二进制文件、Pak、DLL、清单文件、符号链接和 Mod 根目录外文件不可编辑
 - 当前 Workshop 热门候选审查见 [`docs/workshop-mod-candidates-2026-07-18.md`](docs/workshop-mod-candidates-2026-07-18.md)
@@ -317,7 +317,7 @@ python -m unittest discover -s astrbot_plugin_palpanel/tests
 ```bash
 export PALPANEL_DEPENDENCY_MODE=offline
 export PALPANEL_VENDOR_ROOT=/srv/palpanel-vendor
-scripts/package.sh --version v1.3.0-custom.0.8.40 --targets linux-amd64 --clean
+scripts/package.sh --version v1.3.1-custom.0.8.67 --targets linux-amd64 --clean
 ```
 
 `mirror` 模式使用自有镜像但允许缺失包从公共源补齐；`offline` 模式要求完整缓存并执行 SHA-256 门禁。详细目录和初始化方法见 [`docs/development/offline-vendor-build.md`](docs/development/offline-vendor-build.md)。

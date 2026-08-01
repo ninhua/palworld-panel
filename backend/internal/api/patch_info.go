@@ -9,8 +9,8 @@ import (
 const (
 	patchSourceRepository = "uitok/palworld-panel"
 	patchSourceRef        = "v1.3.0"
-	patchTargetVersion    = "v1.3.0"
-	patchVersion          = "0.8.66"
+	patchTargetVersion    = "v1.3.1"
+	patchVersion          = "0.8.67"
 	panelRepository       = "ninhua/palworld-panel"
 )
 
