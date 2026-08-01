@@ -10,7 +10,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.9`
+- PalPanelBridge：`0.1.10`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -58,7 +58,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.9",
+  "bridge_version": "0.1.10",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -126,7 +126,10 @@ GET http://127.0.0.1:18083/v1/jobs/<job_id>
 解析关联的 `PlayerState` 与 Pawn。如果 Controller 暂时不可见，则回退枚举
 `PalPlayerState` 与 `BP_PalPlayerState_C`。结果增加 `controller_object_count`、
 `player_state_object_count` 和每项的 `source`，用于区分 Controller 与 PlayerState
-来源。当前阶段不读取 SteamID、背包或帕鲁数据，也不修改对象。
+来源。`0.1.10` 还会以当前 World 为上下文只读调用帕鲁原生反射函数
+`PalUtility.GetAllPlayerStates`，返回 `pal_utility_available`、
+`pal_utility_player_state_count` 和 `pal_utility_error`。当前阶段不读取 SteamID、
+背包或帕鲁数据，也不修改对象。
 
 ## 故障判断
 
