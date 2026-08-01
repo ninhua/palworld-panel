@@ -4197,9 +4197,10 @@ components:
       type: object
       required: [id, name]
       properties:
+        collaboration: {type: string}
+        icon: {type: string}
         id: {type: string}
         name: {type: string}
-        icon: {type: string}
     PalDefenderItemCatalog:
       type: object
       required: [items, returned]
@@ -4283,6 +4284,7 @@ components:
       required: [id, name]
       properties:
         id: {type: string}
+        kind: {type: string}
         name: {type: string}
     PalDefenderPalCatalog:
       type: object
