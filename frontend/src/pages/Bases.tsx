@@ -119,6 +119,20 @@ export const Bases: React.FC = () => {
     },
   });
 
+  const cleanMutation = useMutation({
+    mutationFn: (base: Base) => basesApi.cleanBase(base.id),
+    onSuccess: (result) => {
+      setNotice(`已清理基地"${result.base.name}"，世界已保存，实时索引正在刷新`);
+      setActionError(null);
+      void queryClient.invalidateQueries({ queryKey: ['bases'] });
+      void queryClient.invalidateQueries({ queryKey: ['base-detail', selectedBaseId] });
+    },
+    onError: (cleanError) => {
+      setNotice(null);
+      setActionError(getErrorMessage(cleanError));
+    },
+  });
+
   const bases = basesQuery.data?.items ?? [];
   const indexStatus = basesQuery.data?.status ?? null;
   const summary = basesQuery.data?.summary;
@@ -126,6 +140,16 @@ export const Bases: React.FC = () => {
   const error = actionError || (basesQuery.error ? getErrorMessage(basesQuery.error) : null);
   const totalItems = summary?.total ?? bases.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+
+  const cleanBase = (base: Base) => {
+    if (cleanMutation.isPending) return;
+    const confirmed = window.confirm(
+      `确认清理基地"${base.name}"吗？
+
+将通过 PalDefender 摧毁坐标附近的整个基地，并请求保存世界。此操作不可撤销。`,
+    );
+    if (confirmed) cleanMutation.mutate(base);
+  };
 
   const unsupported = async (promise: Promise<{ message: string }>) => {
     const result = await promise;
@@ -229,7 +253,7 @@ export const Bases: React.FC = () => {
                 onStorage={() => setStorageBase(base)}
                 onWorkers={() => setWorkersBase(base)}
                 onFeed={() => setFeedBase(base)}
-                onClean={() => unsupported(basesApi.cleanStructures(base.id))}
+                onClean={() => cleanBase(base)}
                 onBackup={() => unsupported(basesApi.backupBase(base.id))}
               />
             )}
@@ -287,7 +311,7 @@ export const Bases: React.FC = () => {
                     <button type="button" onClick={() => setFeedBase(base)} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="查看基地饲料箱">
                       <Apple size={14} />
                     </button>
-                    <button type="button" onClick={() => unsupported(basesApi.cleanStructures(base.id))} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50">
+                    <button type="button" onClick={() => cleanBase(base)} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50">
                       清理
                     </button>
                   </div>

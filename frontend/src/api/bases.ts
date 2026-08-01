@@ -270,6 +270,18 @@ export const basesApi = {
       },
     ),
 
-  cleanStructures: (_baseId: string) => unsupported('当前后端未提供基地清理接口'),
+  cleanBase: (baseId: string) =>
+    handleRequest<unknown, { cleaned: boolean; saved: boolean; base: Base }>(
+      () => apiClient.post(`/bases/${encodeURIComponent(baseId)}/clean`),
+      { cleaned: false, saved: false, base: mapBase({}) },
+      {
+        map: (raw) => {
+          const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+          return { cleaned: Boolean(data.cleaned), saved: Boolean(data.saved), base: mapBase(data.base) };
+        },
+        quiet: true,
+        fallbackOnError: false,
+      },
+    ),
   backupBase: (_baseId: string) => unsupported('当前后端未提供单基地备份接口，请使用全服备份'),
 };
