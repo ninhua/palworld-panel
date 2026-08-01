@@ -1,5 +1,15 @@
 # 功能移植更新记录
 
+## 2026-08-01：PalPanelBridge 在线玩家身份只读解析
+
+已完成：
+
+- `0.1.7` 已在实机找到 1 个在线 `BP_PalPlayerController_C` 对象。
+- PalPanelBridge 升级至 `0.1.8`，在线玩家任务继续只读解析关联 PlayerState 和 Pawn。
+- 从 PlayerState 读取 `AccountName` 与 FGuid 类型的 `PlayerUId`，读取前校验反射属性类型和 GUID 尺寸。
+- 字段不存在或类型变化时返回 `identity_error`，不会写入对象，也不会让其他玩家结果丢失。
+- 同步更新 Action 安装包名称和中英文验证文档。
+
 ## 2026-08-01：PalPanelBridge 在线玩家对象只读探针
 
 已完成：

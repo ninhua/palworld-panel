@@ -1,6 +1,6 @@
-# Boss 系统 API（0.8.68）
+# Boss 系统 API（0.8.71）
 
-`0.8.64` 建立 Boss 模板、奖励和召唤审计；`0.8.67` 增加多波次编排；`0.8.68` 增加定时计划、提前预警审计和后台到期扫描器。
+`0.8.64` 建立 Boss 模板、奖励和召唤审计；`0.8.67` 增加多波次编排；`0.8.68` 增加定时计划和后台扫描器；`0.8.71` 接入 PalDefender 游戏内预警广播及测试操作。
 
 Boss 执行模式仍为 `record_only`：计划到点后会自动创建召唤记录与波次快照，但不会向 PalDefender 或 RCON 发送实际生成 Boss 的命令。
 
@@ -55,7 +55,7 @@ Cron 使用五段格式：
 
 ## 提前预警
 
-当当前时间进入 `next_run_at - warning_minutes` 到 `next_run_at` 之间时，系统写入一次 `warning` 审计事件。唯一约束保证同一计划、同一计划时间不会重复生成预警。
+当当前时间进入 `next_run_at - warning_minutes` 到 `next_run_at` 之间时，系统先通过 PalDefender 发送重要广播，再写入 `warning` 审计事件。成功和失败都会记录；同一计划、同一计划时间只会在当前 PalPanel 进程内发送一次。
 
 预警消息支持变量：
 
@@ -65,7 +65,7 @@ Cron 使用五段格式：
 {{boss}}     Boss 模板名称
 ```
 
-`0.8.68` 只把预警写入 `boss_schedule_events`，不会自动发送游戏广播。后续 PalDefender 广播执行器会消费这些审计记录。
+`0.8.71` 使用 PalDefender `Alert` 广播通道发送预警。PalDefender 未安装、未加载、REST 未启用、Token 缺失或网络异常时，事件状态为 `failed`，不会伪装为成功。
 
 ## 到期执行
 
@@ -173,3 +173,19 @@ POST   /api/boss/maintenance/run-due
 - 立即创建一次召唤记录；
 - 手动触发到期扫描；
 - 查看预警和召唤审计。
+
+## PalDefender 预警广播
+
+定时计划进入预警窗口时，PalPanel 会调用 PalDefender 重要广播。预警文本支持：
+
+- `{{minutes}}`：提前分钟数
+- `{{schedule}}`：计划名称
+- `{{boss}}`：Boss 模板名称
+
+管理员可以通过以下接口测试当前计划的渲染结果和 PalDefender 连通性：
+
+```text
+POST /api/boss/schedules/{id}/test-warning
+```
+
+测试广播同样写入 `boss_schedule_events`，`details.test=true`。失败记录不会伪装为成功；PalDefender 未安装、未加载、未启用 REST、Token 缺失或网络错误都会保留失败审计。

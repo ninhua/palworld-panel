@@ -1019,6 +1019,9 @@ paths:
       parameters: *modConfigFileQuery
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ModConfigWriteRequest'}}}}
       responses: {'200': *modConfigDocument, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error, '413': *error}
+  /mods/configurations/{adapter}/actions:
+    parameters: [{name: adapter, in: path, required: true, schema: {type: string}}]
+    post: {operationId: runModConfigurationAction, tags: [content], x-palpanel-permission: 'mods:write', requestBody: *jsonRequest, responses: *writeResponses}
   /mods/configurations/{adapter}/backups:
     parameters: [{name: adapter, in: path, required: true, schema: {type: string}}]
     get:
@@ -2263,6 +2266,33 @@ paths:
         '409':
           $ref: '#/components/responses/ErrorResponse'
         '500':
+          $ref: '#/components/responses/ErrorResponse'
+  /boss/schedules/{id}/test-warning:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id001
+    post:
+      operationId: testBossScheduleWarning
+      description: Sends the rendered schedule warning immediately through the configured PalDefender important-alert broadcast and records the delivery result in the Boss schedule event ledger.
+      tags:
+      - boss
+      x-palpanel-permission: server:control
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
           $ref: '#/components/responses/ErrorResponse'
   /boss/schedule-events:
     get:
@@ -4830,7 +4860,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.69}
+            version: {type: string, const: 0.8.71}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

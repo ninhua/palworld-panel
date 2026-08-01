@@ -287,6 +287,15 @@ export const bossApi = {
     { fallbackOnError: false },
   ),
 
+  testScheduleWarning: (id: string) => handleRequest<unknown, BossScheduleEvent>(
+    () => apiClient.post(`/boss/schedules/${encodeURIComponent(id)}/test-warning`),
+    {
+      id: 0, schedule_id: id, event_type: 'warning', status: 'success', planned_for: '',
+      summon_id: '', actor: '', message: '', details: {}, created_at: '',
+    },
+    { fallbackOnError: false },
+  ),
+
   scheduleEvents: (scheduleID = '', eventType = '', status = '') => handleRequest<unknown, BossListResult<BossScheduleEvent>>(
     () => apiClient.get('/boss/schedule-events', { params: {
       schedule_id: scheduleID || undefined,

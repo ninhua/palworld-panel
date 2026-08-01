@@ -17,6 +17,11 @@ func TestBossDailyScheduleWarningAndSummon(t *testing.T) {
 	base := time.Date(2026, 8, 1, 1, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return base }
 	ctx := context.Background()
+	broadcasts := []string{}
+	service.SetWarningBroadcaster(WarningBroadcasterFunc(func(_ context.Context, message string) error {
+		broadcasts = append(broadcasts, message)
+		return nil
+	}))
 
 	template, err := service.CreateTemplate(ctx, TemplateInput{
 		Name: "每日试炼", PalID: "JetDragon", Level: 60, Count: 1,
@@ -47,12 +52,15 @@ func TestBossDailyScheduleWarningAndSummon(t *testing.T) {
 	if warningResult.Warnings != 1 || warningResult.Summons != 0 {
 		t.Fatalf("warning result = %+v", warningResult)
 	}
+	if len(broadcasts) != 1 || broadcasts[0] != "Boss预警：每日试炼将在30分钟后开始" {
+		t.Fatalf("broadcasts = %#v", broadcasts)
+	}
 	duplicateWarning, err := service.RunDueSchedules(ctx, time.Date(2026, 8, 1, 1, 45, 0, 0, time.UTC), "test-runner")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if duplicateWarning.Warnings != 0 {
-		t.Fatalf("duplicate warning result = %+v", duplicateWarning)
+	if duplicateWarning.Warnings != 0 || len(broadcasts) != 1 {
+		t.Fatalf("duplicate warning result = %+v broadcasts=%#v", duplicateWarning, broadcasts)
 	}
 
 	dueResult, err := service.RunDueSchedules(ctx, time.Date(2026, 8, 1, 2, 0, 5, 0, time.UTC), "test-runner")
@@ -143,5 +151,77 @@ func TestNextScheduleTimePure(t *testing.T) {
 	}
 	if _, err := parseCron("61 20 * * *"); !errors.Is(err, ErrInvalidSchedule) {
 		t.Fatalf("invalid cron error = %v", err)
+	}
+}
+
+func TestBossScheduleTestWarningAndFailureAudit(t *testing.T) {
+	service, err := Open(filepath.Join(t.TempDir(), "boss-warning.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	base := time.Date(2026, 8, 1, 8, 0, 0, 0, time.UTC)
+	service.now = func() time.Time { return base }
+	ctx := context.Background()
+	template, err := service.CreateTemplate(ctx, TemplateInput{
+		Name: "测试Boss", PalID: "JetDragon", Level: 50, Count: 1,
+		HPMultiplier: 1, AttackMultiplier: 1, DefenseMultiplier: 1,
+		SpawnRadius: 100, Location: Location{}, Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	schedule, err := service.CreateSchedule(ctx, ScheduleInput{
+		Name: "测试计划", TemplateID: template.ID, Mode: ScheduleModeDaily,
+		DailyTime: "20:00", Timezone: "Asia/Shanghai", WarningMinutes: 15,
+		WarningTitle: "活动提醒", WarningMessage: "{{schedule}}的{{boss}}将在{{minutes}}分钟后开始", Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	service.SetWarningBroadcaster(WarningBroadcasterFunc(func(_ context.Context, message string) error {
+		if message != "活动提醒：测试计划的测试Boss将在15分钟后开始" {
+			t.Fatalf("message = %q", message)
+		}
+		return errors.New("paldefender unavailable")
+	}))
+	event, err := service.SendTestWarning(ctx, schedule.ID, "tester")
+	if !errors.Is(err, ErrWarningBroadcastFailed) {
+		t.Fatalf("warning error = %v", err)
+	}
+	if event.Status != ScheduleEventFailed || event.Details["delivery"] != "paldefender_alert" || event.Details["test"] != true {
+		t.Fatalf("failure event = %+v", event)
+	}
+
+	service.SetWarningBroadcaster(WarningBroadcasterFunc(func(context.Context, string) error { return nil }))
+	service.now = func() time.Time { return base.Add(time.Second) }
+	event, err = service.SendTestWarning(ctx, schedule.ID, "tester")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.Status != ScheduleEventSuccess || event.Message == "" {
+		t.Fatalf("success event = %+v", event)
+	}
+	events, err := service.ListScheduleEvents(ctx, ScheduleEventFilter{ScheduleID: schedule.ID, EventType: ScheduleEventWarning, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 || events[0].Status != ScheduleEventSuccess || events[1].Status != ScheduleEventFailed {
+		t.Fatalf("events = %+v", events)
+	}
+}
+
+func TestScheduleWarningMessagePure(t *testing.T) {
+	message := scheduleWarningMessage(Schedule{
+		Name: "周末计划", TemplateName: "空涡龙", WarningMinutes: 20,
+		WarningTitle: "Boss预警", WarningMessage: "{{schedule}}：{{boss}}将在{{minutes}}分钟后开始",
+	})
+	if message != "Boss预警：周末计划：空涡龙将在20分钟后开始" {
+		t.Fatalf("message = %q", message)
+	}
+	fallback := scheduleWarningMessage(Schedule{Name: "默认计划", TemplateName: "唤冬兽", WarningMinutes: 5})
+	if fallback != "Boss活动即将开始：唤冬兽将在5分钟后开始，请提前前往活动区域。" {
+		t.Fatalf("fallback = %q", fallback)
 	}
 }

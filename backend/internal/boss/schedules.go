@@ -345,6 +345,8 @@ func (s *Service) RunScheduleNow(ctx context.Context, id, actor string) (SummonR
 }
 
 func (s *Service) RunDueSchedules(ctx context.Context, now time.Time, actor string) (RunDueResult, error) {
+	s.scheduleRunMu.Lock()
+	defer s.scheduleRunMu.Unlock()
 	now = now.UTC()
 	items, err := s.ListSchedules(ctx, ScheduleFilter{Enabled: "true", Limit: maximumLimit})
 	if err != nil {
@@ -364,13 +366,10 @@ func (s *Service) RunDueSchedules(ctx context.Context, now time.Time, actor stri
 		if schedule.WarningMinutes > 0 {
 			warningAt := planned.Add(-time.Duration(schedule.WarningMinutes) * time.Minute)
 			if !now.Before(warningAt) && now.Before(planned) {
-				inserted, insertErr := s.insertScheduleEventIfAbsent(ctx, schedule.ID, ScheduleEventWarning, ScheduleEventSuccess, planned, "", actor, scheduleWarningMessage(schedule), map[string]any{
-					"title": schedule.WarningTitle, "message": schedule.WarningMessage,
-					"warning_minutes": schedule.WarningMinutes,
-				})
-				if insertErr != nil {
+				_, dispatched, dispatchErr := s.dispatchScheduleWarning(ctx, schedule, planned, actor, false)
+				if dispatchErr != nil {
 					result.Failed++
-				} else if inserted {
+				} else if dispatched {
 					result.Warnings++
 					_, _ = s.db.ExecContext(ctx, `UPDATE boss_schedules SET last_warning_at=?,updated_at=? WHERE id=?`, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), schedule.ID)
 				}
@@ -545,15 +544,105 @@ func scheduledSummonRequest(schedule Schedule, planned time.Time, source string)
 	}
 }
 
+func (s *Service) SendTestWarning(ctx context.Context, scheduleID, actor string) (ScheduleEvent, error) {
+	schedule, err := s.GetSchedule(ctx, strings.TrimSpace(scheduleID))
+	if err != nil {
+		return ScheduleEvent{}, err
+	}
+	if schedule.ArchivedAt != "" {
+		return ScheduleEvent{}, ErrScheduleNotFound
+	}
+	planned := s.now().UTC()
+	event, _, dispatchErr := s.dispatchScheduleWarning(ctx, schedule, planned, actor, true)
+	return event, dispatchErr
+}
+
+func (s *Service) dispatchScheduleWarning(ctx context.Context, schedule Schedule, planned time.Time, actor string, test bool) (ScheduleEvent, bool, error) {
+	planned = planned.UTC()
+	if !test {
+		existing, found, err := s.getScheduleEvent(ctx, schedule.ID, ScheduleEventWarning, planned)
+		if err != nil {
+			return ScheduleEvent{}, false, err
+		}
+		if found {
+			return existing, false, nil
+		}
+	}
+
+	rendered := scheduleWarningMessage(schedule)
+	details := map[string]any{
+		"delivery":         "paldefender_alert",
+		"test":             test,
+		"title":            schedule.WarningTitle,
+		"message":          schedule.WarningMessage,
+		"rendered_message": rendered,
+		"warning_minutes":  schedule.WarningMinutes,
+	}
+	broadcaster := s.warningBroadcasterSnapshot()
+	status := ScheduleEventSuccess
+	eventMessage := rendered
+	var dispatchErr error
+	if broadcaster == nil {
+		dispatchErr = ErrWarningBroadcasterMissing
+	} else if err := broadcaster.BroadcastBossWarning(ctx, rendered); err != nil {
+		dispatchErr = fmt.Errorf("%w: %v", ErrWarningBroadcastFailed, err)
+	}
+	if dispatchErr != nil {
+		status = ScheduleEventFailed
+		eventMessage = warningDispatchErrorMessage(dispatchErr)
+		details["error"] = eventMessage
+	}
+
+	inserted, err := s.insertScheduleEventIfAbsent(ctx, schedule.ID, ScheduleEventWarning, status, planned, "", actor, eventMessage, details)
+	if err != nil {
+		return ScheduleEvent{}, false, err
+	}
+	event, found, err := s.getScheduleEvent(ctx, schedule.ID, ScheduleEventWarning, planned)
+	if err != nil {
+		return ScheduleEvent{}, false, err
+	}
+	if !found {
+		return ScheduleEvent{}, false, sql.ErrNoRows
+	}
+	return event, inserted, dispatchErr
+}
+
+func (s *Service) getScheduleEvent(ctx context.Context, scheduleID, eventType string, planned time.Time) (ScheduleEvent, bool, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id,schedule_id,event_type,status,planned_for,summon_id,actor,message,details_json,created_at FROM boss_schedule_events WHERE schedule_id=? AND event_type=? AND planned_for=?`,
+		strings.TrimSpace(scheduleID), strings.TrimSpace(eventType), planned.UTC().Format(time.RFC3339Nano))
+	var event ScheduleEvent
+	var details string
+	if err := row.Scan(&event.ID, &event.ScheduleID, &event.EventType, &event.Status, &event.PlannedFor, &event.SummonID, &event.Actor, &event.Message, &details, &event.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ScheduleEvent{}, false, nil
+		}
+		return ScheduleEvent{}, false, err
+	}
+	event.Details = decodeObject(details)
+	return event, true, nil
+}
+
+func warningDispatchErrorMessage(err error) string {
+	message := strings.TrimSpace(err.Error())
+	if len(message) > 1024 {
+		message = message[:1024]
+	}
+	return message
+}
+
 func scheduleWarningMessage(schedule Schedule) string {
-	message := schedule.WarningMessage
+	message := strings.TrimSpace(schedule.WarningMessage)
+	if message == "" {
+		message = "{{boss}}将在{{minutes}}分钟后开始，请提前前往活动区域。"
+	}
 	message = strings.ReplaceAll(message, "{{minutes}}", strconv.Itoa(schedule.WarningMinutes))
 	message = strings.ReplaceAll(message, "{{schedule}}", schedule.Name)
 	message = strings.ReplaceAll(message, "{{boss}}", schedule.TemplateName)
-	if schedule.WarningTitle == "" {
-		return message
+	title := strings.TrimSpace(schedule.WarningTitle)
+	if title == "" {
+		title = "Boss活动即将开始"
 	}
-	return schedule.WarningTitle + "：" + message
+	return title + "：" + message
 }
 
 func (s *Service) insertScheduleEvent(ctx context.Context, scheduleID, eventType, status string, planned time.Time, summonID, actor, message string, details map[string]any) error {
