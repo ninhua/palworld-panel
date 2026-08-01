@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CRS, divIcon, type LeafletMouseEvent, type Marker as LeafletMarker } from 'leaflet';
+import { CRS, divIcon, type DragEndEvent, type LeafletMouseEvent, type Marker as LeafletMarker } from 'leaflet';
 import { ImageOverlay, MapContainer, Marker, Polygon, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -78,7 +78,7 @@ export const PalZonesMapCanvas: React.FC<Props> = ({ mapID, zones, selectedZoneI
             position={[mapped.lat, mapped.lng]}
             icon={vertexIcon}
             draggable
-            eventHandlers={{ dragend: (event) => {
+            eventHandlers={{ dragend: (event: DragEndEvent) => {
               const marker = event.target as LeafletMarker;
               const next = marker.getLatLng();
               onMovePoint(selected.id, pointIndex, mapToWorldPoint({ lat: next.lat, lng: next.lng }, mapID));

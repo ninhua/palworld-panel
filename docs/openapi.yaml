@@ -3588,6 +3588,10 @@ components:
         value: {}
         min: {type: integer, format: int64}
         max: {type: integer, format: int64}
+        description: {type: string}
+        group: {type: string}
+        options: {type: array, items: {type: object, properties: {value: {}, label: {type: string}}}}
+        unit: {type: string}
     ModConfigDocument:
       type: object
       required: [file, content, format]
@@ -3633,7 +3637,15 @@ components:
         description: {type: string}
         workshop_id: {type: string}
         available: {type: boolean}
+        installed: {type: boolean}
+        configured: {type: boolean}
+        enabled: {type: boolean}
+        status: {type: string, enum: [not_installed, dependency_missing, not_configured, disabled, restart_required, ready]}
+        status_detail: {type: string}
         reload_behavior: {type: string, enum: [online_reload, restart_required]}
+        dependencies: {type: array, items: {type: object, properties: {id: {type: string}, name: {type: string}, workshop_id: {type: string}, mod_id: {type: string}, installed: {type: boolean}, enabled: {type: boolean}, required: {type: boolean}}}}
+        actions: {type: array, items: {type: object, properties: {id: {type: string}, available: {type: boolean}, restart_required: {type: boolean}}}}
+        reference_urls: {type: object, additionalProperties: {type: string}}
         files: {type: array, items: {$ref: '#/components/schemas/ModConfigFile'}}
     ModImportInspectRequest:
       type: object
@@ -4003,6 +4015,7 @@ components:
         id: {type: string}
         name: {type: string}
         icon: {type: string}
+        collaboration: {type: string}
     PalDefenderItemCatalog:
       type: object
       required: [items, returned]
@@ -4087,6 +4100,7 @@ components:
       properties:
         id: {type: string}
         name: {type: string}
+        kind: {type: string}
     PalDefenderPalCatalog:
       type: object
       required: [items, returned]

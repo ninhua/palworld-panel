@@ -921,6 +921,14 @@ export interface components {
       "name": string;
       "reload_behavior": "online_reload" | "restart_required";
       "workshop_id"?: string;
+      "installed"?: boolean;
+      "configured"?: boolean;
+      "enabled"?: boolean;
+      "status"?: "not_installed" | "dependency_missing" | "not_configured" | "disabled" | "restart_required" | "ready";
+      "status_detail"?: string;
+      "dependencies"?: Array<{ "id"?: string; "name"?: string; "workshop_id"?: string; "mod_id"?: string; "installed"?: boolean; "enabled"?: boolean; "required"?: boolean }>;
+      "actions"?: Array<{ "id"?: string; "available"?: boolean; "restart_required"?: boolean }>;
+      "reference_urls"?: Record<string, string>;
     };
     "ModConfigurationAdapterListEnvelope": {
       "data": Array<components["schemas"]["ModConfigurationAdapter"]>;
@@ -933,6 +941,10 @@ export interface components {
       "path": string;
       "type": "boolean" | "integer" | "number" | "string";
       "value": unknown;
+      "description"?: string;
+      "group"?: string;
+      "options"?: Array<{ "value"?: unknown; "label"?: string }>;
+      "unit"?: string;
     };
     "ModImportInspectRequest": {
       "source": string;
@@ -1174,6 +1186,7 @@ export interface components {
       "icon"?: string;
       "id": string;
       "name": string;
+      "collaboration"?: string;
     };
     "PalDefenderItemGrant": {
       "Count": number;
@@ -1195,6 +1208,7 @@ export interface components {
     "PalDefenderPalCatalogEntry": {
       "id": string;
       "name": string;
+      "kind"?: string;
     };
     "PalDefenderPalGrant": {
       "Level": number;

@@ -125,7 +125,7 @@ export const Bases: React.FC = () => {
       setNotice(`已清理基地"${result.base.name}"，世界已保存，实时索引正在刷新`);
       setActionError(null);
       void queryClient.invalidateQueries({ queryKey: ['bases'] });
-      void queryClient.invalidateQueries({ queryKey: ['base-detail', selectedBaseId] });
+      void queryClient.invalidateQueries({ queryKey: ['base-detail', result.base.id] });
     },
     onError: (cleanError) => {
       setNotice(null);
