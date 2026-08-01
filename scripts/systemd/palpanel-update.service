@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 UMask=0077
+Environment=TZ=Asia/Shanghai
 ExecStart=/usr/libexec/palpanel-updater --request /var/lib/palpanel/panel-update/request.json
 TimeoutStartSec=10min
 NoNewPrivileges=true
