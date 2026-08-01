@@ -1183,10 +1183,10 @@ export interface components {
       "returned": number;
     };
     "PalDefenderItemCatalogEntry": {
+      "collaboration"?: string;
       "icon"?: string;
       "id": string;
       "name": string;
-      "collaboration"?: string;
     };
     "PalDefenderItemGrant": {
       "Count": number;
@@ -1207,8 +1207,8 @@ export interface components {
     };
     "PalDefenderPalCatalogEntry": {
       "id": string;
-      "name": string;
       "kind"?: string;
+      "name": string;
     };
     "PalDefenderPalGrant": {
       "Level": number;
