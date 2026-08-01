@@ -1,5 +1,15 @@
 # 功能移植更新记录
 
+## 2026-08-02：PalPanelBridge 在线玩家枚举回退
+
+已完成：
+
+- 修复 `0.1.8` 实机在线但 Controller 单类查询返回 0 项的问题。
+- PalPanelBridge 升级至 `0.1.9`，同时检查原生与蓝图 Controller/PlayerState 类名并按 UObject 指针去重。
+- Controller 不可见时以活动 PlayerState 作为只读回退，继续返回昵称与 PlayerUID。
+- 结果增加 Controller/PlayerState 候选数量和 `source`，便于继续定位运行时类生命周期。
+- 不读取背包/帕鲁，不执行任何玩家写操作。
+
 ## 2026-08-01：PalPanelBridge 在线玩家身份只读解析
 
 已完成：

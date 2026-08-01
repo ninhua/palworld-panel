@@ -21,7 +21,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.8-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.9-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -42,7 +42,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.8-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.9-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -85,5 +85,7 @@ World object's name, full name, and class without changing the object.
 
 `POST /v1/players/online` enumerates live `PalPlayerController` instances on
 the game thread and reads the associated PlayerState account name, PlayerUID,
-and Pawn metadata. It does not read inventory or Pal data and never modifies
+and Pawn metadata. Native and blueprint controller class names are both checked;
+when no controller is visible, live PlayerState objects are returned as a
+read-only fallback. It does not read inventory or Pal data and never modifies
 the objects.
