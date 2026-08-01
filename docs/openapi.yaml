@@ -4,21 +4,21 @@ info:
   version: 1.0.0
   description: Stable HTTP contract for the PalPanel 1.x management API.
 servers:
-  - url: /api
+- url: /api
 security:
-  - sessionCookie: []
-  - developmentKey: []
+- sessionCookie: []
+- developmentKey: []
 tags:
-  - {name: auth}
-  - {name: system}
-  - {name: server}
-  - {name: content}
-  - {name: security}
-  - {name: world}
-  - {name: integrations}
-  - {name: economy}
-  - {name: events}
-  - {name: boss}
+- {name: auth}
+- {name: system}
+- {name: server}
+- {name: content}
+- {name: security}
+- {name: world}
+- {name: integrations}
+- {name: economy}
+- {name: events}
+- {name: boss}
 x-success: &success
   description: Successful response wrapped in an API envelope.
   content:
@@ -221,15 +221,15 @@ paths:
       tags: [server]
       x-palpanel-permission: read
       parameters: &communityServerQueryParameters
-        - {name: region, in: query, schema: {type: string, enum: [cn, global], default: cn}}
-        - {name: search, in: query, schema: {type: string, maxLength: 128}}
-        - {name: min_players, in: query, schema: {type: integer, minimum: 0, default: 0}}
-        - {name: max_players, in: query, schema: {type: integer, minimum: 0, default: 0}}
-        - {name: password, in: query, schema: {type: boolean}}
-        - {name: version, in: query, schema: {type: string, maxLength: 64}}
-        - {name: status, in: query, schema: {type: string, enum: [online, offline, all], default: online}}
-        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
-        - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 30}}
+      - {name: region, in: query, schema: {type: string, enum: [cn, global], default: cn}}
+      - {name: search, in: query, schema: {type: string, maxLength: 128}}
+      - {name: min_players, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      - {name: max_players, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      - {name: password, in: query, schema: {type: boolean}}
+      - {name: version, in: query, schema: {type: string, maxLength: 64}}
+      - {name: status, in: query, schema: {type: string, enum: [online, offline, all], default: online}}
+      - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+      - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 30}}
       responses: {'200': *communityServerResult, '400': *error, '401': *error, '429': *error, '502': *error, '503': *error}
   /community-servers/source-status:
     get: {operationId: getCommunityServerSourceStatus, tags: [server], x-palpanel-permission: read, responses: {'200': *communityServerStatus, '401': *error}}
@@ -303,7 +303,7 @@ paths:
     put:
       operationId: changeOwnPassword
       tags: [auth]
-      security: [{sessionCookie: []}]
+      security: [sessionCookie: []]
       x-palpanel-permission: session
       requestBody:
         required: true
@@ -500,12 +500,12 @@ paths:
       tags: [system]
       x-palpanel-permission: read
       parameters:
-        - {name: status, in: query, required: false, schema: {$ref: '#/components/schemas/IncidentStatus'}}
-        - {name: severity, in: query, required: false, schema: {$ref: '#/components/schemas/IncidentSeverity'}}
-        - {name: source, in: query, required: false, schema: {type: string, maxLength: 128}}
-        - {name: q, in: query, required: false, schema: {type: string, maxLength: 256}}
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
-        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, maximum: 1000000, default: 0}}
+      - {name: status, in: query, required: false, schema: {$ref: '#/components/schemas/IncidentStatus'}}
+      - {name: severity, in: query, required: false, schema: {$ref: '#/components/schemas/IncidentSeverity'}}
+      - {name: source, in: query, required: false, schema: {type: string, maxLength: 128}}
+      - {name: q, in: query, required: false, schema: {type: string, maxLength: 256}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, maximum: 1000000, default: 0}}
       responses:
         '200':
           description: Deduplicated incident list and status summary.
@@ -624,7 +624,7 @@ paths:
       tags: [server]
       x-palpanel-permission: read
       parameters:
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
       responses:
         '200':
           description: Crash-loop guard state and recent incidents.
@@ -680,11 +680,11 @@ paths:
       tags: [server]
       x-palpanel-permission: read
       parameters:
-        - {name: channel, in: query, required: false, schema: {type: string, enum: [game, launcher, paldefender-rest]}}
-        - {name: tail, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 5000, default: 200}}
-        - {name: search, in: query, required: false, schema: {type: string}}
-        - {name: level, in: query, required: false, schema: {type: string}}
-        - {name: since, in: query, required: false, schema: {type: string}}
+      - {name: channel, in: query, required: false, schema: {type: string, enum: [game, launcher, paldefender-rest]}}
+      - {name: tail, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 5000, default: 200}}
+      - {name: search, in: query, required: false, schema: {type: string}}
+      - {name: level, in: query, required: false, schema: {type: string}}
+      - {name: since, in: query, required: false, schema: {type: string}}
       responses: *readResponses
   /server/world:
     get: {operationId: getWorld, tags: [server], x-palpanel-permission: read, responses: *readResponses}
@@ -827,7 +827,7 @@ paths:
       tags: [content]
       x-palpanel-permission: 'config:write'
       parameters:
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
       responses:
         '200': {description: Private PalWorldSettings.ini revision metadata without secret values or snapshot paths., content: {application/json: {schema: {$ref: '#/components/schemas/PalworldConfigRevisionListEnvelope'}}}}
         '400': *error
@@ -1019,15 +1019,6 @@ paths:
       parameters: *modConfigFileQuery
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ModConfigWriteRequest'}}}}
       responses: {'200': *modConfigDocument, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error, '413': *error}
-  /mods/configurations/{adapter}/actions:
-    parameters: [{name: adapter, in: path, required: true, schema: {type: string}}]
-    post:
-      operationId: runModConfigurationAction
-      tags: [content]
-      x-palpanel-permission: 'mods:write'
-      parameters: *modConfigFileQuery
-      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ModConfigActionRequest'}}}}
-      responses: {'200': *modConfigDocument, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error, '413': *error}
   /mods/configurations/{adapter}/backups:
     parameters: [{name: adapter, in: path, required: true, schema: {type: string}}]
     get:
@@ -1038,8 +1029,8 @@ paths:
       responses: {'200': *modConfigBackups, '400': *error, '401': *error, '403': *error, '404': *error}
   /mods/configurations/{adapter}/backups/{backup}/restore:
     parameters:
-      - {name: adapter, in: path, required: true, schema: {type: string}}
-      - {name: backup, in: path, required: true, schema: {type: string}}
+    - {name: adapter, in: path, required: true, schema: {type: string}}
+    - {name: backup, in: path, required: true, schema: {type: string}}
     post:
       operationId: restoreModConfigurationBackup
       tags: [content]
@@ -1052,8 +1043,8 @@ paths:
     get: {operationId: listModConfigFiles, tags: [content], x-palpanel-permission: read, responses: {'200': *modConfigFiles, '401': *error, '403': *error, '404': *error}}
   /mods/{id}/files/{file}:
     parameters:
-      - *idParameter
-      - {name: file, in: path, required: true, schema: {type: string}}
+    - *idParameter
+    - {name: file, in: path, required: true, schema: {type: string}}
     get: {operationId: getModConfigFile, tags: [content], x-palpanel-permission: read, responses: {'200': *modConfigDocument, '400': *error, '401': *error, '403': *error, '404': *error, '413': *error}}
     put:
       operationId: updateModConfigFile
@@ -1063,14 +1054,14 @@ paths:
       responses: {'200': *modConfigDocument, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error, '413': *error}
   /mods/{id}/files/{file}/backups:
     parameters:
-      - *idParameter
-      - {name: file, in: path, required: true, schema: {type: string}}
+    - *idParameter
+    - {name: file, in: path, required: true, schema: {type: string}}
     get: {operationId: listModConfigFileBackups, tags: [content], x-palpanel-permission: read, responses: {'200': *modConfigBackups, '400': *error, '401': *error, '403': *error, '404': *error}}
   /mods/{id}/files/{file}/backups/{backup}/restore:
     parameters:
-      - *idParameter
-      - {name: file, in: path, required: true, schema: {type: string}}
-      - {name: backup, in: path, required: true, schema: {type: string}}
+    - *idParameter
+    - {name: file, in: path, required: true, schema: {type: string}}
+    - {name: backup, in: path, required: true, schema: {type: string}}
     post:
       operationId: restoreModConfigFileBackup
       tags: [content]
@@ -1138,8 +1129,8 @@ paths:
       tags: [security]
       x-palpanel-permission: read
       parameters:
-        - {name: q, in: query, schema: {type: string}}
-        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 5000, default: 100}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 5000, default: 100}}
       responses: {'200': *success, '400': *error, '401': *error}
   /security/paldefender/gm/players/{id}:
     parameters: [*idParameter]
@@ -1221,8 +1212,8 @@ paths:
     get: {operationId: listExportedPalDefenderGMPalTemplates, tags: [security], x-palpanel-permission: read, responses: *readResponses}
   /security/paldefender/gm/players/{id}/exported-pal-templates/{name}:
     parameters:
-      - *idParameter
-      - {name: name, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 255}}
+    - *idParameter
+    - {name: name, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 255}}
     get: {operationId: getExportedPalDefenderGMPalTemplate, tags: [security], x-palpanel-permission: read, responses: *readResponses}
   /security/paldefender/gm/players/{id}/message:
     parameters: [*idParameter]
@@ -1270,8 +1261,8 @@ paths:
       tags: [security]
       x-palpanel-permission: read
       parameters:
-        - {name: q, in: query, schema: {type: string}}
-        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 5000, default: 100}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 5000, default: 100}}
       responses: *readResponses
   /security/paldefender/gm/catalog/pals:
     get:
@@ -1279,8 +1270,8 @@ paths:
       tags: [security]
       x-palpanel-permission: read
       parameters:
-        - {name: q, in: query, schema: {type: string}}
-        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 5000, default: 100}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 5000, default: 100}}
       responses: *readResponses
   /security/paldefender/gm/catalog/passives:
     get:
@@ -1288,8 +1279,8 @@ paths:
       tags: [security]
       x-palpanel-permission: read
       parameters:
-        - {name: q, in: query, schema: {type: string}}
-        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 5000, default: 100}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 5000, default: 100}}
       responses: *readResponses
   /security/paldefender/gm/catalog/skins:
     get: {operationId: listPalDefenderSkinCatalog, tags: [security], x-palpanel-permission: read, responses: *readResponses}
@@ -1299,7 +1290,7 @@ paths:
     get: {operationId: listPalDefenderPalTemplates, tags: [security], x-palpanel-permission: read, responses: *readResponses}
   /security/paldefender/gm/pal-templates/{name}:
     parameters:
-      - {name: name, in: path, required: true, schema: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}(\.json)?$'}}
+    - {name: name, in: path, required: true, schema: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}(\.json)?$'}}
     get: {operationId: getPalDefenderPalTemplate, tags: [security], x-palpanel-permission: read, responses: *readResponses}
     put: {operationId: putPalDefenderPalTemplate, tags: [security], x-palpanel-permission: 'security:write', requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PalDefenderPalTemplate'}}}}, responses: *writeResponses}
     delete: {operationId: deletePalDefenderPalTemplate, tags: [security], x-palpanel-permission: 'security:write', responses: *writeResponses}
@@ -1339,12 +1330,12 @@ paths:
       tags: [world]
       x-palpanel-permission: read
       parameters:
-        - {name: from, in: query, required: true, schema: {type: string, pattern: '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{32}$'}}
-        - {name: to, in: query, required: true, schema: {type: string, pattern: '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{32}$'}}
-        - {name: category, in: query, schema: {type: string, enum: [all, players, guilds, bases, pals, containers, items], default: all}}
-        - {name: q, in: query, schema: {type: string, maxLength: 128}}
-        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
-        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      - {name: from, in: query, required: true, schema: {type: string, pattern: '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{32}$'}}
+      - {name: to, in: query, required: true, schema: {type: string, pattern: '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{32}$'}}
+      - {name: category, in: query, schema: {type: string, enum: [all, players, guilds, bases, pals, containers, items], default: all}}
+      - {name: q, in: query, schema: {type: string, maxLength: 128}}
+      - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
       responses:
         '200':
           description: Entity and inventory changes between two snapshots of the active save source.
@@ -1377,8 +1368,8 @@ paths:
             application/json:
               schema:
                 oneOf:
-                  - {$ref: '#/components/schemas/SaveImportInspectionEnvelope'}
-                  - {$ref: '#/components/schemas/HostMigrationPlanEnvelope'}
+                - {$ref: '#/components/schemas/SaveImportInspectionEnvelope'}
+                - {$ref: '#/components/schemas/HostMigrationPlanEnvelope'}
         '400': *error
         '401': *error
         '403': *error
@@ -1427,17 +1418,10 @@ paths:
   /save-sources/{id}/rebuild:
     parameters: [*idParameter]
     post: {operationId: rebuildSaveSource, tags: [world], x-palpanel-permission: 'server:control', responses: *writeResponses}
-  /save-sources/{id}/migration/players:
-    parameters: [*idParameter]
-    get: {operationId: getSaveMigrationPlayers, tags: [world], x-palpanel-permission: 'server:control', responses: *readResponses}
   /save-sources/{id}:
     parameters: [*idParameter]
     patch: {operationId: renameSaveSource, tags: [world], x-palpanel-permission: 'server:control', requestBody: *jsonRequest, responses: *writeResponses}
     delete: {operationId: deleteSaveSource, tags: [world], x-palpanel-permission: 'server:control', responses: *writeResponses}
-  /save-migrations/preview:
-    post: {operationId: previewSaveMigration, tags: [world], x-palpanel-permission: 'server:control', requestBody: *jsonRequest, responses: *writeResponses}
-  /save-migrations:
-    post: {operationId: startSaveMigration, tags: [world], x-palpanel-permission: 'server:control', requestBody: *jsonRequest, responses: *writeResponses}
   /breeding/catalog:
     get: {operationId: getBreedingCatalog, tags: [world], x-palpanel-permission: read, responses: *readResponses}
   /breeding/status:
@@ -1541,9 +1525,9 @@ paths:
       tags: [economy]
       x-palpanel-permission: read
       parameters:
-        - {name: include_disabled, in: query, required: false, schema: {type: boolean, default: false}}
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
-        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      - {name: include_disabled, in: query, required: false, schema: {type: boolean, default: false}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
       responses: {'200': *success, '400': *error, '401': *error, '500': *error}
     post:
       operationId: createShopProduct
@@ -1570,12 +1554,12 @@ paths:
       tags: [economy]
       x-palpanel-permission: read
       parameters:
-        - {name: status, in: query, required: false, schema: {type: string, enum: [pending, delivered, cancelled]}}
-        - {name: player_uid, in: query, required: false, schema: {type: string}}
-        - {name: delivery_state, in: query, required: false, schema: {type: string, enum: [manual, pending, processing, failed, succeeded]}}
-        - {name: delivery_mode, in: query, required: false, schema: {type: string, enum: [manual, paldefender_items, paldefender_pal_templates, automatic]}}
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
-        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      - {name: status, in: query, required: false, schema: {type: string, enum: [pending, delivered, cancelled]}}
+      - {name: player_uid, in: query, required: false, schema: {type: string}}
+      - {name: delivery_state, in: query, required: false, schema: {type: string, enum: [manual, pending, processing, failed, succeeded]}}
+      - {name: delivery_mode, in: query, required: false, schema: {type: string, enum: [manual, paldefender_items, paldefender_pal_templates, automatic]}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
       responses: {'200': *success, '400': *error, '401': *error, '500': *error}
     post:
       operationId: createShopOrder
@@ -1589,10 +1573,10 @@ paths:
       tags: [economy]
       x-palpanel-permission: read
       parameters:
-        - {name: order_id, in: query, required: false, schema: {type: string}}
-        - {name: event_type, in: query, required: false, schema: {type: string, enum: [created, started, failed, uncertain, succeeded, reset, completed, cancelled]}}
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
-        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      - {name: order_id, in: query, required: false, schema: {type: string}}
+      - {name: event_type, in: query, required: false, schema: {type: string, enum: [created, started, failed, uncertain, succeeded, reset, completed, cancelled]}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
       responses: {'200': *success, '400': *error, '401': *error, '500': *error}
   /shop/maintenance/deliver:
     post:
@@ -1651,9 +1635,9 @@ paths:
       tags: [boss]
       x-palpanel-permission: read
       parameters:
-        - {name: include_archived, in: query, required: false, schema: {type: boolean, default: false}}
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
-        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      - {name: include_archived, in: query, required: false, schema: {type: boolean, default: false}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
       responses: {'200': *success, '400': *error, '401': *error, '500': *error}
     post:
       operationId: createBossReward
@@ -1688,9 +1672,9 @@ paths:
       tags: [boss]
       x-palpanel-permission: read
       parameters:
-        - {name: include_archived, in: query, required: false, schema: {type: boolean, default: false}}
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
-        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      - {name: include_archived, in: query, required: false, schema: {type: boolean, default: false}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
       responses: {'200': *success, '400': *error, '401': *error, '500': *error}
     post:
       operationId: createBossTemplate
@@ -1742,10 +1726,10 @@ paths:
       tags: [boss]
       x-palpanel-permission: read
       parameters:
-        - {name: status, in: query, required: false, schema: {type: string, enum: [pending, active, completed, failed, cancelled]}}
-        - {name: template_id, in: query, required: false, schema: {type: string}}
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
-        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      - {name: status, in: query, required: false, schema: {type: string, enum: [pending, active, completed, failed, cancelled]}}
+      - {name: template_id, in: query, required: false, schema: {type: string}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
       responses: {'200': *success, '400': *error, '401': *error, '500': *error}
     post:
       operationId: createBossSummon
@@ -1779,8 +1763,8 @@ paths:
       responses: {'200': *success, '401': *error, '404': *error, '500': *error}
   /boss/summons/{id}/waves/{position}/transition:
     parameters:
-      - *idParameter
-      - {name: position, in: path, required: true, schema: {type: integer, minimum: 1, maximum: 20}}
+    - *idParameter
+    - {name: position, in: path, required: true, schema: {type: integer, minimum: 1, maximum: 20}}
     post:
       operationId: transitionBossSummonWave
       tags: [boss]
@@ -1798,8 +1782,8 @@ paths:
       tags: [boss]
       x-palpanel-permission: read
       parameters:
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
-        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
       responses: {'200': *success, '400': *error, '401': *error, '404': *error, '500': *error}
   /players:
     get:
@@ -1850,21 +1834,18 @@ paths:
   /bases/{id}/feed-boxes:
     parameters: [*idParameter]
     get: {operationId: getBaseFeedBoxes, tags: [world], x-palpanel-permission: read, responses: *readResponses}
-  /bases/{id}/clean:
-    parameters: [*idParameter]
-    post: {operationId: cleanBase, tags: [world], x-palpanel-permission: 'server:control', responses: *writeResponses}
   /inventory:
     get:
       operationId: listGlobalInventory
       tags: [world]
       x-palpanel-permission: read
       parameters:
-        - {name: q, in: query, schema: {type: string}}
-        - {name: category, in: query, schema: {type: string}}
-        - {name: owner_type, in: query, schema: {type: string, enum: [all, base, player, unknown], default: all}}
-        - {name: sort, in: query, schema: {type: string, enum: [count_desc, name_asc, name_desc], default: count_desc}}
-        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
-        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: category, in: query, schema: {type: string}}
+      - {name: owner_type, in: query, schema: {type: string, enum: [all, base, player, unknown], default: all}}
+      - {name: sort, in: query, schema: {type: string, enum: [count_desc, name_asc, name_desc], default: count_desc}}
+      - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
+      - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
       responses: *readResponses
   /pals:
     get:
@@ -1883,7 +1864,7 @@ paths:
     post: {operationId: addPlayerBan, tags: [world], x-palpanel-permission: 'players:write', requestBody: *jsonRequest, responses: *writeResponses}
   /players/bans/{steam_id}:
     parameters:
-      - {name: steam_id, in: path, required: true, schema: {type: string}}
+    - {name: steam_id, in: path, required: true, schema: {type: string}}
     delete: {operationId: deletePlayerBan, tags: [world], x-palpanel-permission: 'players:write', responses: *writeResponses}
   /players/whitelist:
     get: {operationId: listPlayerWhitelist, tags: [world], x-palpanel-permission: read, responses: *readResponses}
@@ -1939,13 +1920,13 @@ paths:
       tags: [economy]
       x-palpanel-permission: read
       parameters:
-        - {name: query, in: query, required: false, schema: {type: string, maxLength: 256}}
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500}}
-        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0}}
+      - {name: query, in: query, required: false, schema: {type: string, maxLength: 256}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0}}
       responses: *readResponses
   /economy/accounts/{player_uid}:
     parameters:
-      - {name: player_uid, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
+    - {name: player_uid, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
     get:
       operationId: getEconomyAccount
       tags: [economy]
@@ -1953,18 +1934,18 @@ paths:
       responses: *readResponses
   /economy/accounts/{player_uid}/ledger:
     parameters:
-      - {name: player_uid, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
+    - {name: player_uid, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
     get:
       operationId: listEconomyLedger
       tags: [economy]
       x-palpanel-permission: read
       parameters:
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500}}
-        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0}}
       responses: *readResponses
   /economy/accounts/{player_uid}/adjust:
     parameters:
-      - {name: player_uid, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
+    - {name: player_uid, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
     post:
       operationId: adjustEconomyAccount
       tags: [economy]
@@ -1973,7 +1954,7 @@ paths:
       responses: *writeResponses
   /economy/accounts/{player_uid}/checkin:
     parameters:
-      - {name: player_uid, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
+    - {name: player_uid, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
     post:
       operationId: checkInEconomyAccount
       tags: [economy]
@@ -2070,7 +2051,7 @@ paths:
       tags: [operations, tasks]
       x-palpanel-permission: read
       parameters:
-        - {name: include_archived, in: query, required: false, schema: {type: boolean, default: false}}
+      - {name: include_archived, in: query, required: false, schema: {type: boolean, default: false}}
       responses: *readResponses
     post:
       operationId: createOperationsTask
@@ -2080,7 +2061,7 @@ paths:
       responses: *writeResponses
   /tasks/progress/{player_uid}:
     parameters:
-      - {name: player_uid, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
+    - {name: player_uid, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
     get:
       operationId: getPlayerTaskProgress
       tags: [operations, tasks]
@@ -2092,7 +2073,7 @@ paths:
       tags: [operations, tasks]
       x-palpanel-permission: 'players:write'
       parameters:
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
       responses: *writeResponses
   /tasks/{id}:
     parameters: [*idParameter]
@@ -2121,10 +2102,10 @@ paths:
       tags: [events]
       x-palpanel-permission: read
       parameters:
-        - {name: type, in: query, required: false, schema: {type: string, maxLength: 128}}
-        - {name: player_uid, in: query, required: false, schema: {type: string, maxLength: 128}}
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500}}
-        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0}}
+      - {name: type, in: query, required: false, schema: {type: string, maxLength: 128}}
+      - {name: player_uid, in: query, required: false, schema: {type: string, maxLength: 128}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0}}
       responses: *readResponses
   /game-events/{id}:
     parameters: [*idParameter]
@@ -2133,6 +2114,215 @@ paths:
       tags: [events]
       x-palpanel-permission: read
       responses: *readResponses
+  /boss/schedules:
+    get:
+      operationId: listBossSchedules
+      tags:
+      - boss
+      x-palpanel-permission: read
+      parameters:
+      - name: enabled
+        in: query
+        required: false
+        schema:
+          type: boolean
+      - name: include_archived
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 100
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      operationId: createBossSchedule
+      tags:
+      - boss
+      x-palpanel-permission: config:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BossScheduleInput'
+      responses:
+        '201':
+          $ref: '#/components/responses/SuccessResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+  /boss/schedules/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: &id001
+        type: string
+    put:
+      operationId: updateBossSchedule
+      tags:
+      - boss
+      x-palpanel-permission: config:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BossScheduleInput'
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      operationId: archiveBossSchedule
+      tags:
+      - boss
+      x-palpanel-permission: config:write
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+  /boss/schedules/{id}/run-now:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id001
+    post:
+      operationId: runBossScheduleNow
+      description: Creates a record-only summon immediately from the schedule. It does not spawn a Boss in Palworld.
+      tags:
+      - boss
+      x-palpanel-permission: server:control
+      responses:
+        '201':
+          $ref: '#/components/responses/SuccessResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+  /boss/schedule-events:
+    get:
+      operationId: listBossScheduleEvents
+      tags:
+      - boss
+      x-palpanel-permission: read
+      parameters:
+      - name: schedule_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: event_type
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - warning
+          - summon
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - success
+          - failed
+          - skipped
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 100
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+  /boss/maintenance/run-due:
+    post:
+      operationId: runDueBossSchedules
+      description: Runs one due-schedule scan immediately. The built-in worker also scans every 30 seconds.
+      tags:
+      - boss
+      x-palpanel-permission: server:control
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
 components:
   securitySchemes:
     sessionCookie:
@@ -2492,7 +2682,7 @@ components:
         item_name: {type: string}
         item_icon: {type: string}
         count: {type: integer, minimum: 0}
-        durability: {anyOf: [{type: number}, {type: 'null'}]}
+        durability: {anyOf: [type: number, type: 'null']}
     SaveInventoryContainer:
       type: object
       required: [container_id, owner_type, owner_id, container_type, container_name, slots]
@@ -2921,7 +3111,7 @@ components:
         label: {type: string}
         group: {type: string}
         type: {type: string, enum: [string, bool, int, float, enum, list]}
-        default: {anyOf: [{type: string}, {type: 'null'}]}
+        default: {anyOf: [type: string, type: 'null']}
         enum: {type: array, items: {type: string}}
         enum_labels: {type: object, additionalProperties: {type: string}}
         min: {type: number}
@@ -3183,7 +3373,7 @@ components:
         docker_ok: {type: boolean}
         docker_latency_ms: {type: integer, minimum: 0}
         failure_stage: {type: string}
-        diagnostic: {type: string, description: Redacted proxy type, bridge state, host-network state, and failure stage.}
+        diagnostic: {type: string, description: Redacted proxy type, bridge state: null, host-network state: null, and failure stage.: null}
         host_network: {type: boolean}
         bridge_enabled: {type: boolean}
     CommunityServer:
@@ -3427,35 +3617,35 @@ components:
     MonitorSample:
       type: object
       required:
-        - id
-        - created_at
-        - cpu_available
-        - cpu_percent
-        - memory_available
-        - memory_usage_bytes
-        - memory_limit_bytes
-        - host_memory_available
-        - host_memory_total_bytes
-        - host_memory_available_bytes
-        - host_swap_total_bytes
-        - host_swap_free_bytes
-        - workload_memory_available
-        - workload_memory_usage_bytes
-        - workload_memory_limit_bytes
-        - oom_killed
-        - lifecycle_available
-        - exit_code
-        - restart_count
-        - risk_reasons
-        - disk_available
-        - disk_free_bytes
-        - disk_total_bytes
-        - current_players
-        - max_players
-        - rest_healthy
-        - rcon_healthy
-        - game_port_healthy
-        - query_port_healthy
+      - id
+      - created_at
+      - cpu_available
+      - cpu_percent
+      - memory_available
+      - memory_usage_bytes
+      - memory_limit_bytes
+      - host_memory_available
+      - host_memory_total_bytes
+      - host_memory_available_bytes
+      - host_swap_total_bytes
+      - host_swap_free_bytes
+      - workload_memory_available
+      - workload_memory_usage_bytes
+      - workload_memory_limit_bytes
+      - oom_killed
+      - lifecycle_available
+      - exit_code
+      - restart_count
+      - risk_reasons
+      - disk_available
+      - disk_free_bytes
+      - disk_total_bytes
+      - current_players
+      - max_players
+      - rest_healthy
+      - rcon_healthy
+      - game_port_healthy
+      - query_port_healthy
       properties:
         id: {type: string}
         created_at: {type: string, format: date-time}
@@ -3588,10 +3778,6 @@ components:
         value: {}
         min: {type: integer, format: int64}
         max: {type: integer, format: int64}
-        description: {type: string}
-        group: {type: string}
-        options: {type: array, items: {type: object, properties: {value: {}, label: {type: string}}}}
-        unit: {type: string}
     ModConfigDocument:
       type: object
       required: [file, content, format]
@@ -3608,12 +3794,6 @@ components:
         content: {type: string, maxLength: 1048576}
         revision: {type: string, minLength: 1}
         confirm_executable: {type: boolean, default: false}
-    ModConfigActionRequest:
-      type: object
-      required: [action]
-      additionalProperties: false
-      properties:
-        action: {type: string}
     ModConfigRestoreRequest:
       type: object
       required: [revision]
@@ -3637,15 +3817,7 @@ components:
         description: {type: string}
         workshop_id: {type: string}
         available: {type: boolean}
-        installed: {type: boolean}
-        configured: {type: boolean}
-        enabled: {type: boolean}
-        status: {type: string, enum: [not_installed, dependency_missing, not_configured, disabled, restart_required, ready]}
-        status_detail: {type: string}
         reload_behavior: {type: string, enum: [online_reload, restart_required]}
-        dependencies: {type: array, items: {type: object, properties: {id: {type: string}, name: {type: string}, workshop_id: {type: string}, mod_id: {type: string}, installed: {type: boolean}, enabled: {type: boolean}, required: {type: boolean}}}}
-        actions: {type: array, items: {type: object, properties: {id: {type: string}, available: {type: boolean}, restart_required: {type: boolean}}}}
-        reference_urls: {type: object, additionalProperties: {type: string}}
         files: {type: array, items: {$ref: '#/components/schemas/ModConfigFile'}}
     ModImportInspectRequest:
       type: object
@@ -3697,8 +3869,8 @@ components:
         steam_id: {type: string, pattern: '^[0-9]{15,20}$'}
         confirm: {type: boolean, const: true}
       oneOf:
-        - required: [inspection_id]
-        - required: [migration_source_id, steam_id, confirm]
+      - required: [inspection_id]
+      - required: [migration_source_id, steam_id, confirm]
     SaveSource:
       type: object
       required: [id, name, kind, active, created_at, updated_at]
@@ -4015,7 +4187,6 @@ components:
         id: {type: string}
         name: {type: string}
         icon: {type: string}
-        collaboration: {type: string}
     PalDefenderItemCatalog:
       type: object
       required: [items, returned]
@@ -4036,20 +4207,20 @@ components:
         Items: {type: array, minItems: 1, maxItems: 100, items: {$ref: '#/components/schemas/PalDefenderItemGrant'}}
     PalDefenderTeleportRequest:
       oneOf:
-        - type: object
-          required: [Mode, X, Y]
-          additionalProperties: false
-          properties:
-            Mode: {type: string, const: coordinates}
-            X: {type: number, minimum: -10000000, maximum: 10000000}
-            Y: {type: number, minimum: -10000000, maximum: 10000000}
-            Z: {type: number, minimum: -10000000, maximum: 10000000}
-        - type: object
-          required: [Mode, TargetPlayer]
-          additionalProperties: false
-          properties:
-            Mode: {type: string, const: player}
-            TargetPlayer: {type: string, pattern: '^[A-Za-z0-9_-]{1,128}$'}
+      - type: object
+        required: [Mode, X, Y]
+        additionalProperties: false
+        properties:
+          Mode: {type: string, const: coordinates}
+          X: {type: number, minimum: -10000000, maximum: 10000000}
+          Y: {type: number, minimum: -10000000, maximum: 10000000}
+          Z: {type: number, minimum: -10000000, maximum: 10000000}
+      - type: object
+        required: [Mode, TargetPlayer]
+        additionalProperties: false
+        properties:
+          Mode: {type: string, const: player}
+          TargetPlayer: {type: string, pattern: '^[A-Za-z0-9_-]{1,128}$'}
     PalDefenderProgressionGrantRequest:
       type: object
       minProperties: 1
@@ -4069,8 +4240,8 @@ components:
       properties:
         Technology:
           oneOf:
-            - {type: string, minLength: 1, maxLength: 128}
-            - {type: array, minItems: 1, maxItems: 500, items: {type: string, minLength: 1, maxLength: 128}}
+          - {type: string, minLength: 1, maxLength: 128}
+          - {type: array, minItems: 1, maxItems: 500, items: {type: string, minLength: 1, maxLength: 128}}
     PalDefenderPalGrant:
       type: object
       required: [PalID, Level]
@@ -4100,7 +4271,6 @@ components:
       properties:
         id: {type: string}
         name: {type: string}
-        kind: {type: string}
     PalDefenderPalCatalog:
       type: object
       required: [items, returned]
@@ -4604,7 +4774,7 @@ components:
         created_at: {type: string, format: date-time}
     BossSummary:
       type: object
-      required: [rewards, enabled_rewards, templates, enabled_templates, pending_summons, active_summons, completed_summons, failed_summons, cancelled_summons, template_waves, pending_waves, active_waves, completed_waves, failed_waves, skipped_waves]
+      required: [rewards, enabled_rewards, templates, enabled_templates, pending_summons, active_summons, completed_summons, failed_summons, cancelled_summons, template_waves, pending_waves, active_waves, completed_waves, failed_waves, skipped_waves, schedules, enabled_schedules]
       properties:
         rewards: {type: integer, minimum: 0}
         enabled_rewards: {type: integer, minimum: 0}
@@ -4621,6 +4791,12 @@ components:
         completed_waves: {type: integer, minimum: 0}
         failed_waves: {type: integer, minimum: 0}
         skipped_waves: {type: integer, minimum: 0}
+        schedules:
+          type: integer
+          minimum: 0
+        enabled_schedules:
+          type: integer
+          minimum: 0
     PatchInfo:
       type: object
       required: [upstream, compatibility, patch, build]
@@ -4642,7 +4818,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.67}
+            version: {type: string, const: 0.8.68}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array
@@ -4730,14 +4906,196 @@ components:
         message: {type: string}
     Schedule:
       allOf:
-        - {$ref: '#/components/schemas/ScheduleInput'}
-        - type: object
-          required: [id, enabled, timezone, created_at, updated_at]
-          properties:
-            id: {type: string}
-            enabled: {type: boolean}
-            timezone: {type: string}
-            last_run_at: {type: string, format: date-time}
-            next_run_at: {type: string, format: date-time}
-            created_at: {type: string, format: date-time}
-            updated_at: {type: string, format: date-time}
+      - {$ref: '#/components/schemas/ScheduleInput'}
+      - type: object
+        required: [id, enabled, timezone, created_at, updated_at]
+        properties:
+          id: {type: string}
+          enabled: {type: boolean}
+          timezone: {type: string}
+          last_run_at: {type: string, format: date-time}
+          next_run_at: {type: string, format: date-time}
+          created_at: {type: string, format: date-time}
+          updated_at: {type: string, format: date-time}
+    BossScheduleInput:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - template_id
+      - mode
+      - daily_time
+      - cron
+      - timezone
+      - warning_minutes
+      - warning_title
+      - warning_message
+      - enabled
+      - metadata
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        template_id:
+          type: string
+          minLength: 1
+        mode:
+          type: string
+          enum:
+          - daily
+          - cron
+        daily_time:
+          type: string
+          pattern: ^(?:[01]\d|2[0-3]):[0-5]\d$
+        cron:
+          type: string
+          maxLength: 128
+        timezone:
+          type: string
+          minLength: 1
+          maxLength: 128
+        warning_minutes:
+          type: integer
+          minimum: 0
+          maximum: 10080
+        warning_title:
+          type: string
+          maxLength: 128
+        warning_message:
+          type: string
+          maxLength: 4096
+        location_override:
+          $ref: '#/components/schemas/BossLocation'
+        enabled:
+          type: boolean
+        metadata:
+          $ref: '#/components/schemas/JsonObject'
+    BossSchedule:
+      type: object
+      required:
+      - id
+      - name
+      - template_id
+      - template_name
+      - mode
+      - timezone
+      - warning_minutes
+      - enabled
+      - metadata
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        template_id:
+          type: string
+        template_name:
+          type: string
+        mode:
+          type: string
+          enum:
+          - daily
+          - cron
+        daily_time:
+          type: string
+        cron:
+          type: string
+        timezone:
+          type: string
+        warning_minutes:
+          type: integer
+        warning_title:
+          type: string
+        warning_message:
+          type: string
+        location_override:
+          $ref: '#/components/schemas/BossLocation'
+        enabled:
+          type: boolean
+        metadata:
+          $ref: '#/components/schemas/JsonObject'
+        next_run_at:
+          type: string
+          format: date-time
+        last_run_at:
+          type: string
+          format: date-time
+        last_warning_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
+    BossScheduleEvent:
+      type: object
+      required:
+      - id
+      - schedule_id
+      - event_type
+      - status
+      - planned_for
+      - details
+      - created_at
+      properties:
+        id:
+          type: integer
+        schedule_id:
+          type: string
+        event_type:
+          type: string
+          enum:
+          - warning
+          - summon
+        status:
+          type: string
+          enum:
+          - success
+          - failed
+          - skipped
+        planned_for:
+          type: string
+          format: date-time
+        summon_id:
+          type: string
+        actor:
+          type: string
+        message:
+          type: string
+        details:
+          $ref: '#/components/schemas/JsonObject'
+        created_at:
+          type: string
+          format: date-time
+    BossRunDueResult:
+      type: object
+      required:
+      - checked
+      - warnings
+      - summons
+      - failed
+      - skipped
+      properties:
+        checked:
+          type: integer
+          minimum: 0
+        warnings:
+          type: integer
+          minimum: 0
+        summons:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+        skipped:
+          type: integer
+          minimum: 0

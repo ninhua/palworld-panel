@@ -206,6 +206,61 @@ export interface components {
       "count": number;
       "item_id": string;
     };
+    "BossRunDueResult": {
+      "checked": number;
+      "failed": number;
+      "skipped": number;
+      "summons": number;
+      "warnings": number;
+    };
+    "BossSchedule": {
+      "archived_at"?: string;
+      "created_at": string;
+      "cron"?: string;
+      "daily_time"?: string;
+      "enabled": boolean;
+      "id": string;
+      "last_run_at"?: string;
+      "last_warning_at"?: string;
+      "location_override"?: components["schemas"]["BossLocation"];
+      "metadata": components["schemas"]["JsonObject"];
+      "mode": "daily" | "cron";
+      "name": string;
+      "next_run_at"?: string;
+      "template_id": string;
+      "template_name": string;
+      "timezone": string;
+      "updated_at": string;
+      "warning_message"?: string;
+      "warning_minutes": number;
+      "warning_title"?: string;
+    };
+    "BossScheduleEvent": {
+      "actor"?: string;
+      "created_at": string;
+      "details": components["schemas"]["JsonObject"];
+      "event_type": "warning" | "summon";
+      "id": number;
+      "message"?: string;
+      "planned_for": string;
+      "schedule_id": string;
+      "status": "success" | "failed" | "skipped";
+      "summon_id"?: string;
+    };
+    "BossScheduleInput": {
+      "cron": string;
+      "daily_time": string;
+      "enabled": boolean;
+      "location_override"?: components["schemas"]["BossLocation"];
+      "metadata": components["schemas"]["JsonObject"];
+      "mode": "daily" | "cron";
+      "name": string;
+      "template_id": string;
+      "timezone": string;
+      "warning_message": string;
+      "warning_minutes": number;
+      "warning_title": string;
+    };
     "BossSummary": {
       "active_summons": number;
       "active_waves": number;
@@ -213,12 +268,14 @@ export interface components {
       "completed_summons": number;
       "completed_waves": number;
       "enabled_rewards": number;
+      "enabled_schedules": number;
       "enabled_templates": number;
       "failed_summons": number;
       "failed_waves": number;
       "pending_summons": number;
       "pending_waves": number;
       "rewards": number;
+      "schedules": number;
       "skipped_waves": number;
       "template_waves": number;
       "templates": number;
@@ -867,9 +924,6 @@ export interface components {
       "skipped_paths": Array<string>;
       "warnings": Array<string>;
     };
-    "ModConfigActionRequest": {
-      "action": string;
-    };
     "ModConfigBackup": {
       "created_at": string;
       "id": string;
@@ -914,32 +968,12 @@ export interface components {
       "revision": string;
     };
     "ModConfigurationAdapter": {
-      "actions"?: Array<{
-        "available"?: boolean;
-        "id"?: string;
-        "restart_required"?: boolean;
-      }>;
       "available": boolean;
-      "configured"?: boolean;
-      "dependencies"?: Array<{
-        "enabled"?: boolean;
-        "id"?: string;
-        "installed"?: boolean;
-        "mod_id"?: string;
-        "name"?: string;
-        "required"?: boolean;
-        "workshop_id"?: string;
-      }>;
       "description": string;
-      "enabled"?: boolean;
       "files": Array<components["schemas"]["ModConfigFile"]>;
       "id": string;
-      "installed"?: boolean;
       "name": string;
-      "reference_urls"?: Record<string, string>;
       "reload_behavior": "online_reload" | "restart_required";
-      "status"?: "not_installed" | "dependency_missing" | "not_configured" | "disabled" | "restart_required" | "ready";
-      "status_detail"?: string;
       "workshop_id"?: string;
     };
     "ModConfigurationAdapterListEnvelope": {
@@ -947,18 +981,11 @@ export interface components {
       "ok": true;
     };
     "ModConfigurationField": {
-      "description"?: string;
-      "group"?: string;
       "label": string;
       "max"?: number;
       "min"?: number;
-      "options"?: Array<{
-        "label"?: string;
-        "value"?: unknown;
-      }>;
       "path": string;
       "type": "boolean" | "integer" | "number" | "string";
-      "unit"?: string;
       "value": unknown;
     };
     "ModImportInspectRequest": {
@@ -1198,7 +1225,6 @@ export interface components {
       "returned": number;
     };
     "PalDefenderItemCatalogEntry": {
-      "collaboration"?: string;
       "icon"?: string;
       "id": string;
       "name": string;
@@ -1222,7 +1248,6 @@ export interface components {
     };
     "PalDefenderPalCatalogEntry": {
       "id": string;
-      "kind"?: string;
       "name": string;
     };
     "PalDefenderPalGrant": {
@@ -1445,7 +1470,7 @@ export interface components {
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/palworld-panel";
-        "version": "0.8.67";
+        "version": "0.8.68";
       };
       "upstream": {
         "commit": string;
