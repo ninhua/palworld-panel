@@ -1,5 +1,15 @@
 # 功能移植更新记录
 
+## 2026-08-01：PalPanelBridge World 对象只读探针
+
+已完成：
+
+- `0.1.5` 实机验证中，20.53 秒内游戏线程 Tick 增加 4002，最后 Tick 延迟为 1–2 ms。
+- PalPanelBridge 升级至 `0.1.6`，新增只读 `POST /v1/world` 任务接口。
+- World 查找仅在 UE4SS `on_update` 游戏线程执行，HTTP 线程不直接访问 UObject。
+- 任务结果返回 World 对象名、完整名和类名，不修改任何游戏对象。
+- 同步更新 Action 安装包名称和中英文验证文档。
+
 ## 2026-08-01：PalPanelBridge 游戏线程运行状态
 
 已完成：
