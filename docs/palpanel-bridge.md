@@ -10,7 +10,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.7`
+- PalPanelBridge：`0.1.8`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -58,7 +58,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.7",
+  "bridge_version": "0.1.8",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -122,10 +122,11 @@ POST http://127.0.0.1:18083/v1/players/online
 GET http://127.0.0.1:18083/v1/jobs/<job_id>
 ```
 
-任务在游戏线程枚举当前 `PalPlayerController` 实例，返回
-`online_player_count` 以及对象的 `name`、`full_name`、`class_name`。
-离线玩家没有活动的 PlayerController，因此不在该结果中。当前阶段只验证在线
-对象发现链路，尚不读取 PlayerUID、SteamID、背包或帕鲁数据，也不修改对象。
+任务在游戏线程枚举当前 `PalPlayerController` 实例，并只读解析关联的
+`PlayerState` 与 Pawn。结果返回 `online_player_count`、Controller/PlayerState/Pawn
+对象信息、`account_name`、`player_uid` 和 `identity_error`。离线玩家没有活动的
+PlayerController，因此不在该结果中。当前阶段不读取 SteamID、背包或帕鲁数据，
+也不修改对象。
 
 ## 故障判断
 

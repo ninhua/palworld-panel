@@ -1,6 +1,9 @@
 #include <Mod/CppUserModBase.hpp>
 #include <Helpers/String.hpp>
 #include <Unreal/CoreUObject/UObject/Class.hpp>
+#include <Unreal/CoreUObject/UObject/FStrProperty.hpp>
+#include <Unreal/CoreUObject/UObject/UnrealType.hpp>
+#include <Unreal/FField.hpp>
 #include <Unreal/UObject.hpp>
 #include <Unreal/UObjectGlobals.hpp>
 
@@ -9,10 +12,15 @@
 #include <Windows.h>
 
 #include <atomic>
+#include <array>
 #include <chrono>
+#include <cstdio>
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <map>
 #include <mutex>
 #include <sstream>
@@ -47,6 +55,18 @@ struct ObjectSnapshot
     std::string class_name{};
 };
 
+struct OnlinePlayerSnapshot
+{
+    ObjectSnapshot controller{};
+    ObjectSnapshot player_state{};
+    ObjectSnapshot pawn{};
+    bool player_state_found{};
+    bool pawn_found{};
+    std::string account_name{};
+    std::string player_uid{};
+    std::string identity_error{};
+};
+
 struct Job
 {
     std::string id;
@@ -58,8 +78,81 @@ struct Job
     std::string world_name{};
     std::string world_full_name{};
     std::string world_class_name{};
-    std::vector<ObjectSnapshot> online_players{};
+    std::vector<OnlinePlayerSnapshot> online_players{};
 };
+
+struct PlayerGuid
+{
+    std::uint32_t a{};
+    std::uint32_t b{};
+    std::uint32_t c{};
+    std::uint32_t d{};
+};
+
+ObjectSnapshot describe_object(RC::Unreal::UObject* object)
+{
+    ObjectSnapshot snapshot;
+    if (!object || !RC::Unreal::UObject::IsReal(object)) return snapshot;
+    snapshot.name = RC::to_utf8_string(object->GetName());
+    snapshot.full_name = RC::to_utf8_string(object->GetFullName());
+    if (auto* object_class = object->GetClassPrivate(); object_class) {
+        snapshot.class_name = RC::to_utf8_string(object_class->GetName());
+    }
+    return snapshot;
+}
+
+RC::Unreal::FProperty* find_property(
+    RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names)
+{
+    if (!object || !RC::Unreal::UObject::IsReal(object)) return nullptr;
+    auto* object_class = object->GetClassPrivate();
+    if (!object_class) return nullptr;
+    for (const auto* name : names) {
+        if (auto* property = object_class->FindProperty(
+                RC::Unreal::FName(name, RC::Unreal::FNAME_Find)); property) {
+            return property;
+        }
+    }
+    return nullptr;
+}
+
+RC::Unreal::UObject* read_object_property(
+    RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names)
+{
+    auto* property = find_property(object, names);
+    auto* object_property = RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(property);
+    if (!object_property) return nullptr;
+    auto* value = object_property->GetObjectPropertyValue(property->ContainerPtrToValuePtr<void>(object));
+    return value && RC::Unreal::UObject::IsReal(value) ? value : nullptr;
+}
+
+bool read_player_guid(RC::Unreal::UObject* object, std::string& output)
+{
+    auto* property = find_property(object, {STR("PlayerUId"), STR("PlayerUID")});
+    auto* struct_property = RC::Unreal::CastField<RC::Unreal::FStructProperty>(property);
+    auto* structure = struct_property ? struct_property->GetStruct().Get() : nullptr;
+    if (!property || !structure ||
+        RC::to_utf8_string(structure->GetFullName()) != "ScriptStruct /Script/CoreUObject.Guid" ||
+        property->GetSize() < static_cast<std::int32_t>(sizeof(PlayerGuid))) {
+        return false;
+    }
+    PlayerGuid value{};
+    std::memcpy(&value, property->ContainerPtrToValuePtr<void>(object), sizeof(value));
+    std::array<char, 33> buffer{};
+    std::snprintf(buffer.data(), buffer.size(), "%08X%08X%08X%08X", value.a, value.b, value.c, value.d);
+    output = buffer.data();
+    return true;
+}
+
+bool read_account_name(RC::Unreal::UObject* object, std::string& output)
+{
+    auto* property = find_property(object, {STR("AccountName")});
+    auto* string_property = RC::Unreal::CastField<RC::Unreal::FStrProperty>(property);
+    if (!string_property) return false;
+    const auto& value = string_property->GetPropertyValueInContainer(object);
+    output = RC::to_utf8_string(*value);
+    return true;
+}
 
 std::filesystem::path mod_directory()
 {
@@ -176,7 +269,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.7");
+        ModVersion = STR("0.1.8");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -238,13 +331,28 @@ class PalPanelBridge final : public RC::CppUserModBase
                     constexpr size_t max_results = 64;
                     for (auto* controller : controllers) {
                         if (!controller || job.online_players.size() >= max_results) continue;
-                        ObjectSnapshot snapshot;
-                        snapshot.name = RC::to_utf8_string(controller->GetName());
-                        snapshot.full_name = RC::to_utf8_string(controller->GetFullName());
-                        if (auto* controller_class = controller->GetClassPrivate(); controller_class) {
-                            snapshot.class_name = RC::to_utf8_string(controller_class->GetName());
+                        OnlinePlayerSnapshot player;
+                        player.controller = describe_object(controller);
+                        auto* player_state = read_object_property(controller, {STR("PlayerState")});
+                        player.player_state_found = player_state != nullptr;
+                        if (player_state) {
+                            player.player_state = describe_object(player_state);
+                            const auto uid_ok = read_player_guid(player_state, player.player_uid);
+                            const auto name_ok = read_account_name(player_state, player.account_name);
+                            if (!uid_ok || !name_ok) {
+                                player.identity_error = !uid_ok && !name_ok
+                                                            ? "PlayerUId and AccountName are unavailable"
+                                                            : !uid_ok ? "PlayerUId is unavailable"
+                                                                      : "AccountName is unavailable";
+                            }
+                        } else {
+                            player.identity_error = "PlayerState is unavailable";
                         }
-                        job.online_players.emplace_back(std::move(snapshot));
+                        auto* pawn = read_object_property(controller, {STR("AcknowledgedPawn")});
+                        if (!pawn) pawn = read_object_property(controller, {STR("Pawn")});
+                        player.pawn_found = pawn != nullptr;
+                        if (pawn) player.pawn = describe_object(pawn);
+                        job.online_players.emplace_back(std::move(player));
                     }
                 } catch (...) {
                     job.status = "failed";
@@ -280,7 +388,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.7\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.8\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -293,7 +401,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.7\","
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.8\","
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -337,9 +445,20 @@ class PalPanelBridge final : public RC::CppUserModBase
             for (size_t index = 0; index < job.online_players.size(); ++index) {
                 if (index > 0) body << ',';
                 const auto& player = job.online_players[index];
-                body << "{\"name\":\"" << json_escape(player.name) << "\",\"full_name\":\""
-                     << json_escape(player.full_name) << "\",\"class_name\":\""
-                     << json_escape(player.class_name) << "\"}";
+                body << "{\"name\":\"" << json_escape(player.controller.name) << "\",\"full_name\":\""
+                     << json_escape(player.controller.full_name) << "\",\"class_name\":\""
+                     << json_escape(player.controller.class_name) << "\",\"player_state_found\":"
+                     << (player.player_state_found ? "true" : "false") << ",\"player_state\":{\"name\":\""
+                     << json_escape(player.player_state.name) << "\",\"full_name\":\""
+                     << json_escape(player.player_state.full_name) << "\",\"class_name\":\""
+                     << json_escape(player.player_state.class_name) << "\"},\"account_name\":\""
+                     << json_escape(player.account_name) << "\",\"player_uid\":\""
+                     << json_escape(player.player_uid) << "\",\"identity_error\":\""
+                     << json_escape(player.identity_error) << "\",\"pawn_found\":"
+                     << (player.pawn_found ? "true" : "false") << ",\"pawn\":{\"name\":\""
+                     << json_escape(player.pawn.name) << "\",\"full_name\":\""
+                     << json_escape(player.pawn.full_name) << "\",\"class_name\":\""
+                     << json_escape(player.pawn.class_name) << "\"}}";
             }
             body << ']';
         }
