@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Cat } from 'lucide-react';
 
-const iconBase = 'https://raw.githubusercontent.com/bingyouxue/palworld-server-tool-gm/main/web/src/assets/pals';
+const iconBase = '/assets/pals';
 
 const palIconURL = (characterID: string) => {
   const normalized = characterID.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');

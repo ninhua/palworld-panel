@@ -163,6 +163,7 @@ func TestWriteRoutesValidateBadInput(t *testing.T) {
 		{http.MethodPost, "/api/save-sources/missing/activate", ""},
 		{http.MethodPost, "/api/save-sources/missing/rebuild", ""},
 		{http.MethodDelete, "/api/save-sources/missing", ""},
+		{http.MethodPost, "/api/bases/missing/clean", ""},
 		{http.MethodPost, "/api/breeding/presets", "{"},
 		{http.MethodPost, "/api/breeding/custom-containers", "{"},
 		{http.MethodPost, "/api/breeding/jobs", "{"},

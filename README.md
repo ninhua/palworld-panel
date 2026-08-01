@@ -67,6 +67,7 @@ PalPanel 用来管理《幻兽帕鲁》专用服务器：服务端启停与更�
 - 把当前服务器世界作为内置存档源
 - 导入带有 `Level.sav` 的标准 ZIP、TAR、TAR.GZ 或 TGZ 存档
 - 切换、重命名、重建和删除导入的数据源
+- 通过五步迁移向导把旧存档玩家自动迁移到新 SteamID；自动识别 Steam/NoSteam UID 模式，预检目标冲突，停服前创建完整备份，失败时自动回滚
 - 使用 `sav-cli` 为服务器和导入存档建立索引；存档文件变化会标记索引过期，有可用缓存时会保留上一次成功的索引，并显示重建错误和警告
 - 查询玩家、公会、基地、容器和帕鲁
 - 读取帕鲁的性别、IV、星级、技能、被动词条、主人和所在容器
@@ -236,9 +237,9 @@ sudo /opt/palpanel/current/palpanelctl uninstall
 
 ```bash
 sha256sum -c checksums.txt
-sudo ./palpanelctl install --docker --listen 0.0.0.0:63101
+sudo ./palpanelctl install --docker --listen 0.0.0.0:8080
 sudo /opt/palpanel/current/palpanelctl status
-curl --fail http://127.0.0.1:63101/api/health
+curl --fail http://127.0.0.1:8080/api/health
 ```
 
 升级默认保留 `/etc/palpanel`、`/var/lib/palpanel`、游戏存档、游戏日志和
@@ -275,7 +276,7 @@ docker logs --tail 100 palworld-wine-server
 
 ## 从源码运行
 
-需要 Go `1.25.12`、Node.js 22、npm 和 .NET 9 SDK。Windows 构建 `sav-cli` 还需要 MinGW-w64。
+需要 Go `1.25.12`、Node.js 22、npm、.NET 9 SDK，以及 Rust/Cargo。Windows 构建 `sav-cli` 还需要 MinGW-w64。
 
 ```bash
 git clone --recurse-submodules --branch custom-stable https://github.com/ninhua/palworld-panel.git
@@ -289,6 +290,7 @@ backend/                    Go API、任务和数据服务
 frontend/                   React 管理界面与 QQ 受限页面
 sav-cli/                    Palworld 存档解析侧车
 palcalc-bridge/             PalCalc .NET 9 求解侧车
+tools/palworld-uid-remap/   玩家 PlayerUID 存档迁移工具
 third_party/palcalc/        固定版本的 PalCalc 子模块
 astrbot_plugin_palpanel/    AstrBot QQ 插件
 scripts/                    安装、打包和维护脚本
@@ -300,6 +302,7 @@ docs/                       OpenAPI、发布说明和截图
 ```bash
 (cd backend && go test -p=1 ./...)
 (cd sav-cli && CGO_ENABLED=1 go test -p=1 ./...)
+(cd tools/palworld-uid-remap && cargo test --locked)
 (cd palcalc-bridge && dotnet build -c Release)
 (cd frontend && npm ci && npm run check && npm run test:e2e)
 python -m unittest discover -s astrbot_plugin_palpanel/tests

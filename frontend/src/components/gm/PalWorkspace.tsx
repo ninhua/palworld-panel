@@ -41,6 +41,7 @@ export const PalWorkspace: React.FC<{
   const [customCount, setCustomCount] = useState('1');
   const [grantMessage, setGrantMessage] = useState('');
   const [palSearch, setPalSearch] = useState('');
+  const [showAdvancedPals, setShowAdvancedPals] = useState(false);
   const [passiveSearch, setPassiveSearch] = useState('');
   const [releaseTarget, setReleaseTarget] = useState<Pal | null>(null);
   const [releaseConfirmation, setReleaseConfirmation] = useState('');
@@ -52,6 +53,7 @@ export const PalWorkspace: React.FC<{
   });
 
   const filteredPalCatalog = palCatalog.filter((pal) => {
+    if (pal.kind === 'advanced' && !showAdvancedPals) return false;
     const needle = palSearch.trim().toLowerCase();
     return !needle || pal.id.toLowerCase().includes(needle) || pal.name.toLowerCase().includes(needle);
   }).slice(0, 80);
@@ -276,6 +278,7 @@ export const PalWorkspace: React.FC<{
             <label className="text-xs font-bold text-slate-600">等级<input aria-label="帕鲁等级" type="number" min={1} max={255} value={palLevel} onChange={(event) => setPalLevel(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-700 focus:border-sky-500 focus:outline-none" /></label>
 			<label className="text-xs font-bold text-slate-600">数量<input aria-label="普通帕鲁发放数量" type="number" min={1} max={100} value={palCount} onChange={(event) => setPalCount(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-700 focus:border-sky-500 focus:outline-none" /></label>
           </div>
+          <label className="mt-3 inline-flex items-center gap-2 text-[11px] font-bold text-slate-500"><input aria-label="显示高级帕鲁内容" type="checkbox" checked={showAdvancedPals} onChange={(event) => setShowAdvancedPals(event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500" />显示高级帕鲁内容</label>
           <label className="relative mt-3 block"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input aria-label="搜索帕鲁目录" value={palSearch} onChange={(event) => setPalSearch(event.target.value)} placeholder="搜索中文名或 PalID" className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-700 focus:border-sky-500 focus:outline-none" /></label>
           <div className="mt-3 grid max-h-56 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
             {filteredPalCatalog.map((pal) => <button type="button" key={pal.id} onClick={() => setPalID(pal.id)} aria-pressed={palID.toLowerCase() === pal.id.toLowerCase()} className={`flex min-w-0 items-center gap-2 rounded-xl border p-2 text-left ${palID.toLowerCase() === pal.id.toLowerCase() ? 'border-sky-300 bg-sky-50' : 'border-slate-100 bg-slate-50/70'}`}><PalIcon characterID={pal.id} name={pal.name} className="h-9 w-9 rounded-lg" /><span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-bold text-slate-700">{pal.name}</span><span className="mt-1 block truncate font-mono text-[9px] text-slate-400">{pal.id}</span></span></button>)}

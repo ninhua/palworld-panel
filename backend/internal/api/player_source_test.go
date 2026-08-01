@@ -113,6 +113,11 @@ func TestPlayersSeparateHistoricalAndServerSources(t *testing.T) {
 	if restCalls.Load() != 0 {
 		t.Fatalf("historical player view called live REST %d times", restCalls.Load())
 	}
+	cleanupHistorical := httptest.NewRecorder()
+	router.ServeHTTP(cleanupHistorical, httptest.NewRequest(http.MethodPost, "/api/bases/base-1/clean", nil))
+	if cleanupHistorical.Code != http.StatusConflict || !strings.Contains(cleanupHistorical.Body.String(), "base_cleanup_server_only") {
+		t.Fatalf("historical base cleanup: %d %s", cleanupHistorical.Code, cleanupHistorical.Body.String())
+	}
 
 	live := getPlayerSourceResponse(t, router, "/api/players?source=server")
 	assertPlayerSourceResponse(t, live, "LIVE-UID", 62, true, "server", "server", "server", "Current server", true)

@@ -149,7 +149,7 @@ export const PlayerCenter: React.FC = () => {
   });
   const palCatalogQuery = useQuery({
     queryKey: ['paldefender-gm', 'catalog', 'pals'],
-    queryFn: () => palDefenderGMApi.palCatalog('', 5000),
+    queryFn: () => palDefenderGMApi.palCatalog('', 5000, true),
     enabled: activeTab === 'pals',
     staleTime: 30 * 60 * 1000,
   });

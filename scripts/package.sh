@@ -251,6 +251,9 @@ build_linux() {
   (cd "$root_dir/backend" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "$backend_ldflags" -o "$package_dir/bin/palpanel-updater" ./cmd/palpanel-updater)
   printf '[palpanel] Building cgo sav-cli linux-%s\n' "$arch"
   (cd "$root_dir/sav-cli" && CGO_ENABLED=1 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "$sav_ldflags" -o "$package_dir/bin/sav-cli" ./cmd/sav_cli)
+  printf '[palpanel] Building UID remapper linux-%s\n' "$arch"
+  (cd "$root_dir/tools/palworld-uid-remap" && CARGO_TARGET_DIR="$staging_dir/uid-remapper-linux-$arch" cargo build --locked --release)
+  cp "$staging_dir/uid-remapper-linux-$arch/release/palworld-uid-remap" "$package_dir/bin/palworld-uid-remap"
   printf '[palpanel] Publishing self-contained PalCalc bridge linux-%s\n' "$arch"
   # Local release packaging must remain deterministic when NuGet's advisory
   # endpoint is unavailable. GitHub CI explicitly enables the online audit.

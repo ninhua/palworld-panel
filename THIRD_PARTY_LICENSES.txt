@@ -86,14 +86,15 @@ Runtime-downloaded PalDefender
   A digest-verified PalDefender.zip is used only when the direct DLL assets are
   not present in that Release.
 
-Runtime community icon references
----------------------------------
-- The player center can request Pal icons from the public GitHub Raw paths in
-  bingyouxue/palworld-server-tool-gm. These images are not copied into or
-  redistributed with PalPanel packages; failed requests fall back to Lucide.
+Pal catalog artwork
+-------------------
+- The 307 Pal identification PNGs under frontend/public/assets/pals are sourced
+  from bingyouxue/palworld-server-tool-gm commit
+  d4e96a20e635698ebf7e73e928635144d0967e26, licensed Apache-2.0. The complete
+  license is included beside the assets as LICENSE.apache-2.0.txt.
 - Palworld names, characters, and artwork remain property of Pocketpair, Inc.
-  Referencing a remote image does not relicense that artwork under PalPanel's
-  GPL.
+  They are used only for in-panel identification and are not relicensed under
+  PalPanel's GPL.
 
 MapLibre map renderer
 ----------------------

@@ -21,6 +21,7 @@ import type {
   PalDefenderInventoryContainer,
   PalDefenderInventorySlot,
   PalDefenderItemCatalog,
+  PalDefenderItemCatalogEntry,
   PalDefenderItemGrant,
   PalDefenderPalCatalog,
   PalDefenderPalCatalogEntry,
@@ -180,7 +181,9 @@ const mapItemCatalog = (raw: unknown): PalDefenderItemCatalog => {
         const id = String(item.id || '').trim();
         const name = String(item.name || '').trim();
         if (!id || !name) return [];
-        return [{ id, name, icon: item.icon ? String(item.icon) : undefined }];
+        const rawCollaboration = item.collaboration;
+        const collaboration: PalDefenderItemCatalogEntry['collaboration'] = rawCollaboration === 'terraria' || rawCollaboration === 'ultrakill' ? rawCollaboration : undefined;
+        return [{ id, name, icon: item.icon ? String(item.icon) : undefined, collaboration }];
       })
     : [];
   return { items, returned: Number(data.returned ?? items.length) };
@@ -193,7 +196,8 @@ const mapPalCatalog = (raw: unknown): PalDefenderPalCatalog => {
         const item = asRecord(rawItem);
         const id = String(item.id || '').trim();
         const name = String(item.name || '').trim();
-        return id && name ? [{ id, name }] : [];
+        const kind = item.kind === 'standard' || item.kind === 'advanced' ? item.kind : undefined;
+        return id && name ? [{ id, name, kind, icon_url: item.icon_url ? String(item.icon_url) : undefined }] : [];
       })
     : [];
   return { items, returned: Number(data.returned ?? items.length) };
@@ -555,10 +559,11 @@ export const palDefenderGMApi = {
     );
   },
 
-  palCatalog: (query = '', limit = 5000) => {
+  palCatalog: (query = '', limit = 5000, advanced = false) => {
     const params = new URLSearchParams();
     if (query.trim()) params.set('q', query.trim());
     params.set('limit', String(limit));
+    if (advanced) params.set('advanced', 'true');
     return handleRequest<unknown, PalDefenderPalCatalog>(
       () => apiClient.get(`/security/paldefender/gm/catalog/pals?${params.toString()}`),
       { items: [], returned: 0 },

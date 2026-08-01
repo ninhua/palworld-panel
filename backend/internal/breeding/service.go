@@ -429,7 +429,7 @@ func localizeCatalog(raw json.RawMessage) (json.RawMessage, error) {
 	if err := json.Unmarshal(raw, &document); err != nil {
 		return nil, fmt.Errorf("PalCalc catalog response is invalid: %w", err)
 	}
-	localizeCatalogItems(document["pals"], pallocalize.PalName)
+	localizeCatalogItems(document["pals"], pallocalize.BreedingPalName)
 	localizeCatalogItems(document["passives"], pallocalize.PassiveName)
 	return json.Marshal(document)
 }
@@ -468,7 +468,7 @@ func localizeBreedingValue(value any) {
 	case map[string]any:
 		if palID := breedingText(typed["pal_id"]); palID != "" {
 			original := breedingText(typed["pal_name"])
-			localized := pallocalize.PalName(palID)
+			localized := pallocalize.BreedingPalName(palID)
 			if localized == "" || localized == palID {
 				localized = firstNonEmptyText(original, palID)
 			}

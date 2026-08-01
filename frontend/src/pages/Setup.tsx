@@ -61,6 +61,7 @@ type NextActionKind =
   | 'install_docker'
   | 'bootstrap'
   | 'initialize_config'
+  | 'update_game'
   | 'start_server'
   | 'running'
   | 'blocked'
@@ -470,6 +471,7 @@ export const Setup: React.FC = () => {
     dockerPlan,
     requiredSystemMissing,
     isJobRunning,
+    versionInfo,
   });
   const needsWindowsSource = Boolean(isWindowsHost && status && !status.installed);
   const nextAction: NextAction = needsWindowsSource && windowsServerSource !== 'install'
@@ -507,6 +509,9 @@ export const Setup: React.FC = () => {
         break;
       case 'initialize_config':
         await initializeConfig();
+        break;
+      case 'update_game':
+        await runJob(serverApi.updateIfNeeded);
         break;
       case 'start_server':
         await startServer();
@@ -554,7 +559,7 @@ export const Setup: React.FC = () => {
           <StatusItem label="当前 Build" value={versionInfo.current_build_id || '未知'} ok={Boolean(versionInfo.current_build_id)} />
           <StatusItem label="最新 Build" value={versionInfo.latest_build_id || '未检查'} ok={Boolean(versionInfo.latest_build_id)} />
           <StatusItem
-            label={`兼容目标 ${versionInfo.compatibility_target || '1.0.1'}`}
+            label={`兼容范围 ${versionInfo.compatibility_target || '1.x'}`}
             value={versionInfo.compatible === true ? '兼容' : versionInfo.compatible === false ? '不匹配' : '待运行确认'}
             ok={versionInfo.compatible === true}
           />
@@ -1275,7 +1280,7 @@ const AdvancedSetupPanel: React.FC<{
               <StatusItem label="当前 Build" value={versionInfo?.current_build_id || '未知'} ok={Boolean(versionInfo?.current_build_id)} />
               <StatusItem label="最新 Build" value={versionInfo?.latest_build_id || '未检查'} ok={Boolean(versionInfo?.latest_build_id)} />
               <StatusItem
-                label={`兼容目标 ${versionInfo?.compatibility_target || '1.0.1'}`}
+                label={`兼容范围 ${versionInfo?.compatibility_target || '1.x'}`}
                 value={versionInfo?.compatible === true ? '兼容' : versionInfo?.compatible === false ? '不匹配' : '待运行确认'}
                 ok={versionInfo?.compatible === true}
               />
@@ -1327,6 +1332,7 @@ const getNextAction = ({
   dockerPlan,
   requiredSystemMissing,
   isJobRunning,
+  versionInfo,
 }: {
   loading: boolean;
   status: ServerStatus | null;
@@ -1336,6 +1342,7 @@ const getNextAction = ({
   dockerPlan: DockerInstallPlan | null;
   requiredSystemMissing: Prerequisite[];
   isJobRunning: boolean;
+  versionInfo: ServerVersionInfo | null;
 }): NextAction => {
   if (loading) {
     return {
@@ -1371,20 +1378,29 @@ const getNextAction = ({
     };
   }
 
-  if (status.status === 'running') {
-    return {
-      kind: 'running',
-      label: '服务端运行中',
-      description: '服务端已经启动，可以进入仪表盘查看运行状态。',
-      disabled: true,
-    };
-  }
-
   if (isJobRunning) {
     return {
       kind: 'blocked',
       label: '任务执行中',
       description: '正在执行安装或维护任务，请等待任务完成。',
+      disabled: true,
+    };
+  }
+
+  if (status.installed && versionInfo?.update_available) {
+    return {
+      kind: 'update_game',
+      label: '更新游戏服务端',
+      description: `检测到新 Build ${versionInfo.current_build_id || '未知'} -> ${versionInfo.latest_build_id || '未知'}。更新前会自动备份，完成后恢复原运行状态。`,
+      disabled: false,
+    };
+  }
+
+  if (status.status === 'running') {
+    return {
+      kind: 'running',
+      label: '服务端运行中',
+      description: '服务端已经启动，可以进入仪表盘查看运行状态。',
       disabled: true,
     };
   }
@@ -1501,6 +1517,7 @@ const primaryActionIcon = (kind: NextActionKind) => {
     case 'install_docker':
     case 'bootstrap':
     case 'initialize_config':
+    case 'update_game':
       return <Download size={18} />;
     default:
       return <RefreshCw size={18} />;

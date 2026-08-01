@@ -13,6 +13,15 @@ var catalogJSON []byte
 //go:embed technologies.zh-CN.json
 var technologyCatalogJSON []byte
 
+//go:embed pals.palcalc-v26.zh-CN.json
+var palCatalogJSON []byte
+
+//go:embed pals.advanced.zh-CN.json
+var advancedPalCatalogJSON []byte
+
+//go:embed item-collaborations.zh-CN.json
+var itemCollaborationsJSON []byte
+
 type catalog struct {
 	Pals      map[string]string `json:"pals"`
 	Items     map[string]string `json:"items"`
@@ -22,6 +31,7 @@ type catalog struct {
 
 type normalizedCatalog struct {
 	pals         map[string]string
+	breedingPals map[string]string
 	items        map[string]string
 	itemIcons    map[string]string
 	passives     map[string]string
@@ -33,14 +43,22 @@ type normalizedCatalog struct {
 }
 
 type ItemEntry struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Icon string `json:"icon,omitempty"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Icon          string `json:"icon,omitempty"`
+	Collaboration string `json:"collaboration,omitempty"`
+}
+
+type collaborationItemEntry struct {
+	ID            string `json:"id"`
+	Collaboration string `json:"collaboration"`
 }
 
 type PalEntry struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Kind    string `json:"kind"`
+	IconURL string `json:"icon_url"`
 }
 
 type PassiveEntry struct {
@@ -64,21 +82,34 @@ func loadCatalog() normalizedCatalog {
 	if err := json.Unmarshal(catalogJSON, &source); err != nil {
 		panic("decode embedded Palworld localization catalog: " + err.Error())
 	}
+	var collaborationItems []collaborationItemEntry
+	if err := json.Unmarshal(itemCollaborationsJSON, &collaborationItems); err != nil {
+		panic("decode embedded Palworld collaboration catalog: " + err.Error())
+	}
+	collaborations := make(map[string]string, len(collaborationItems))
+	for _, item := range collaborationItems {
+		collaborations[normalize(item.ID)] = strings.TrimSpace(item.Collaboration)
+	}
 	itemList := make([]ItemEntry, 0, len(source.Items))
 	for id, name := range source.Items {
 		id = strings.TrimSpace(id)
 		name = strings.TrimSpace(name)
 		if id != "" && name != "" {
-			itemList = append(itemList, ItemEntry{ID: id, Name: name, Icon: strings.TrimSpace(source.ItemIcons[id])})
+			itemList = append(itemList, ItemEntry{ID: id, Name: name, Icon: strings.TrimSpace(source.ItemIcons[id]), Collaboration: collaborations[normalize(id)]})
 		}
 	}
-	palList := make([]PalEntry, 0, len(source.Pals))
-	for id, name := range source.Pals {
-		id = strings.TrimSpace(id)
-		name = strings.TrimSpace(name)
-		if id != "" && name != "" {
-			palList = append(palList, PalEntry{ID: id, Name: name})
-		}
+	var palList []PalEntry
+	if err := json.Unmarshal(palCatalogJSON, &palList); err != nil {
+		panic("decode embedded PalCalc Pal catalog: " + err.Error())
+	}
+	var advancedPals []PalEntry
+	if err := json.Unmarshal(advancedPalCatalogJSON, &advancedPals); err != nil {
+		panic("decode embedded advanced Pal catalog: " + err.Error())
+	}
+	palList = append(normalizePalEntries(palList, "standard"), normalizePalEntries(advancedPals, "advanced")...)
+	palNames := make(map[string]string, len(palList))
+	for _, pal := range palList {
+		palNames[pal.ID] = pal.Name
 	}
 	passiveList := make([]PassiveEntry, 0, len(source.Passives))
 	for id, name := range source.Passives {
@@ -107,7 +138,8 @@ func loadCatalog() normalizedCatalog {
 		return strings.ToLower(passiveList[i].ID) < strings.ToLower(passiveList[j].ID)
 	})
 	return normalizedCatalog{
-		pals:         normalizeKeys(source.Pals),
+		pals:         normalizeKeys(palNames),
+		breedingPals: normalizeKeys(source.Pals),
 		items:        normalizeKeys(source.Items),
 		itemIcons:    normalizeKeys(source.ItemIcons),
 		passives:     normalizeKeys(source.Passives),
@@ -117,6 +149,24 @@ func loadCatalog() normalizedCatalog {
 		passiveList:  passiveList,
 		techList:     techList,
 	}
+}
+
+func normalizePalEntries(entries []PalEntry, kind string) []PalEntry {
+	out := make([]PalEntry, 0, len(entries))
+	seen := map[string]bool{}
+	for _, entry := range entries {
+		entry.ID = strings.TrimSpace(entry.ID)
+		entry.Name = strings.TrimSpace(entry.Name)
+		entry.Kind = kind
+		key := normalize(entry.ID)
+		if key == "" || entry.Name == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		entry.IconURL = "/assets/pals/" + key + ".png"
+		out = append(out, entry)
+	}
+	return out
 }
 
 func normalizeTechnologyEntries(entries []TechnologyEntry) []TechnologyEntry {
@@ -172,6 +222,10 @@ func normalize(value string) string {
 
 func PalName(characterID string) string {
 	return lookup(names.pals, characterID)
+}
+
+func BreedingPalName(characterID string) string {
+	return lookup(names.breedingPals, characterID)
 }
 
 func ItemName(itemID string) string {
@@ -237,10 +291,17 @@ func SearchItems(query string, limit int) []ItemEntry {
 }
 
 func SearchPals(query string, limit int) []PalEntry {
+	return SearchPalsWithOptions(query, limit, false)
+}
+
+func SearchPalsWithOptions(query string, limit int, includeAdvanced bool) []PalEntry {
 	limit = normalizeSearchLimit(limit)
 	query = normalize(query)
 	results := make([]PalEntry, 0, min(limit, len(names.palList)))
 	for _, pal := range names.palList {
+		if pal.Kind == "advanced" && !includeAdvanced {
+			continue
+		}
 		if query != "" && !strings.Contains(normalize(pal.ID), query) && !strings.Contains(normalize(pal.Name), query) {
 			continue
 		}

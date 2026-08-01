@@ -25,6 +25,7 @@ export const ItemWorkspace: React.FC<{
   onAdjust: (itemID: string, currentCount: number, targetCount: number) => Promise<boolean>;
 }> = ({ catalog, inventory, inventoryLoading, canWrite, online, busy, pending, onRefresh, onGive, onAdjust }) => {
   const [search, setSearch] = useState('');
+  const [catalogMode, setCatalogMode] = useState<'all' | 'collaboration' | 'terraria' | 'ultrakill'>('all');
   const [selected, setSelected] = useState<PalDefenderItemCatalogEntry | null>(null);
   const [count, setCount] = useState('1');
   const [rows, setRows] = useState<GrantRow[]>([]);
@@ -34,9 +35,12 @@ export const ItemWorkspace: React.FC<{
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    if (!needle) return catalog.slice(0, 48);
-    return catalog.filter((item) => item.id.toLowerCase().includes(needle) || item.name.toLowerCase().includes(needle)).slice(0, 80);
-  }, [catalog, search]);
+    return catalog.filter((item) => {
+      if (catalogMode === 'collaboration' && !item.collaboration) return false;
+      if ((catalogMode === 'terraria' || catalogMode === 'ultrakill') && item.collaboration !== catalogMode) return false;
+      return !needle || item.id.toLowerCase().includes(needle) || item.name.toLowerCase().includes(needle);
+    }).slice(0, needle ? 80 : 48);
+  }, [catalog, catalogMode, search]);
 
   const addSelected = () => {
     const amount = Number(count);
@@ -87,6 +91,11 @@ export const ItemWorkspace: React.FC<{
           <span className="sr-only">搜索物品</span><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input aria-label="搜索物品" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索中文名或 ItemID" className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-700 focus:border-sky-500 focus:outline-none" />
         </label>
+        <div className="mt-3 flex flex-wrap gap-1.5" aria-label="物品目录筛选">
+          {([['all', '全部物品'], ['collaboration', '联动物品'], ['terraria', '泰拉瑞亚'], ['ultrakill', 'ULTRAKILL']] as const).map(([mode, label]) => (
+            <button type="button" key={mode} onClick={() => setCatalogMode(mode)} aria-pressed={catalogMode === mode} className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-bold transition-colors ${catalogMode === mode ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}>{label}</button>
+          ))}
+        </div>
         <div className="mt-3 grid max-h-80 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-3 2xl:grid-cols-4">
           {filtered.map((item) => (
             <button type="button" key={item.id} onClick={() => setSelected(item)} aria-pressed={selected?.id === item.id} className={`flex min-w-0 flex-col items-center rounded-xl border p-2 text-center transition-colors ${selected?.id === item.id ? 'border-sky-300 bg-sky-50 ring-2 ring-sky-100' : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50'}`}>

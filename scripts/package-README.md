@@ -27,6 +27,12 @@ logs remain inside the extracted package directory. `palpanelctl start` starts
 and health-checks `sav-cli` and `palcalc-bridge` before the backend; stopping
 or restarting the panel manages all three processes together.
 
+Player Save Migration in the Save Center uses the bundled
+`bin/palworld-uid-remap` executable. The guided workflow calculates Steam and
+NoSteam PlayerUID values, blocks existing target UIDs, creates a verified full
+backup, stops the game server, performs an atomic world replacement, and rolls
+back automatically when verification or restart fails.
+
 ## systemd installation
 
 ```bash

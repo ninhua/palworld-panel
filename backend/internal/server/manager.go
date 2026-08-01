@@ -81,6 +81,11 @@ type Manager struct {
 	crashGuardThreshold       int
 	crashGuardMu              *sync.Mutex
 	crashGuardAfterStateRead  func()
+	migrationRemap            func(context.Context, string, string, []UIDMapping) error
+	migrationVerify           func(string, []UIDMapping) error
+	migrationStatus           func(context.Context) (Status, error)
+	migrationStop             func(context.Context) error
+	migrationStart            func(context.Context) error
 }
 
 type Status struct {

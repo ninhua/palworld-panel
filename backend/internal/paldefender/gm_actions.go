@@ -29,6 +29,24 @@ type ReleasePalRequest struct {
 	Lucky  *bool  `json:"Lucky,omitempty"`
 }
 
+func (m Manager) RCONGetNearestBase(ctx context.Context, x, y, z float64) (RCONResult, error) {
+	return m.runBaseRCON(ctx, "/getnearestbase", x, y, z)
+}
+
+func (m Manager) RCONKillNearestBase(ctx context.Context, x, y, z float64) (RCONResult, error) {
+	return m.runBaseRCON(ctx, "/killnearestbase", x, y, z)
+}
+
+func (m Manager) runBaseRCON(ctx context.Context, command string, x, y, z float64) (RCONResult, error) {
+	coordinates := []float64{x, y, z}
+	for _, coordinate := range coordinates {
+		if math.IsNaN(coordinate) || math.IsInf(coordinate, 0) || math.Abs(coordinate) > maxTeleportCoordinate {
+			return RCONResult{}, invalidRESTRequest("base coordinates must be finite and between -%d and %d", maxTeleportCoordinate, maxTeleportCoordinate)
+		}
+	}
+	return m.runTypedRCON(ctx, strings.Join([]string{command, formatRCONFloat(x), formatRCONFloat(y), formatRCONFloat(z)}, " "), false)
+}
+
 func (m Manager) RCONRemoveItems(ctx context.Context, identifier string, request RemoveItemsRequest) (RCONResult, error) {
 	identifier, err := validatePlayerIdentifier(identifier)
 	if err != nil {

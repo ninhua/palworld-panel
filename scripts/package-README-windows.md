@@ -19,6 +19,12 @@ managed runtime data lives in `data\` next to `PalPanel.exe`. This includes the 
 backups, logs, game installation, saves, Mods, UE4SS, and PalDefender files managed by the
 panel. Do not point a release ZIP at a source-tree runtime by accident.
 
+Player Save Migration in the Save Center uses the bundled
+`palworld-uid-remap.exe`. The guided workflow calculates Steam and NoSteam
+PlayerUID values, blocks existing target UIDs, creates a verified full backup,
+stops the game server, performs an atomic world replacement, and rolls back
+automatically when verification or restart fails.
+
 The setup page can also bind an existing Palworld Dedicated Server directory.
 That import is in-place: PalPanel stores the validated absolute path and manages
 the existing configuration, saves, Mods, backups, launches, and updates there.

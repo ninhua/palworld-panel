@@ -201,7 +201,7 @@ func (s Server) palDefenderGMPalCatalog(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "invalid_limit", err.Error())
 		return
 	}
-	items := pallocalize.SearchPals(c.Query("q"), limit)
+	items := pallocalize.SearchPalsWithOptions(c.Query("q"), limit, c.Query("advanced") == "true")
 	ok(c, gin.H{"items": items, "returned": len(items)})
 }
 

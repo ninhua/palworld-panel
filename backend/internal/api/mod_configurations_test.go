@@ -83,9 +83,10 @@ func TestModConfigurationRoutesEnforceActualPermissions(t *testing.T) {
 		name       string
 		role       Role
 		wantUpdate int
+		wantAction int
 	}{
-		{name: "viewer", role: RoleViewer, wantUpdate: http.StatusForbidden},
-		{name: "operator", role: RoleOperator, wantUpdate: http.StatusOK},
+		{name: "viewer", role: RoleViewer, wantUpdate: http.StatusForbidden, wantAction: http.StatusForbidden},
+		{name: "operator", role: RoleOperator, wantUpdate: http.StatusOK, wantAction: http.StatusOK},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			router, file := newModConfigurationPermissionRouter(t, test.role)
@@ -106,6 +107,16 @@ func TestModConfigurationRoutesEnforceActualPermissions(t *testing.T) {
 			if response.Code != test.wantUpdate {
 				t.Fatalf("PUT status = %d, want %d: %s", response.Code, test.wantUpdate, response.Body.String())
 			}
+
+			body = bytes.NewBufferString(`{"action":"initialize"}`)
+			request = httptest.NewRequest(http.MethodPost, "/api/mods/configurations/palzones/actions", body)
+			request.Header.Set("Content-Type", "application/json")
+			authorizeTestRequest(request)
+			response = httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != test.wantAction {
+				t.Fatalf("POST action status = %d, want %d: %s", response.Code, test.wantAction, response.Body.String())
+			}
 		})
 	}
 }
@@ -123,6 +134,9 @@ func newModConfigurationPermissionRouter(t *testing.T, role Role) (*gin.Engine, 
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(modRoot, "Config.json"), []byte(`{"Enabled":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(cfg.Win64Dir(), "UE4SS", "Mods", "PalZones"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	store, err := db.Open(cfg.DBPath)

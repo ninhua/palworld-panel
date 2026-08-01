@@ -21,6 +21,7 @@ func (s Server) registerModConfigurationRoutes(api *gin.RouterGroup) {
 	api.GET("/mods/configurations", s.listModConfigurations)
 	api.GET("/mods/configurations/:adapter", s.getModConfiguration)
 	api.PUT("/mods/configurations/:adapter", Require(PermModsWrite), s.updateModConfiguration)
+	api.POST("/mods/configurations/:adapter/actions", Require(PermModsWrite), s.runModConfigurationAction)
 	api.GET("/mods/configurations/:adapter/backups", s.listModConfigurationBackups)
 	api.POST("/mods/configurations/:adapter/backups/:backup/restore", Require(PermModsWrite), s.restoreModConfigurationBackup)
 	api.GET("/mods/:id/files", s.listModConfigFiles)
@@ -28,6 +29,20 @@ func (s Server) registerModConfigurationRoutes(api *gin.RouterGroup) {
 	api.PUT("/mods/:id/files/:file", Require(PermModsWrite), s.updateModConfigFile)
 	api.GET("/mods/:id/files/:file/backups", s.listModConfigFileBackups)
 	api.POST("/mods/:id/files/:file/backups/:backup/restore", Require(PermModsWrite), s.restoreModConfigFileBackup)
+}
+
+func (s Server) runModConfigurationAction(c *gin.Context) {
+	var request mods.ConfigurationActionRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		fail(c, http.StatusBadRequest, "invalid_configuration_request", err.Error())
+		return
+	}
+	result, err := s.mods.RunConfigurationAction(c.Request.Context(), c.Param("adapter"), request)
+	if err != nil {
+		failModConfiguration(c, err)
+		return
+	}
+	ok(c, result)
 }
 
 func (s Server) listModConfigurations(c *gin.Context) {
@@ -149,12 +164,14 @@ func failModConfiguration(c *gin.Context, err error) {
 		switch configErr.Code {
 		case "configuration_adapter_not_found", "configuration_file_not_found", "configuration_root_not_found", "configuration_backup_not_found", "mod_not_found", "mod_has_no_config_root":
 			status = http.StatusNotFound
-		case "configuration_revision_conflict":
+		case "configuration_revision_conflict", "configuration_already_initialized":
 			status = http.StatusConflict
 		case "configuration_file_too_large":
 			status = http.StatusRequestEntityTooLarge
-		case "configuration_file_forbidden", "configuration_not_utf8", "configuration_parse_failed", "executable_confirmation_required", "invalid_configuration_request":
+		case "configuration_file_forbidden", "configuration_not_utf8", "configuration_parse_failed", "configuration_validation_failed", "configuration_action_not_supported", "executable_confirmation_required", "invalid_configuration_request":
 			status = http.StatusBadRequest
+		case "configuration_unavailable", "mod_dependency_missing":
+			status = http.StatusUnprocessableEntity
 		case "unsafe_configuration_path":
 			status = http.StatusForbidden
 		}

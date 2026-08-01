@@ -73,3 +73,46 @@ func TestStandardPassiveCatalogMatchesPalCalcV26(t *testing.T) {
 		}
 	}
 }
+
+func TestStandardPalCatalogMatchesPalCalcV26(t *testing.T) {
+	pals := SearchPalsWithOptions("", 5000, false)
+	if len(pals) != 299 {
+		t.Fatalf("standard Pal count = %d, want 299", len(pals))
+	}
+	for id, want := range map[string]string{
+		"SleeveRabbit":   "兔绣袖",
+		"WingGolem_Fire": "丹烽",
+	} {
+		matches := SearchPalsWithOptions(id, 10, false)
+		if len(matches) != 1 || matches[0].ID != id || matches[0].Name != want {
+			t.Errorf("SearchPalsWithOptions(%q) = %#v", id, matches)
+			continue
+		}
+		if matches[0].Kind != "standard" || matches[0].IconURL != "/assets/pals/"+normalize(id)+".png" {
+			t.Errorf("Pal metadata for %q = %#v", id, matches[0])
+		}
+	}
+}
+
+func TestAdvancedPalCatalogIsExplicitlyOptIn(t *testing.T) {
+	if matches := SearchPalsWithOptions("PREDATOR_Garm_Quest", 10, false); len(matches) != 0 {
+		t.Fatalf("advanced Pal leaked into standard catalog: %#v", matches)
+	}
+	matches := SearchPalsWithOptions("PREDATOR_Garm_Quest", 10, true)
+	if len(matches) != 1 || matches[0].Kind != "advanced" {
+		t.Fatalf("advanced Pal catalog = %#v", matches)
+	}
+}
+
+func TestItemCatalogMarksCollaborationContent(t *testing.T) {
+	items := SearchItems("", 5000)
+	collaborations := map[string]int{}
+	for _, item := range items {
+		if item.Collaboration != "" {
+			collaborations[item.Collaboration]++
+		}
+	}
+	if collaborations["terraria"] != 111 || collaborations["ultrakill"] != 24 {
+		t.Fatalf("collaboration counts = %#v", collaborations)
+	}
+}

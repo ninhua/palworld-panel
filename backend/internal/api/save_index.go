@@ -392,7 +392,16 @@ func (s Server) getSavePal(c *gin.Context) {
 }
 
 func (s Server) listMapEntities(c *gin.Context) {
-	index, status, err := s.currentSaveIndex(c)
+	source := strings.TrimSpace(c.Query("source"))
+	if source != "" && source != "server" {
+		fail(c, http.StatusBadRequest, "map_source_invalid", "source must be server when specified")
+		return
+	}
+	manager := s.saveIndex
+	if source == "server" {
+		manager = s.serverSaveIndex
+	}
+	index, status, err := s.playerIndexCurrent(c, manager, source == "server")
 	if err != nil && !status.Stale {
 		index = saveindex.EmptyIndex()
 	}
@@ -407,6 +416,16 @@ func (s Server) listMapEntities(c *gin.Context) {
 		"entities": paged,
 		"status":   status,
 		"summary":  summary,
+		"view": gin.H{
+			"scope":     firstNonEmpty(source, "active"),
+			"source_id": firstNonEmpty(source, "active"),
+			"source_kind": func() string {
+				if source == "server" {
+					return "server"
+				}
+				return "active"
+			}(),
+		},
 		"live": gin.H{
 			"available":      liveAvailable,
 			"source":         liveSource,
@@ -790,18 +809,19 @@ func buildMapEntities(index saveindex.Index, online map[string]onlinePlayer) []g
 	}
 	for _, base := range index.Bases {
 		entities = append(entities, gin.H{
-			"type":       "base",
-			"id":         base.ID,
-			"label":      pallocalize.BaseName(base.Name),
-			"raw_label":  base.Name,
-			"location":   base.Location,
-			"x":          base.Location.X,
-			"y":          base.Location.Y,
-			"z":          base.Location.Z,
-			"source":     "save",
-			"guild_id":   base.GuildID,
-			"guild_name": pallocalize.GuildName(base.GuildName),
-			"pals_count": len(base.Workers),
+			"type":             "base",
+			"id":               base.ID,
+			"label":            pallocalize.BaseName(base.Name),
+			"raw_label":        base.Name,
+			"location":         base.Location,
+			"x":                base.Location.X,
+			"y":                base.Location.Y,
+			"z":                base.Location.Z,
+			"source":           "save",
+			"guild_id":         base.GuildID,
+			"guild_name":       pallocalize.GuildName(base.GuildName),
+			"pals_count":       len(base.Workers),
+			"structures_count": base.StructuresCount,
 		})
 	}
 	for _, pal := range index.Pals {
