@@ -208,13 +208,19 @@ export interface components {
     };
     "BossSummary": {
       "active_summons": number;
+      "active_waves": number;
       "cancelled_summons": number;
       "completed_summons": number;
+      "completed_waves": number;
       "enabled_rewards": number;
       "enabled_templates": number;
       "failed_summons": number;
+      "failed_waves": number;
       "pending_summons": number;
+      "pending_waves": number;
       "rewards": number;
+      "skipped_waves": number;
+      "template_waves": number;
       "templates": number;
     };
     "BossSummon": {
@@ -258,6 +264,32 @@ export interface components {
       "duplicate": boolean;
       "summon": components["schemas"]["BossSummon"];
     };
+    "BossSummonWave": {
+      "actor"?: string;
+      "attack_multiplier": number;
+      "capturable": boolean;
+      "completed_at"?: string;
+      "count": number;
+      "created_at": string;
+      "defense_multiplier": number;
+      "delay_seconds": number;
+      "failure"?: string;
+      "hp_multiplier": number;
+      "id": number;
+      "kind": "main" | "minion" | "reinforcement";
+      "level": number;
+      "metadata": components["schemas"]["JsonObject"];
+      "name": string;
+      "pal_id": string;
+      "position": number;
+      "result": components["schemas"]["JsonObject"];
+      "source_wave_id"?: string;
+      "spawn_radius": number;
+      "started_at"?: string;
+      "status": "pending" | "active" | "completed" | "failed" | "skipped";
+      "summon_id": string;
+      "updated_at": string;
+    };
     "BossTemplate": {
       "archived_at"?: string;
       "attack_multiplier": number;
@@ -300,6 +332,47 @@ export interface components {
       "message"?: string;
       "result"?: components["schemas"]["JsonObject"];
       "status": "pending" | "active" | "completed" | "failed" | "cancelled";
+    };
+    "BossWave": {
+      "attack_multiplier": number;
+      "capturable": boolean;
+      "count": number;
+      "created_at": string;
+      "defense_multiplier": number;
+      "delay_seconds": number;
+      "hp_multiplier": number;
+      "id": string;
+      "kind": "main" | "minion" | "reinforcement";
+      "level": number;
+      "metadata": components["schemas"]["JsonObject"];
+      "name": string;
+      "pal_id": string;
+      "position": number;
+      "spawn_radius": number;
+      "template_id": string;
+      "updated_at": string;
+    };
+    "BossWaveInput": {
+      "attack_multiplier": number;
+      "capturable": boolean;
+      "count": number;
+      "defense_multiplier": number;
+      "delay_seconds": number;
+      "hp_multiplier": number;
+      "kind": "main" | "minion" | "reinforcement";
+      "level": number;
+      "metadata": components["schemas"]["JsonObject"];
+      "name": string;
+      "pal_id": string;
+      "spawn_radius": number;
+    };
+    "BossWaveSetRequest": {
+      "waves": Array<components["schemas"]["BossWaveInput"]>;
+    };
+    "BossWaveTransitionRequest": {
+      "message"?: string;
+      "result"?: components["schemas"]["JsonObject"];
+      "status": "active" | "completed" | "failed" | "skipped";
     };
     "BreedingStatus": {
       "available": boolean;
@@ -1340,7 +1413,7 @@ export interface components {
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/palworld-panel";
-        "version": "0.8.66";
+        "version": "0.8.67";
       };
       "upstream": {
         "commit": string;

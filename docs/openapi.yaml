@@ -1703,6 +1703,23 @@ paths:
       tags: [boss]
       x-palpanel-permission: 'config:write'
       responses: {'200': *success, '401': *error, '403': *error, '404': *error, '500': *error}
+  /boss/templates/{id}/waves:
+    parameters: [*idParameter]
+    get:
+      operationId: listBossTemplateWaves
+      tags: [boss]
+      x-palpanel-permission: read
+      responses: {'200': *success, '401': *error, '404': *error, '500': *error}
+    put:
+      operationId: replaceBossTemplateWaves
+      tags: [boss]
+      x-palpanel-permission: 'config:write'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BossWaveSetRequest'}
+      responses: {'200': *success, '400': *error, '401': *error, '403': *error, '404': *error, '500': *error}
   /boss/summons:
     get:
       operationId: listBossSummons
@@ -1736,6 +1753,27 @@ paths:
         content:
           application/json:
             schema: {$ref: '#/components/schemas/BossTransitionRequest'}
+      responses: {'200': *success, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error, '500': *error}
+  /boss/summons/{id}/waves:
+    parameters: [*idParameter]
+    get:
+      operationId: listBossSummonWaves
+      tags: [boss]
+      x-palpanel-permission: read
+      responses: {'200': *success, '401': *error, '404': *error, '500': *error}
+  /boss/summons/{id}/waves/{position}/transition:
+    parameters:
+      - *idParameter
+      - {name: position, in: path, required: true, schema: {type: integer, minimum: 1, maximum: 20}}
+    post:
+      operationId: transitionBossSummonWave
+      tags: [boss]
+      x-palpanel-permission: 'server:control'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BossWaveTransitionRequest'}
       responses: {'200': *success, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error, '500': *error}
   /boss/summons/{id}/events:
     parameters: [*idParameter]
@@ -4380,6 +4418,86 @@ components:
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
         archived_at: {type: string, format: date-time}
+    BossWaveInput:
+      type: object
+      required: [name, kind, pal_id, level, count, hp_multiplier, attack_multiplier, defense_multiplier, spawn_radius, delay_seconds, capturable, metadata]
+      additionalProperties: false
+      properties:
+        name: {type: string, maxLength: 128}
+        kind: {type: string, enum: [main, minion, reinforcement]}
+        pal_id: {type: string, pattern: '^[A-Za-z0-9_:-]{1,128}$'}
+        level: {type: integer, minimum: 1, maximum: 100}
+        count: {type: integer, minimum: 1, maximum: 100}
+        hp_multiplier: {type: number, minimum: 0.1, maximum: 100}
+        attack_multiplier: {type: number, minimum: 0.1, maximum: 100}
+        defense_multiplier: {type: number, minimum: 0.1, maximum: 100}
+        spawn_radius: {type: number, minimum: 0, maximum: 100000}
+        delay_seconds: {type: integer, minimum: 0, maximum: 86400}
+        capturable: {type: boolean}
+        metadata: {$ref: '#/components/schemas/JsonObject'}
+    BossWave:
+      type: object
+      required: [id, template_id, position, name, kind, pal_id, level, count, hp_multiplier, attack_multiplier, defense_multiplier, spawn_radius, delay_seconds, capturable, metadata, created_at, updated_at]
+      properties:
+        id: {type: string}
+        template_id: {type: string}
+        position: {type: integer, minimum: 1, maximum: 20}
+        name: {type: string}
+        kind: {type: string, enum: [main, minion, reinforcement]}
+        pal_id: {type: string}
+        level: {type: integer}
+        count: {type: integer}
+        hp_multiplier: {type: number}
+        attack_multiplier: {type: number}
+        defense_multiplier: {type: number}
+        spawn_radius: {type: number}
+        delay_seconds: {type: integer}
+        capturable: {type: boolean}
+        metadata: {$ref: '#/components/schemas/JsonObject'}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    BossWaveSetRequest:
+      type: object
+      required: [waves]
+      additionalProperties: false
+      properties:
+        waves: {type: array, maxItems: 20, items: {$ref: '#/components/schemas/BossWaveInput'}}
+    BossWaveTransitionRequest:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status: {type: string, enum: [active, completed, failed, skipped]}
+        message: {type: string, maxLength: 4096}
+        result: {$ref: '#/components/schemas/JsonObject'}
+    BossSummonWave:
+      type: object
+      required: [id, summon_id, position, name, kind, pal_id, level, count, hp_multiplier, attack_multiplier, defense_multiplier, spawn_radius, delay_seconds, capturable, status, metadata, result, created_at, updated_at]
+      properties:
+        id: {type: integer}
+        summon_id: {type: string}
+        source_wave_id: {type: string}
+        position: {type: integer, minimum: 1, maximum: 20}
+        name: {type: string}
+        kind: {type: string, enum: [main, minion, reinforcement]}
+        pal_id: {type: string}
+        level: {type: integer}
+        count: {type: integer}
+        hp_multiplier: {type: number}
+        attack_multiplier: {type: number}
+        defense_multiplier: {type: number}
+        spawn_radius: {type: number}
+        delay_seconds: {type: integer}
+        capturable: {type: boolean}
+        status: {type: string, enum: [pending, active, completed, failed, skipped]}
+        actor: {type: string}
+        metadata: {$ref: '#/components/schemas/JsonObject'}
+        result: {$ref: '#/components/schemas/JsonObject'}
+        failure: {type: string}
+        started_at: {type: string, format: date-time}
+        completed_at: {type: string, format: date-time}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
     BossCreateSummonRequest:
       type: object
       required: [template_id, request_key]
@@ -4447,7 +4565,7 @@ components:
         created_at: {type: string, format: date-time}
     BossSummary:
       type: object
-      required: [rewards, enabled_rewards, templates, enabled_templates, pending_summons, active_summons, completed_summons, failed_summons, cancelled_summons]
+      required: [rewards, enabled_rewards, templates, enabled_templates, pending_summons, active_summons, completed_summons, failed_summons, cancelled_summons, template_waves, pending_waves, active_waves, completed_waves, failed_waves, skipped_waves]
       properties:
         rewards: {type: integer, minimum: 0}
         enabled_rewards: {type: integer, minimum: 0}
@@ -4458,6 +4576,12 @@ components:
         completed_summons: {type: integer, minimum: 0}
         failed_summons: {type: integer, minimum: 0}
         cancelled_summons: {type: integer, minimum: 0}
+        template_waves: {type: integer, minimum: 0}
+        pending_waves: {type: integer, minimum: 0}
+        active_waves: {type: integer, minimum: 0}
+        completed_waves: {type: integer, minimum: 0}
+        failed_waves: {type: integer, minimum: 0}
+        skipped_waves: {type: integer, minimum: 0}
     PatchInfo:
       type: object
       required: [upstream, compatibility, patch, build]
@@ -4479,7 +4603,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.66}
+            version: {type: string, const: 0.8.67}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

@@ -1,72 +1,67 @@
-# Palworld Panel 根目录覆盖增量包
+# Palworld Panel 根目录覆盖包
 
-基线：`ninhua/palworld-panel` `custom-stable`，自定义版本 `0.8.53`
-目标版本：`0.8.54`
-
-## 使用方法
-
-1. 先确认仓库已经应用 `Palworld-Panel-overlay-v0.8.52-to-v0.8.53`，并且：
-
-   ```go
-   patchVersion = "0.8.53"
-   ```
-
-2. 备份当前工作区或先执行 `git status`。
-3. 将本压缩包内容直接解压到仓库根目录，允许覆盖同名文件。
-4. 重新构建前后端。
-
-本包不包含 `.git`，不会提交、推送或修改 Git 历史。
+升级范围：`0.8.66 -> 0.8.67`
 
 ## 本版内容
 
-- 游戏命令前缀可在面板中配置。
-- 前缀支持任意无空白字符串，最多 16 个 Unicode 字符。
-- 前缀可以留空；留空后使用 `签到`、`积分`、`帮助`。
-- 无前缀模式不会把普通聊天识别为命令。
-- 每日签到积分可在面板中配置。
-- 新增 `/economy` 积分管理页面。
-- 支持账户搜索、流水查看和管理员人工调整积分。
+### Boss 多波次编排
 
-## 覆盖后验证
+Boss 模板新增波次配置：
+
+- 每个模板最多 20 波；
+- 支持主 Boss、护卫怪和增援；
+- 每波独立配置 Pal ID、等级、数量、生命/攻击/防御倍率、生成半径、延迟和捕获规则；
+- 支持添加、删除和上下调整顺序；
+- Pal ID 可直接从现有帕鲁目录下拉选择；
+- 清空显式波次后，新召唤会自动使用模板本身生成一个隐式主 Boss 波次。
+
+### 召唤波次快照与状态
+
+创建召唤记录时会复制当时的模板波次。以后修改模板不会改变历史记录。
+
+波次状态中文显示为：
+
+- 等待执行；
+- 进行中；
+- 已完成；
+- 失败；
+- 已跳过。
+
+前置波次未结束时不能启动后续波次。第一波开始时召唤记录自动进入“进行中”；全部波次完成或跳过后自动进入“已完成”；任一波次失败时召唤记录进入“失败”，其余未结束波次自动跳过。
+
+每次逐波操作都会写入原有召唤审计事件。
+
+## 前置条件
+
+必须已经应用到 `0.8.66`，并确认：
+
+```go
+patchVersion = "0.8.66"
+```
+
+## 安装
+
+将压缩包内容直接解压到 `ninhua/palworld-panel` 仓库根目录，覆盖同名文件。
+
+压缩包顶层直接是 `.overlay`、`backend`、`docs` 和 `frontend`，不包含额外目录层级。
+
+## 验证
 
 ```bash
 git diff --check
 
 cd backend
+go test ./internal/boss -count=1
+go test ./internal/api -run '^TestNewContractRoutes$|^TestPatchVersionArtifactsStayInSync$' -count=1
 go test ./...
 
 cd ../frontend
 npm run check
 ```
 
-然后检查：
+## 使用注意
 
-```text
-GET /api/patch/info
-```
-
-应返回：
-
-```json
-{
-  "patch": {
-    "version": "0.8.54"
-  }
-}
-```
-
-登录面板后进入“世界管理 → 积分系统”，可将命令前缀设置为 `!`、`/`、`#` 或留空。
-
-## 数据说明
-
-升级会在现有 `palpanel.db` 中自动建立 `economy_settings` 表，不删除或重建已有积分数据。
-
-首次建立设置时可读取：
-
-```env
-PALPANEL_GAME_COMMAND_PREFIX=!
-PALPANEL_DAILY_CHECKIN_POINTS=10
-PALPANEL_OPERATIONS_TIMEZONE=Asia/Shanghai
-```
-
-配置写入数据库后，后续启动不会被环境变量覆盖。
+- 当前执行模式仍为 `record_only`，不会自动调用 PalDefender 或 RCON 生成 Boss。
+- “延迟秒数”目前用于编排和审计，不会自动等待或执行命令。
+- 管理员应在游戏内完成每一波实际操作后，再在面板推进对应波次状态。
+- 原有单 Boss 模板不需要迁移；未配置波次时会自动生成兼容的隐式波次。

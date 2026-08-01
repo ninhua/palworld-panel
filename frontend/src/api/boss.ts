@@ -7,6 +7,12 @@ export type BossRewardInput = components['schemas']['BossRewardInput'];
 export type BossReward = components['schemas']['BossReward'];
 export type BossTemplateInput = components['schemas']['BossTemplateInput'];
 export type BossTemplate = components['schemas']['BossTemplate'];
+export type BossWaveInput = components['schemas']['BossWaveInput'];
+export type BossWave = components['schemas']['BossWave'];
+export type BossWaveSetRequest = components['schemas']['BossWaveSetRequest'];
+export type BossWaveTransitionRequest = components['schemas']['BossWaveTransitionRequest'];
+export type BossSummonWave = components['schemas']['BossSummonWave'];
+export type BossWaveStatus = BossSummonWave['status'];
 export type BossCreateSummonRequest = components['schemas']['BossCreateSummonRequest'];
 export type BossTransitionRequest = components['schemas']['BossTransitionRequest'];
 export type BossSummon = components['schemas']['BossSummon'];
@@ -92,6 +98,12 @@ const emptySummary: BossSummary = {
   completed_summons: 0,
   failed_summons: 0,
   cancelled_summons: 0,
+  template_waves: 0,
+  pending_waves: 0,
+  active_waves: 0,
+  completed_waves: 0,
+  failed_waves: 0,
+  skipped_waves: 0,
 };
 
 export const bossApi = {
@@ -149,6 +161,18 @@ export const bossApi = {
     { fallbackOnError: false },
   ),
 
+  templateWaves: (templateID: string) => handleRequest<unknown, BossListResult<BossWave>>(
+    () => apiClient.get(`/boss/templates/${encodeURIComponent(templateID)}/waves`),
+    { items: [], count: 0 },
+    { fallbackOnError: false },
+  ),
+
+  replaceTemplateWaves: (templateID: string, input: BossWaveSetRequest) => handleRequest<unknown, BossListResult<BossWave>>(
+    () => apiClient.put(`/boss/templates/${encodeURIComponent(templateID)}/waves`, input),
+    { items: [], count: 0 },
+    { fallbackOnError: false },
+  ),
+
   summons: (status: BossSummonStatus | '' = '', templateID = '') => handleRequest<unknown, BossListResult<BossSummon>>(
     () => apiClient.get('/boss/summons', { params: { status: status || undefined, template_id: templateID || undefined, limit: 500 } }),
     { items: [], count: 0 },
@@ -164,6 +188,41 @@ export const bossApi = {
   transitionSummon: (id: string, input: BossTransitionRequest) => handleRequest<unknown, BossSummon>(
     () => apiClient.post(`/boss/summons/${encodeURIComponent(id)}/transition`, input),
     { ...emptySummon, id, status: input.status },
+    { fallbackOnError: false },
+  ),
+
+  summonWaves: (id: string) => handleRequest<unknown, BossListResult<BossSummonWave>>(
+    () => apiClient.get(`/boss/summons/${encodeURIComponent(id)}/waves`),
+    { items: [], count: 0 },
+    { fallbackOnError: false },
+  ),
+
+  transitionSummonWave: (id: string, position: number, input: BossWaveTransitionRequest) => handleRequest<unknown, BossSummonWave>(
+    () => apiClient.post(`/boss/summons/${encodeURIComponent(id)}/waves/${position}/transition`, input),
+    {
+      id: 0,
+      summon_id: id,
+      source_wave_id: '',
+      position,
+      name: '',
+      kind: 'main',
+      pal_id: '',
+      level: 1,
+      count: 1,
+      hp_multiplier: 1,
+      attack_multiplier: 1,
+      defense_multiplier: 1,
+      spawn_radius: 0,
+      delay_seconds: 0,
+      capturable: false,
+      status: input.status,
+      actor: '',
+      metadata: {},
+      result: {},
+      failure: '',
+      created_at: '',
+      updated_at: '',
+    },
     { fallbackOnError: false },
   ),
 

@@ -112,3 +112,115 @@ func TestBossValidationAndArchive(t *testing.T) {
 		t.Fatalf("reward not archived: %+v", archived)
 	}
 }
+
+func TestBossWaveConfigurationSnapshotAndProgress(t *testing.T) {
+	service, err := Open(filepath.Join(t.TempDir(), "boss-waves.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	service.now = func() time.Time { return time.Date(2026, 8, 1, 2, 3, 4, 0, time.UTC) }
+	ctx := context.Background()
+
+	template, err := service.CreateTemplate(ctx, TemplateInput{
+		Name: "多波次试炼", PalID: "JetDragon", Level: 60, Count: 1,
+		HPMultiplier: 5, AttackMultiplier: 2, DefenseMultiplier: 1.5,
+		SpawnRadius: 500, Capturable: false, CooldownSeconds: 3600,
+		Location: Location{X: 10, Y: 20, Z: 30}, Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	waves, err := service.ReplaceTemplateWaves(ctx, template.ID, []WaveInput{
+		{
+			Name: "护卫", Kind: WaveKindMinion, PalID: "SheepBall", Level: 40, Count: 5,
+			HPMultiplier: 2, AttackMultiplier: 1, DefenseMultiplier: 1,
+			SpawnRadius: 300, DelaySeconds: 0, Capturable: false,
+		},
+		{
+			Name: "最终Boss", Kind: WaveKindMain, PalID: "JetDragon", Level: 60, Count: 1,
+			HPMultiplier: 5, AttackMultiplier: 2, DefenseMultiplier: 1.5,
+			SpawnRadius: 500, DelaySeconds: 30, Capturable: false,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(waves) != 2 || waves[0].Position != 1 || waves[1].DelaySeconds != 30 {
+		t.Fatalf("unexpected template waves: %+v", waves)
+	}
+
+	created, err := service.CreateSummon(ctx, CreateSummonRequest{TemplateID: template.ID, RequestKey: "wave-run-1"}, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := service.ListSummonWaves(ctx, created.Summon.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot) != 2 || snapshot[0].Status != WaveStatusPending || snapshot[1].SourceWaveID != waves[1].ID {
+		t.Fatalf("unexpected summon wave snapshot: %+v", snapshot)
+	}
+
+	first, err := service.TransitionSummonWave(ctx, created.Summon.ID, 1, WaveTransitionRequest{Status: WaveStatusActive, Message: "第一波开始"}, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Status != WaveStatusActive || first.StartedAt == "" {
+		t.Fatalf("unexpected active wave: %+v", first)
+	}
+	activeSummon, err := service.GetSummon(ctx, created.Summon.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if activeSummon.Status != SummonStatusActive {
+		t.Fatalf("summon status = %s, want active", activeSummon.Status)
+	}
+
+	if _, err := service.TransitionSummonWave(ctx, created.Summon.ID, 1, WaveTransitionRequest{Status: WaveStatusCompleted}, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.TransitionSummonWave(ctx, created.Summon.ID, 2, WaveTransitionRequest{Status: WaveStatusSkipped, Message: "管理员跳过"}, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	completed, err := service.GetSummon(ctx, created.Summon.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.Status != SummonStatusCompleted || completed.CompletedAt == "" {
+		t.Fatalf("unexpected completed summon: %+v", completed)
+	}
+
+	summary, err := service.Summary(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.TemplateWaves != 2 || summary.CompletedWaves != 1 || summary.SkippedWaves != 1 || summary.PendingWaves != 0 || summary.ActiveWaves != 0 {
+		t.Fatalf("unexpected wave summary: %+v", summary)
+	}
+}
+
+func TestBossWaveValidation(t *testing.T) {
+	service, err := Open(filepath.Join(t.TempDir(), "boss-wave-validation.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	ctx := context.Background()
+	template, err := service.CreateTemplate(ctx, TemplateInput{
+		Name: "验证模板", PalID: "JetDragon", Level: 50, Count: 1,
+		HPMultiplier: 1, AttackMultiplier: 1, DefenseMultiplier: 1,
+		SpawnRadius: 100, Location: Location{}, Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.ReplaceTemplateWaves(ctx, template.ID, []WaveInput{{
+		Name: "错误波次", Kind: "unknown", PalID: "JetDragon", Level: 50, Count: 1,
+		HPMultiplier: 1, AttackMultiplier: 1, DefenseMultiplier: 1,
+	}})
+	if !errors.Is(err, ErrInvalidWave) {
+		t.Fatalf("invalid wave error = %v", err)
+	}
+}

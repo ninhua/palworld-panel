@@ -2,11 +2,14 @@ import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Archive,
+  ArrowDown,
+  ArrowUp,
   CheckCircle2,
   CircleAlert,
   Clock3,
   Crown,
   Gift,
+  Layers3,
   LoaderCircle,
   MapPin,
   Pencil,
@@ -31,6 +34,9 @@ import {
   type BossSummonStatus,
   type BossTemplate,
   type BossTemplateInput,
+  type BossWaveInput,
+  type BossWaveStatus,
+  type BossSummonWave,
 } from '../api/boss';
 import { palDefenderGMApi } from '../api/paldefenderGM';
 
@@ -40,6 +46,7 @@ interface Notice {
 }
 
 type BossTab = 'templates' | 'rewards' | 'summons';
+type BossWaveActionStatus = Exclude<BossWaveStatus, 'pending'>;
 
 const number = new Intl.NumberFormat('zh-CN');
 
@@ -57,6 +64,28 @@ const summonStatusClass: Record<BossSummonStatus, string> = {
   completed: 'bg-emerald-50 text-emerald-700',
   failed: 'bg-rose-50 text-rose-700',
   cancelled: 'bg-slate-100 text-slate-600',
+};
+
+const waveKindLabel: Record<BossWaveInput['kind'], string> = {
+  main: '主Boss',
+  minion: '护卫怪',
+  reinforcement: '增援',
+};
+
+const waveStatusLabel: Record<BossWaveStatus, string> = {
+  pending: '等待执行',
+  active: '进行中',
+  completed: '已完成',
+  failed: '失败',
+  skipped: '已跳过',
+};
+
+const waveStatusClass: Record<BossWaveStatus, string> = {
+  pending: 'bg-amber-50 text-amber-700',
+  active: 'bg-sky-50 text-sky-700',
+  completed: 'bg-emerald-50 text-emerald-700',
+  failed: 'bg-rose-50 text-rose-700',
+  skipped: 'bg-slate-100 text-slate-600',
 };
 
 const emptyRewardInput = (): BossRewardInput => ({
@@ -84,6 +113,21 @@ const emptyTemplateInput = (): BossTemplateInput => ({
   reward_id: '',
   location: { x: 0, y: 0, z: 0, label: '' },
   enabled: true,
+  metadata: {},
+});
+
+const waveFromTemplate = (template: BossTemplate, position: number): BossWaveInput => ({
+  name: position === 1 ? template.name : `第${position}波`,
+  kind: position === 1 ? 'main' : 'reinforcement',
+  pal_id: template.pal_id,
+  level: template.level,
+  count: template.count,
+  hp_multiplier: template.hp_multiplier,
+  attack_multiplier: template.attack_multiplier,
+  defense_multiplier: template.defense_multiplier,
+  spawn_radius: template.spawn_radius,
+  delay_seconds: position === 1 ? 0 : 30,
+  capturable: template.capturable,
   metadata: {},
 });
 
@@ -135,6 +179,10 @@ export const BossOperations: React.FC = () => {
   const [itemSearch, setItemSearch] = useState('');
   const [palSearch, setPalSearch] = useState('');
   const [templateSearch, setTemplateSearch] = useState('');
+  const [waveEditorTemplate, setWaveEditorTemplate] = useState<BossTemplate | null>(null);
+  const [waveDraft, setWaveDraft] = useState<BossWaveInput[]>([]);
+  const [waveLoading, setWaveLoading] = useState(false);
+  const [wavePalSearch, setWavePalSearch] = useState('');
 
   const summaryQuery = useQuery({ queryKey: ['boss', 'summary'], queryFn: bossApi.summary });
   const rewardsQuery = useQuery({
@@ -152,6 +200,12 @@ export const BossOperations: React.FC = () => {
   const summonEventsQuery = useQuery({
     queryKey: ['boss', 'summon-events', selectedSummonID],
     queryFn: () => bossApi.summonEvents(selectedSummonID),
+    enabled: Boolean(selectedSummonID),
+  });
+
+  const summonWavesQuery = useQuery({
+    queryKey: ['boss', 'summon-waves', selectedSummonID],
+    queryFn: () => bossApi.summonWaves(selectedSummonID),
     enabled: Boolean(selectedSummonID),
   });
 
@@ -217,6 +271,20 @@ export const BossOperations: React.FC = () => {
     onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
   });
 
+  const saveWavesMutation = useMutation({
+    mutationFn: () => {
+      if (!waveEditorTemplate) throw new Error('未选择Boss模板');
+      return bossApi.replaceTemplateWaves(waveEditorTemplate.id, { waves: waveDraft });
+    },
+    onSuccess: async (result) => {
+      setNotice({ type: 'success', text: `已保存 ${result.count} 个波次。新召唤记录会保存当前波次快照。` });
+      setWaveEditorTemplate(null);
+      setWaveDraft([]);
+      await refresh();
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
   const createSummonMutation = useMutation({
     mutationFn: () => bossApi.createSummon({
       template_id: summonTemplateID,
@@ -251,6 +319,20 @@ export const BossOperations: React.FC = () => {
     onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
   });
 
+  const transitionWaveMutation = useMutation({
+    mutationFn: ({ wave, status }: { wave: BossSummonWave; status: BossWaveActionStatus }) => bossApi.transitionSummonWave(wave.summon_id, wave.position, {
+      status,
+      message: `第${wave.position}波“${wave.name}”更新为：${waveStatusLabel[status]}`,
+      result: {},
+    }),
+    onSuccess: async (wave) => {
+      setNotice({ type: 'success', text: `第${wave.position}波已更新为“${waveStatusLabel[wave.status]}”。` });
+      await refresh();
+      await Promise.all([summonWavesQuery.refetch(), summonEventsQuery.refetch()]);
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
   const rewards = rewardsQuery.data?.items || [];
   const templates = templatesQuery.data?.items || [];
   const summons = summonsQuery.data?.items || [];
@@ -273,6 +355,13 @@ export const BossOperations: React.FC = () => {
     const needle = templateSearch.trim().toLowerCase();
     return (palTemplatesQuery.data?.templates || []).filter((template) => !needle || template.name.toLowerCase().includes(needle)).slice(0, 100);
   }, [palTemplatesQuery.data, templateSearch]);
+
+  const filteredWavePals = useMemo(() => {
+    const needle = wavePalSearch.trim().toLowerCase();
+    return (palCatalogQuery.data?.items || [])
+      .filter((pal) => !needle || `${pal.name} ${pal.id}`.toLowerCase().includes(needle))
+      .slice(0, 300);
+  }, [palCatalogQuery.data, wavePalSearch]);
 
   const openRewardCreate = () => {
     setRewardEditingID('');
@@ -347,6 +436,59 @@ export const BossOperations: React.FC = () => {
     setRewardDraft((current) => current.pal_templates.includes(name) ? current : { ...current, pal_templates: [...current.pal_templates, name] });
   };
 
+  const openWaveEditor = async (template: BossTemplate) => {
+    setWaveEditorTemplate(template);
+    setWavePalSearch('');
+    setWaveLoading(true);
+    try {
+      const result = await bossApi.templateWaves(template.id);
+      setWaveDraft(result.items.map((wave) => ({
+        name: wave.name,
+        kind: wave.kind,
+        pal_id: wave.pal_id,
+        level: wave.level,
+        count: wave.count,
+        hp_multiplier: wave.hp_multiplier,
+        attack_multiplier: wave.attack_multiplier,
+        defense_multiplier: wave.defense_multiplier,
+        spawn_radius: wave.spawn_radius,
+        delay_seconds: wave.delay_seconds,
+        capturable: wave.capturable,
+        metadata: wave.metadata || {},
+      })));
+    } catch (error) {
+      setNotice({ type: 'error', text: getErrorMessage(error) });
+      setWaveEditorTemplate(null);
+    } finally {
+      setWaveLoading(false);
+    }
+  };
+
+  const addWave = () => {
+    if (!waveEditorTemplate || waveDraft.length >= 20) return;
+    setWaveDraft((current) => [...current, waveFromTemplate(waveEditorTemplate, current.length + 1)]);
+  };
+
+  const updateWave = (index: number, patch: Partial<BossWaveInput>) => {
+    setWaveDraft((current) => current.map((wave, waveIndex) => waveIndex === index ? { ...wave, ...patch } : wave));
+  };
+
+  const moveWave = (index: number, direction: -1 | 1) => {
+    setWaveDraft((current) => {
+      const target = index + direction;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
+  const possibleWaveTransitions = (wave: BossSummonWave): BossWaveActionStatus[] => {
+    if (wave.status === 'pending') return ['active', 'failed', 'skipped'];
+    if (wave.status === 'active') return ['completed', 'failed', 'skipped'];
+    return [];
+  };
+
   const possibleTransitions = (summon: BossSummon): BossSummonStatus[] => {
     if (summon.status === 'pending') return ['active', 'failed', 'cancelled'];
     if (summon.status === 'active') return ['completed', 'failed', 'cancelled'];
@@ -370,7 +512,7 @@ export const BossOperations: React.FC = () => {
           <div>
             <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-rose-600"><Crown size={15} />Boss活动</div>
             <h1 className="text-2xl font-black tracking-tight text-slate-900">Boss管理</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">配置Boss模板、奖励方案和手动召唤记录。当前召唤执行模式为“仅记录”，不会自动调用PalDefender生成Boss。</p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">配置Boss模板、奖励方案、波次编排和手动召唤记录。当前仍为“仅记录”模式，不会自动调用PalDefender生成Boss。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-500">
@@ -382,9 +524,10 @@ export const BossOperations: React.FC = () => {
         {notice && <div className={`mt-4 rounded-xl border px-4 py-3 text-sm font-semibold ${notice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>{notice.text}</div>}
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <Metric label="奖励方案" value={summary?.rewards || 0} icon={<Gift size={18} />} />
         <Metric label="Boss模板" value={summary?.templates || 0} icon={<Skull size={18} />} />
+        <Metric label="已配置波次" value={summary?.template_waves || 0} icon={<Layers3 size={18} />} />
         <Metric label="等待处理" value={summary?.pending_summons || 0} icon={<Clock3 size={18} />} />
         <Metric label="进行中" value={summary?.active_summons || 0} icon={<Sword size={18} />} />
         <Metric label="已完成" value={summary?.completed_summons || 0} icon={<CheckCircle2 size={18} />} />
@@ -400,7 +543,7 @@ export const BossOperations: React.FC = () => {
 
       {activeTab === 'templates' && <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-start justify-between gap-3">
-          <div><h2 className="font-black text-slate-900">Boss模板</h2><p className="mt-1 text-xs text-slate-400">模板保存帕鲁、等级、倍率、坐标和关联奖励。召唤记录创建时会保存快照。</p></div>
+          <div><h2 className="font-black text-slate-900">Boss模板</h2><p className="mt-1 text-xs text-slate-400">模板保存默认Boss参数；波次编辑器可以编排主Boss、护卫怪和增援。召唤记录创建时会保存完整波次快照。</p></div>
           <button type="button" onClick={openTemplateCreate} className="pp-btn pp-btn--primary"><Plus size={14} />新建模板</button>
         </div>
         {templatesQuery.error && <ErrorBox error={templatesQuery.error} />}
@@ -425,6 +568,7 @@ export const BossOperations: React.FC = () => {
             <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
               <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-slate-400"><MapPin size={13} />{template.location.label || `${template.location.x}, ${template.location.y}, ${template.location.z}`}</span>
               <div className="flex gap-1.5">
+                {!template.archived_at && <IconButton title="配置波次" icon={<Layers3 size={14} />} onClick={() => void openWaveEditor(template)} />}
                 {!template.archived_at && <IconButton title="编辑模板" icon={<Pencil size={14} />} onClick={() => openTemplateEdit(template)} />}
                 {!template.archived_at && <IconButton danger title="归档模板" icon={<Archive size={14} />} onClick={() => {
                   if (window.confirm(`归档Boss模板“${template.name}”？历史召唤记录不会删除。`)) archiveTemplateMutation.mutate(template);
@@ -489,14 +633,24 @@ export const BossOperations: React.FC = () => {
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-black text-slate-800">{summon.template_name}</h3><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${summonStatusClass[summon.status]}`}>{summonStatusLabel[summon.status]}</span><span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700">仅记录模式</span></div><div className="mt-1 font-mono text-[11px] text-slate-400">{summon.id}</div></div>
                 <div className="flex flex-wrap gap-1.5">
-                  <button type="button" onClick={() => setSelectedSummonID(selectedSummonID === summon.id ? '' : summon.id)} className="pp-button">审计记录</button>
+                  <button type="button" onClick={() => setSelectedSummonID(selectedSummonID === summon.id ? '' : summon.id)} className="pp-button">波次 / 审计</button>
                   {possibleTransitions(summon).map((status) => <button key={status} type="button" disabled={transitionMutation.isPending} onClick={() => transitionMutation.mutate({ summon, status })} className="pp-button">{summonStatusLabel[status]}</button>)}
                 </div>
               </div>
               <div className="mt-4 grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-5"><Data label="帕鲁" value={summon.pal_id} mono /><Data label="等级 / 数量" value={`${summon.level} / ${summon.count}`} /><Data label="生命倍率" value={`${summon.hp_multiplier}×`} /><Data label="坐标" value={`${summon.location.x}, ${summon.location.y}, ${summon.location.z}`} /><Data label="申请时间" value={formatDate(summon.requested_at)} /></div>
               {summon.notes && <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">{summon.notes}</div>}
               {summon.failure && <div className="mt-3 flex gap-2 rounded-lg bg-rose-50 p-3 text-xs text-rose-700"><CircleAlert className="shrink-0" size={14} />{summon.failure}</div>}
-              {selectedSummonID === summon.id && <SummonEvents loading={summonEventsQuery.isLoading} error={summonEventsQuery.error} events={summonEventsQuery.data?.items || []} />}
+              {selectedSummonID === summon.id && <>
+                <SummonWaveList
+                  loading={summonWavesQuery.isLoading}
+                  error={summonWavesQuery.error}
+                  waves={summonWavesQuery.data?.items || []}
+                  pending={transitionWaveMutation.isPending}
+                  transitions={possibleWaveTransitions}
+                  onTransition={(wave, status) => transitionWaveMutation.mutate({ wave, status })}
+                />
+                <SummonEvents loading={summonEventsQuery.isLoading} error={summonEventsQuery.error} events={summonEventsQuery.data?.items || []} />
+              </>}
             </article>)}
             {!summonsQuery.isLoading && summons.length === 0 && <Empty text="暂无召唤记录。" />}
           </div>
@@ -518,6 +672,53 @@ export const BossOperations: React.FC = () => {
           <div className="max-h-36 overflow-y-auto rounded-xl border border-slate-200"><div className="divide-y divide-slate-100">{filteredPalTemplates.map((template) => <button key={template.name} type="button" onClick={() => addRewardPalTemplate(template.name)} className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-slate-50"><span className="font-bold text-slate-700">{template.name}</span><span className="text-slate-400">{number.format(template.size)} B</span></button>)}</div></div>
           <div className="mt-3 flex flex-wrap gap-2">{rewardDraft.pal_templates.map((name) => <span key={name} className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700">{name}<button type="button" onClick={() => setRewardDraft((current) => ({ ...current, pal_templates: current.pal_templates.filter((item) => item !== name) }))}><X size={12} /></button></span>)}{rewardDraft.pal_templates.length === 0 && <span className="text-xs text-slate-400">未选择帕鲁模板</span>}</div>
         </CatalogSection>
+      </Modal>}
+
+      {waveEditorTemplate && <Modal
+        title={`配置波次：${waveEditorTemplate.name}`}
+        subtitle="最多20波；保存后只影响后续新建召唤记录"
+        onClose={() => { setWaveEditorTemplate(null); setWaveDraft([]); }}
+        footer={<>
+          <button type="button" onClick={() => { setWaveEditorTemplate(null); setWaveDraft([]); }} className="pp-button">取消</button>
+          <button type="button" disabled={waveLoading || saveWavesMutation.isPending} onClick={() => saveWavesMutation.mutate()} className="pp-btn pp-btn--primary">
+            {saveWavesMutation.isPending ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}保存波次
+          </button>
+        </>}
+      >
+        <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs leading-5 text-sky-800">
+          波次按列表顺序执行。延迟秒数表示上一波结束后等待多久。清空全部波次后，系统会在创建召唤记录时使用Boss模板本身生成一个隐式主Boss波次。
+        </div>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <label className="min-w-0 flex-1"><FieldLabel>帕鲁下拉筛选</FieldLabel><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} /><input value={wavePalSearch} onChange={(event) => setWavePalSearch(event.target.value)} className="pp-input w-full pl-9" placeholder="输入中文名或Pal ID，下面每个波次下拉仅显示匹配项" /></div></label>
+          <div className="flex items-center justify-between gap-3 sm:justify-end"><div className="text-xs font-bold text-slate-500">当前 {waveDraft.length} / 20 波</div><button type="button" disabled={waveDraft.length >= 20} onClick={addWave} className="pp-button"><Plus size={14} />添加波次</button></div>
+        </div>
+        {waveLoading && <div className="py-12 text-center text-sm text-slate-400"><LoaderCircle className="mr-2 inline animate-spin" size={16} />正在加载波次</div>}
+        {!waveLoading && <div className="mt-3 space-y-3">
+          {waveDraft.map((wave, index) => <article key={`${index}-${wave.pal_id}`} className="rounded-xl border border-slate-200 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2"><span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-black text-white">第 {index + 1} 波</span><span className="text-xs font-bold text-slate-500">{waveKindLabel[wave.kind]}</span></div>
+              <div className="flex gap-1">
+                <IconButton title="上移" icon={<ArrowUp size={14} />} onClick={() => moveWave(index, -1)} />
+                <IconButton title="下移" icon={<ArrowDown size={14} />} onClick={() => moveWave(index, 1)} />
+                <IconButton danger title="删除波次" icon={<X size={14} />} onClick={() => setWaveDraft((current) => current.filter((_, waveIndex) => waveIndex !== index))} />
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="sm:col-span-2"><FieldLabel>波次名称</FieldLabel><input value={wave.name} onChange={(event) => updateWave(index, { name: event.target.value })} maxLength={128} className="pp-input w-full" /></label>
+              <label><FieldLabel>波次类型</FieldLabel><select value={wave.kind} onChange={(event) => updateWave(index, { kind: event.target.value as BossWaveInput['kind'] })} className="pp-input w-full"><option value="main">主Boss</option><option value="minion">护卫怪</option><option value="reinforcement">增援</option></select></label>
+              <label><FieldLabel>帕鲁</FieldLabel><select value={wave.pal_id} onChange={(event) => updateWave(index, { pal_id: event.target.value })} className="pp-input w-full"><option value={wave.pal_id}>{wave.pal_id || '请选择'}</option>{filteredWavePals.filter((pal) => pal.id !== wave.pal_id).map((pal) => <option key={pal.id} value={pal.id}>{pal.name} · {pal.id}</option>)}</select></label>
+              <NumberField label="等级" min={1} max={100} value={wave.level} onChange={(value) => updateWave(index, { level: Math.trunc(value) })} />
+              <NumberField label="数量" min={1} max={100} value={wave.count} onChange={(value) => updateWave(index, { count: Math.trunc(value) })} />
+              <NumberField label="生命倍率" min={0.1} max={100} step={0.1} value={wave.hp_multiplier} onChange={(value) => updateWave(index, { hp_multiplier: value })} />
+              <NumberField label="攻击倍率" min={0.1} max={100} step={0.1} value={wave.attack_multiplier} onChange={(value) => updateWave(index, { attack_multiplier: value })} />
+              <NumberField label="防御倍率" min={0.1} max={100} step={0.1} value={wave.defense_multiplier} onChange={(value) => updateWave(index, { defense_multiplier: value })} />
+              <NumberField label="生成半径" min={0} max={100000} value={wave.spawn_radius} onChange={(value) => updateWave(index, { spawn_radius: value })} />
+              <NumberField label="延迟秒数" min={0} max={86400} value={wave.delay_seconds} onChange={(value) => updateWave(index, { delay_seconds: Math.trunc(value) })} />
+              <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={wave.capturable} onChange={(event) => updateWave(index, { capturable: event.target.checked })} className="h-4 w-4 rounded border-slate-300" /><span className="text-sm font-black text-slate-800">允许捕获</span></label>
+            </div>
+          </article>)}
+          {waveDraft.length === 0 && <Empty text="尚未配置波次。保存空列表后，新召唤会使用模板本身作为隐式主Boss波次。" />}
+        </div>}
       </Modal>}
 
       {templateEditorOpen && <Modal title={templateEditingID ? '编辑Boss模板' : '新建Boss模板'} subtitle={templateEditingID || '保存后生成模板ID'} onClose={() => setTemplateEditorOpen(false)} footer={<><button type="button" onClick={() => setTemplateEditorOpen(false)} className="pp-button">取消</button><button type="button" disabled={saveTemplateMutation.isPending || !templateDraft.name.trim() || !templateDraft.pal_id} onClick={() => saveTemplateMutation.mutate()} className="pp-btn pp-btn--primary">{saveTemplateMutation.isPending ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}保存模板</button></>}>
@@ -560,11 +761,41 @@ const NumberField: React.FC<{ label: string; value: number; min: number; max: nu
 
 const RewardItemEditor: React.FC<{ item: BossRewardItem; onCount: (count: number) => void; onRemove: () => void }> = ({ item, onCount, onRemove }) => <div className="flex items-center gap-2 rounded-lg border border-slate-200 p-2"><code className="min-w-0 flex-1 truncate text-[11px] font-bold text-slate-600">{item.item_id}</code><input type="number" min={1} value={item.count} onChange={(event) => onCount(Number(event.target.value))} className="pp-input w-28" /><button type="button" onClick={onRemove} className="rounded-lg p-2 text-rose-500 hover:bg-rose-50"><X size={14} /></button></div>;
 
-const CatalogSection: React.FC<React.PropsWithChildren<{ title: string; description: string; search: string; onSearch: (value: string) => void; loading: boolean; error: unknown }>> = ({ title, description, search, onSearch, loading, error, children }) => <section className="mt-5 rounded-xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-slate-800">{title}</h3><p className="mt-1 text-xs text-slate-400">{description}</p></div>{loading && <LoaderCircle className="animate-spin text-slate-400" size={16} />}</div><label className="relative mt-3 block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} /><input value={search} onChange={(event) => onSearch(event.target.value)} className="pp-input w-full pl-9" placeholder="搜索" /></label>{error != null ? <div className="mt-2 text-xs font-semibold text-rose-600">{getErrorMessage(error)}</div> : null}<div className="mt-3">{children}</div></section>;
+const CatalogSection: React.FC<React.PropsWithChildren<{ title: string; description: string; search: string; onSearch: (value: string) => void; loading: boolean; error: unknown }>> = ({ title, description, search, onSearch, loading, error, children }) => <section className="mt-5 rounded-xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-slate-800">{title}</h3><p className="mt-1 text-xs text-slate-400">{description}</p></div>{loading && <LoaderCircle className="animate-spin text-slate-400" size={16} />}</div><label className="relative mt-3 block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} /><input value={search} onChange={(event) => onSearch(event.target.value)} className="pp-input w-full pl-9" placeholder="搜索" /></label>{error && <div className="mt-2 text-xs font-semibold text-rose-600">{getErrorMessage(error)}</div>}<div className="mt-3">{children}</div></section>;
 
 const Modal: React.FC<React.PropsWithChildren<{ title: string; subtitle: string; onClose: () => void; footer: React.ReactNode }>> = ({ title, subtitle, onClose, footer, children }) => <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl"><div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4"><div><h2 className="font-black text-slate-900">{title}</h2><p className="mt-1 font-mono text-[11px] text-slate-400">{subtitle}</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={18} /></button></div><div className="p-5">{children}</div><div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">{footer}</div></div></div>;
 
-const SummonEvents: React.FC<{ loading: boolean; error: unknown; events: BossSummonEvent[] }> = ({ loading, error, events }) => <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="mb-2 text-xs font-black text-slate-700">状态审计</div>{loading && <div className="py-4 text-center text-xs text-slate-400"><LoaderCircle className="mr-2 inline animate-spin" size={13} />加载中</div>}{error != null ? <div className="text-xs font-semibold text-rose-600">{getErrorMessage(error)}</div> : null}<div className="space-y-2">{events.map((event) => <div key={event.id} className="flex items-start gap-3 rounded-lg bg-white p-3 text-xs"><span className={`mt-0.5 rounded-full px-2 py-0.5 font-bold ${summonStatusClass[event.to_status]}`}>{summonStatusLabel[event.to_status]}</span><div className="min-w-0 flex-1"><div className="text-slate-600">{event.message || `${event.from_status ? `${summonStatusLabel[event.from_status as BossSummonStatus] || event.from_status} → ` : ''}${summonStatusLabel[event.to_status]}`}</div><div className="mt-1 text-[10px] text-slate-400">{event.actor || '系统'} · {formatDate(event.created_at)}</div></div></div>)}{!loading && events.length === 0 && <div className="py-3 text-center text-xs text-slate-400">暂无审计事件</div>}</div></div>;
+const SummonWaveList: React.FC<{
+  loading: boolean;
+  error: unknown;
+  waves: BossSummonWave[];
+  pending: boolean;
+  transitions: (wave: BossSummonWave) => BossWaveActionStatus[];
+  onTransition: (wave: BossSummonWave, status: BossWaveActionStatus) => void;
+}> = ({ loading, error, waves, pending, transitions, onTransition }) => (
+  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+    <div className="mb-2 flex items-center gap-2 text-xs font-black text-slate-700"><Layers3 size={14} />波次快照</div>
+    {loading && <div className="py-4 text-center text-xs text-slate-400"><LoaderCircle className="mr-2 inline animate-spin" size={13} />加载中</div>}
+    {error && <div className="text-xs font-semibold text-rose-600">{getErrorMessage(error)}</div>}
+    <div className="space-y-2">
+      {waves.map((wave) => <div key={wave.id} className="rounded-lg bg-white p-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2"><span className="font-black text-slate-800">第 {wave.position} 波 · {wave.name}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${waveStatusClass[wave.status]}`}>{waveStatusLabel[wave.status]}</span><span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">{waveKindLabel[wave.kind]}</span></div>
+            <div className="mt-1 text-[11px] text-slate-500">{wave.pal_id} · Lv.{wave.level} × {wave.count} · HP {wave.hp_multiplier}× · 延迟 {formatDuration(wave.delay_seconds)}</div>
+            {wave.failure && <div className="mt-2 text-xs font-semibold text-rose-600">{wave.failure}</div>}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {transitions(wave).map((status) => <button key={status} type="button" disabled={pending} onClick={() => onTransition(wave, status)} className="pp-button">{waveStatusLabel[status]}</button>)}
+          </div>
+        </div>
+      </div>)}
+      {!loading && waves.length === 0 && <div className="py-3 text-center text-xs text-slate-400">暂无波次快照</div>}
+    </div>
+  </div>
+);
+
+const SummonEvents: React.FC<{ loading: boolean; error: unknown; events: BossSummonEvent[] }> = ({ loading, error, events }) => <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="mb-2 text-xs font-black text-slate-700">状态审计</div>{loading && <div className="py-4 text-center text-xs text-slate-400"><LoaderCircle className="mr-2 inline animate-spin" size={13} />加载中</div>}{error && <div className="text-xs font-semibold text-rose-600">{getErrorMessage(error)}</div>}<div className="space-y-2">{events.map((event) => <div key={event.id} className="flex items-start gap-3 rounded-lg bg-white p-3 text-xs"><span className={`mt-0.5 rounded-full px-2 py-0.5 font-bold ${summonStatusClass[event.to_status]}`}>{summonStatusLabel[event.to_status]}</span><div className="min-w-0 flex-1"><div className="text-slate-600">{event.message || `${event.from_status ? `${summonStatusLabel[event.from_status as BossSummonStatus] || event.from_status} → ` : ''}${summonStatusLabel[event.to_status]}`}</div><div className="mt-1 text-[10px] text-slate-400">{event.actor || '系统'} · {formatDate(event.created_at)}</div></div></div>)}{!loading && events.length === 0 && <div className="py-3 text-center text-xs text-slate-400">暂无审计事件</div>}</div></div>;
 
 const formatDuration = (seconds: number) => {
   if (seconds <= 0) return '无';

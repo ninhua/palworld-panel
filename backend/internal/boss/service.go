@@ -18,14 +18,17 @@ import (
 )
 
 var (
-	ErrInvalidReward     = errors.New("boss reward is invalid")
-	ErrRewardNotFound    = errors.New("boss reward not found")
-	ErrInvalidTemplate   = errors.New("boss template is invalid")
-	ErrTemplateNotFound  = errors.New("boss template not found")
-	ErrTemplateDisabled  = errors.New("boss template is disabled")
-	ErrInvalidSummon     = errors.New("boss summon request is invalid")
-	ErrSummonNotFound    = errors.New("boss summon not found")
-	ErrInvalidTransition = errors.New("boss summon transition is invalid")
+	ErrInvalidReward         = errors.New("boss reward is invalid")
+	ErrRewardNotFound        = errors.New("boss reward not found")
+	ErrInvalidTemplate       = errors.New("boss template is invalid")
+	ErrTemplateNotFound      = errors.New("boss template not found")
+	ErrTemplateDisabled      = errors.New("boss template is disabled")
+	ErrInvalidWave           = errors.New("boss wave is invalid")
+	ErrWaveNotFound          = errors.New("boss wave not found")
+	ErrInvalidSummon         = errors.New("boss summon request is invalid")
+	ErrSummonNotFound        = errors.New("boss summon not found")
+	ErrInvalidTransition     = errors.New("boss summon transition is invalid")
+	ErrInvalidWaveTransition = errors.New("boss wave transition is invalid")
 
 	identifierPattern   = regexp.MustCompile(`^[A-Za-z0-9_:-]{1,128}$`)
 	templateNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}$`)
@@ -44,6 +47,18 @@ const (
 	SummonStatusCancelled = "cancelled"
 
 	ExecutionModeRecordOnly = "record_only"
+
+	WaveKindMain          = "main"
+	WaveKindMinion        = "minion"
+	WaveKindReinforcement = "reinforcement"
+
+	WaveStatusPending   = "pending"
+	WaveStatusActive    = "active"
+	WaveStatusCompleted = "completed"
+	WaveStatusFailed    = "failed"
+	WaveStatusSkipped   = "skipped"
+
+	maximumWaves = 20
 )
 
 type Service struct {
@@ -127,6 +142,74 @@ type Template struct {
 	ArchivedAt        string         `json:"archived_at,omitempty"`
 }
 
+type WaveInput struct {
+	Name              string         `json:"name"`
+	Kind              string         `json:"kind"`
+	PalID             string         `json:"pal_id"`
+	Level             int            `json:"level"`
+	Count             int            `json:"count"`
+	HPMultiplier      float64        `json:"hp_multiplier"`
+	AttackMultiplier  float64        `json:"attack_multiplier"`
+	DefenseMultiplier float64        `json:"defense_multiplier"`
+	SpawnRadius       float64        `json:"spawn_radius"`
+	DelaySeconds      int            `json:"delay_seconds"`
+	Capturable        bool           `json:"capturable"`
+	Metadata          map[string]any `json:"metadata"`
+}
+
+type Wave struct {
+	ID                string         `json:"id"`
+	TemplateID        string         `json:"template_id"`
+	Position          int            `json:"position"`
+	Name              string         `json:"name"`
+	Kind              string         `json:"kind"`
+	PalID             string         `json:"pal_id"`
+	Level             int            `json:"level"`
+	Count             int            `json:"count"`
+	HPMultiplier      float64        `json:"hp_multiplier"`
+	AttackMultiplier  float64        `json:"attack_multiplier"`
+	DefenseMultiplier float64        `json:"defense_multiplier"`
+	SpawnRadius       float64        `json:"spawn_radius"`
+	DelaySeconds      int            `json:"delay_seconds"`
+	Capturable        bool           `json:"capturable"`
+	Metadata          map[string]any `json:"metadata"`
+	CreatedAt         string         `json:"created_at"`
+	UpdatedAt         string         `json:"updated_at"`
+}
+
+type SummonWave struct {
+	ID                int64          `json:"id"`
+	SummonID          string         `json:"summon_id"`
+	SourceWaveID      string         `json:"source_wave_id,omitempty"`
+	Position          int            `json:"position"`
+	Name              string         `json:"name"`
+	Kind              string         `json:"kind"`
+	PalID             string         `json:"pal_id"`
+	Level             int            `json:"level"`
+	Count             int            `json:"count"`
+	HPMultiplier      float64        `json:"hp_multiplier"`
+	AttackMultiplier  float64        `json:"attack_multiplier"`
+	DefenseMultiplier float64        `json:"defense_multiplier"`
+	SpawnRadius       float64        `json:"spawn_radius"`
+	DelaySeconds      int            `json:"delay_seconds"`
+	Capturable        bool           `json:"capturable"`
+	Status            string         `json:"status"`
+	Actor             string         `json:"actor,omitempty"`
+	Metadata          map[string]any `json:"metadata"`
+	Result            map[string]any `json:"result"`
+	Failure           string         `json:"failure,omitempty"`
+	StartedAt         string         `json:"started_at,omitempty"`
+	CompletedAt       string         `json:"completed_at,omitempty"`
+	CreatedAt         string         `json:"created_at"`
+	UpdatedAt         string         `json:"updated_at"`
+}
+
+type WaveTransitionRequest struct {
+	Status  string         `json:"status"`
+	Message string         `json:"message"`
+	Result  map[string]any `json:"result"`
+}
+
 type CreateSummonRequest struct {
 	TemplateID       string         `json:"template_id"`
 	RequestKey       string         `json:"request_key"`
@@ -202,6 +285,12 @@ type Summary struct {
 	CompletedSummons int64 `json:"completed_summons"`
 	FailedSummons    int64 `json:"failed_summons"`
 	CancelledSummons int64 `json:"cancelled_summons"`
+	TemplateWaves    int64 `json:"template_waves"`
+	PendingWaves     int64 `json:"pending_waves"`
+	ActiveWaves      int64 `json:"active_waves"`
+	CompletedWaves   int64 `json:"completed_waves"`
+	FailedWaves      int64 `json:"failed_waves"`
+	SkippedWaves     int64 `json:"skipped_waves"`
 }
 
 func ForPath(path string) (*Service, error) {
@@ -301,6 +390,28 @@ func (s *Service) ensureSchema(ctx context.Context) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_boss_templates_enabled ON boss_templates(enabled,archived_at,updated_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_boss_templates_reward ON boss_templates(reward_id)`,
+		`CREATE TABLE IF NOT EXISTS boss_template_waves (
+			id TEXT PRIMARY KEY,
+			template_id TEXT NOT NULL,
+			position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 20),
+			name TEXT NOT NULL,
+			kind TEXT NOT NULL CHECK(kind IN ('main','minion','reinforcement')),
+			pal_id TEXT NOT NULL,
+			level INTEGER NOT NULL CHECK(level BETWEEN 1 AND 100),
+			spawn_count INTEGER NOT NULL CHECK(spawn_count BETWEEN 1 AND 100),
+			hp_multiplier REAL NOT NULL CHECK(hp_multiplier BETWEEN 0.1 AND 100),
+			attack_multiplier REAL NOT NULL CHECK(attack_multiplier BETWEEN 0.1 AND 100),
+			defense_multiplier REAL NOT NULL CHECK(defense_multiplier BETWEEN 0.1 AND 100),
+			spawn_radius REAL NOT NULL CHECK(spawn_radius BETWEEN 0 AND 100000),
+			delay_seconds INTEGER NOT NULL DEFAULT 0 CHECK(delay_seconds BETWEEN 0 AND 86400),
+			capturable INTEGER NOT NULL DEFAULT 0 CHECK(capturable IN (0,1)),
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			UNIQUE(template_id,position),
+			FOREIGN KEY(template_id) REFERENCES boss_templates(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_boss_template_waves_template ON boss_template_waves(template_id,position)`,
 		`CREATE TABLE IF NOT EXISTS boss_summons (
 			id TEXT PRIMARY KEY,
 			request_key TEXT NOT NULL UNIQUE,
@@ -330,6 +441,36 @@ func (s *Service) ensureSchema(ctx context.Context) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_boss_summons_status ON boss_summons(status,updated_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_boss_summons_template ON boss_summons(template_id,updated_at DESC)`,
+		`CREATE TABLE IF NOT EXISTS boss_summon_waves (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			summon_id TEXT NOT NULL,
+			source_wave_id TEXT NOT NULL DEFAULT '',
+			position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 20),
+			name TEXT NOT NULL,
+			kind TEXT NOT NULL CHECK(kind IN ('main','minion','reinforcement')),
+			pal_id TEXT NOT NULL,
+			level INTEGER NOT NULL,
+			spawn_count INTEGER NOT NULL,
+			hp_multiplier REAL NOT NULL,
+			attack_multiplier REAL NOT NULL,
+			defense_multiplier REAL NOT NULL,
+			spawn_radius REAL NOT NULL,
+			delay_seconds INTEGER NOT NULL DEFAULT 0,
+			capturable INTEGER NOT NULL,
+			status TEXT NOT NULL CHECK(status IN ('pending','active','completed','failed','skipped')),
+			actor TEXT NOT NULL DEFAULT '',
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			result_json TEXT NOT NULL DEFAULT '{}',
+			failure TEXT NOT NULL DEFAULT '',
+			started_at TEXT NOT NULL DEFAULT '',
+			completed_at TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			UNIQUE(summon_id,position),
+			FOREIGN KEY(summon_id) REFERENCES boss_summons(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_boss_summon_waves_summon ON boss_summon_waves(summon_id,position)`,
+		`CREATE INDEX IF NOT EXISTS idx_boss_summon_waves_status ON boss_summon_waves(status,updated_at DESC)`,
 		`CREATE TABLE IF NOT EXISTS boss_summon_events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			summon_id TEXT NOT NULL,
@@ -366,6 +507,12 @@ func (s *Service) Summary(ctx context.Context) (Summary, error) {
 		{&result.CompletedSummons, `SELECT COUNT(*) FROM boss_summons WHERE status='completed'`},
 		{&result.FailedSummons, `SELECT COUNT(*) FROM boss_summons WHERE status='failed'`},
 		{&result.CancelledSummons, `SELECT COUNT(*) FROM boss_summons WHERE status='cancelled'`},
+		{&result.TemplateWaves, `SELECT COUNT(*) FROM boss_template_waves`},
+		{&result.PendingWaves, `SELECT COUNT(*) FROM boss_summon_waves WHERE status='pending'`},
+		{&result.ActiveWaves, `SELECT COUNT(*) FROM boss_summon_waves WHERE status='active'`},
+		{&result.CompletedWaves, `SELECT COUNT(*) FROM boss_summon_waves WHERE status='completed'`},
+		{&result.FailedWaves, `SELECT COUNT(*) FROM boss_summon_waves WHERE status='failed'`},
+		{&result.SkippedWaves, `SELECT COUNT(*) FROM boss_summon_waves WHERE status='skipped'`},
 	}
 	for _, item := range queries {
 		if err := s.db.QueryRowContext(ctx, item.query).Scan(item.destination); err != nil {
@@ -562,6 +709,223 @@ func (s *Service) ListTemplates(ctx context.Context, includeArchived bool, limit
 	return items, rows.Err()
 }
 
+func (s *Service) ReplaceTemplateWaves(ctx context.Context, templateID string, inputs []WaveInput) ([]Wave, error) {
+	templateID = strings.TrimSpace(templateID)
+	if templateID == "" || len(inputs) > maximumWaves {
+		return nil, ErrInvalidWave
+	}
+	template, err := s.GetTemplate(ctx, templateID)
+	if err != nil {
+		return nil, err
+	}
+	if template.ArchivedAt != "" {
+		return nil, ErrTemplateNotFound
+	}
+	normalized := make([]WaveInput, 0, len(inputs))
+	for index, input := range inputs {
+		item, normalizeErr := normalizeWaveInput(input, index+1)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+		normalized = append(normalized, item)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer rollback(tx)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM boss_template_waves WHERE template_id=?`, templateID); err != nil {
+		return nil, err
+	}
+	now := s.timestamp()
+	result := make([]Wave, 0, len(normalized))
+	for index, input := range normalized {
+		metadata, _ := json.Marshal(input.Metadata)
+		wave := Wave{
+			ID: newID("wave"), TemplateID: templateID, Position: index + 1, Name: input.Name,
+			Kind: input.Kind, PalID: input.PalID, Level: input.Level, Count: input.Count,
+			HPMultiplier: input.HPMultiplier, AttackMultiplier: input.AttackMultiplier,
+			DefenseMultiplier: input.DefenseMultiplier, SpawnRadius: input.SpawnRadius,
+			DelaySeconds: input.DelaySeconds, Capturable: input.Capturable, Metadata: input.Metadata,
+			CreatedAt: now, UpdatedAt: now,
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO boss_template_waves(id,template_id,position,name,kind,pal_id,level,spawn_count,hp_multiplier,attack_multiplier,defense_multiplier,spawn_radius,delay_seconds,capturable,metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			wave.ID, wave.TemplateID, wave.Position, wave.Name, wave.Kind, wave.PalID, wave.Level, wave.Count,
+			wave.HPMultiplier, wave.AttackMultiplier, wave.DefenseMultiplier, wave.SpawnRadius,
+			wave.DelaySeconds, boolInt(wave.Capturable), string(metadata), wave.CreatedAt, wave.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, wave)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *Service) ListTemplateWaves(ctx context.Context, templateID string) ([]Wave, error) {
+	templateID = strings.TrimSpace(templateID)
+	if templateID == "" {
+		return nil, ErrTemplateNotFound
+	}
+	if _, err := s.GetTemplate(ctx, templateID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id,template_id,position,name,kind,pal_id,level,spawn_count,hp_multiplier,attack_multiplier,defense_multiplier,spawn_radius,delay_seconds,capturable,metadata_json,created_at,updated_at FROM boss_template_waves WHERE template_id=? ORDER BY position`, templateID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Wave{}
+	for rows.Next() {
+		item, scanErr := scanWave(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Service) ListSummonWaves(ctx context.Context, summonID string) ([]SummonWave, error) {
+	summonID = strings.TrimSpace(summonID)
+	if summonID == "" {
+		return nil, ErrSummonNotFound
+	}
+	if _, err := s.GetSummon(ctx, summonID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, summonWaveSelect+` WHERE summon_id=? ORDER BY position`, summonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SummonWave{}
+	for rows.Next() {
+		item, scanErr := scanSummonWave(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Service) TransitionSummonWave(ctx context.Context, summonID string, position int, request WaveTransitionRequest, actor string) (SummonWave, error) {
+	summonID = strings.TrimSpace(summonID)
+	request.Status = strings.ToLower(strings.TrimSpace(request.Status))
+	request.Message = strings.TrimSpace(request.Message)
+	actor = strings.TrimSpace(actor)
+	if summonID == "" || position < 1 || position > maximumWaves || !validWaveStatus(request.Status) || len(request.Message) > 4096 {
+		return SummonWave{}, ErrInvalidWaveTransition
+	}
+	if _, err := marshalBounded(request.Result); err != nil {
+		return SummonWave{}, ErrInvalidWaveTransition
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return SummonWave{}, err
+	}
+	defer rollback(tx)
+	summon, err := getSummonTx(ctx, tx, summonID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SummonWave{}, ErrSummonNotFound
+	}
+	if err != nil {
+		return SummonWave{}, err
+	}
+	if terminalStatus(summon.Status) {
+		return SummonWave{}, ErrInvalidWaveTransition
+	}
+	current, err := scanSummonWave(tx.QueryRowContext(ctx, summonWaveSelect+` WHERE summon_id=? AND position=?`, summonID, position))
+	if errors.Is(err, sql.ErrNoRows) {
+		return SummonWave{}, ErrWaveNotFound
+	}
+	if err != nil {
+		return SummonWave{}, err
+	}
+	if current.Status == request.Status {
+		return current, tx.Commit()
+	}
+	if !waveTransitionAllowed(current.Status, request.Status) {
+		return SummonWave{}, ErrInvalidWaveTransition
+	}
+	if request.Status == WaveStatusActive {
+		var blocking int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM boss_summon_waves WHERE summon_id=? AND position<? AND status IN ('pending','active')`, summonID, position).Scan(&blocking); err != nil {
+			return SummonWave{}, err
+		}
+		if blocking > 0 {
+			return SummonWave{}, ErrInvalidWaveTransition
+		}
+	}
+	now := s.timestamp()
+	startedAt := current.StartedAt
+	completedAt := current.CompletedAt
+	failure := ""
+	if request.Status == WaveStatusActive && startedAt == "" {
+		startedAt = now
+	}
+	if terminalWaveStatus(request.Status) {
+		completedAt = now
+	}
+	if request.Status == WaveStatusFailed {
+		failure = request.Message
+	}
+	result := normalizedMap(request.Result)
+	resultJSON, _ := json.Marshal(result)
+	_, err = tx.ExecContext(ctx, `UPDATE boss_summon_waves SET status=?,actor=?,result_json=?,failure=?,started_at=?,completed_at=?,updated_at=? WHERE summon_id=? AND position=?`,
+		request.Status, actor, string(resultJSON), failure, startedAt, completedAt, now, summonID, position)
+	if err != nil {
+		return SummonWave{}, err
+	}
+	overallStatus := summon.Status
+	overallMessage := fmt.Sprintf("wave %d changed from %s to %s", position, current.Status, request.Status)
+	if request.Message != "" {
+		overallMessage = request.Message
+	}
+	if request.Status == WaveStatusActive && summon.Status == SummonStatusPending {
+		overallStatus = SummonStatusActive
+		_, err = tx.ExecContext(ctx, `UPDATE boss_summons SET status=?,started_at=CASE WHEN started_at='' THEN ? ELSE started_at END,updated_at=? WHERE id=?`, overallStatus, now, now, summonID)
+		if err != nil {
+			return SummonWave{}, err
+		}
+	}
+	if request.Status == WaveStatusFailed {
+		overallStatus = SummonStatusFailed
+		_, err = tx.ExecContext(ctx, `UPDATE boss_summons SET status=?,failure=?,completed_at=?,updated_at=? WHERE id=?`, overallStatus, overallMessage, now, now, summonID)
+		if err != nil {
+			return SummonWave{}, err
+		}
+	} else {
+		var remaining, failed int
+		if err := tx.QueryRowContext(ctx, `SELECT SUM(CASE WHEN status IN ('pending','active') THEN 1 ELSE 0 END),SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) FROM boss_summon_waves WHERE summon_id=?`, summonID).Scan(&remaining, &failed); err != nil {
+			return SummonWave{}, err
+		}
+		if remaining == 0 && failed == 0 {
+			overallStatus = SummonStatusCompleted
+			_, err = tx.ExecContext(ctx, `UPDATE boss_summons SET status=?,started_at=CASE WHEN started_at='' THEN ? ELSE started_at END,completed_at=?,updated_at=? WHERE id=?`, overallStatus, now, now, now, summonID)
+			if err != nil {
+				return SummonWave{}, err
+			}
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE boss_summon_waves SET status='skipped',actor=?,failure='summon terminated',completed_at=?,updated_at=? WHERE summon_id=? AND status IN ('pending','active') AND position<>? AND ? IN ('failed','completed')`, actor, now, now, summonID, position, overallStatus); err != nil {
+		return SummonWave{}, err
+	}
+	if err := insertSummonEvent(ctx, tx, summonID, summon.Status, overallStatus, actor, overallMessage, map[string]any{
+		"wave_position": position, "wave_name": current.Name, "wave_from_status": current.Status,
+		"wave_to_status": request.Status, "wave_result": result,
+	}, now); err != nil {
+		return SummonWave{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return SummonWave{}, err
+	}
+	return s.getSummonWave(ctx, summonID, position)
+}
+
 func (s *Service) CreateSummon(ctx context.Context, request CreateSummonRequest, actor string) (SummonResult, error) {
 	request.TemplateID = strings.TrimSpace(request.TemplateID)
 	request.RequestKey = strings.TrimSpace(request.RequestKey)
@@ -596,6 +960,19 @@ func (s *Service) CreateSummon(ctx context.Context, request CreateSummonRequest,
 	if _, err := marshalBounded(request.Metadata); err != nil {
 		return SummonResult{}, ErrInvalidSummon
 	}
+	waves, err := s.ListTemplateWaves(ctx, template.ID)
+	if err != nil {
+		return SummonResult{}, err
+	}
+	if len(waves) == 0 {
+		waves = []Wave{{
+			ID: "", TemplateID: template.ID, Position: 1, Name: template.Name, Kind: WaveKindMain,
+			PalID: template.PalID, Level: template.Level, Count: template.Count,
+			HPMultiplier: template.HPMultiplier, AttackMultiplier: template.AttackMultiplier,
+			DefenseMultiplier: template.DefenseMultiplier, SpawnRadius: template.SpawnRadius,
+			Capturable: template.Capturable, Metadata: map[string]any{"implicit": true},
+		}}
+	}
 	now := s.timestamp()
 	summon := Summon{
 		ID: newID("summon"), RequestKey: request.RequestKey, TemplateID: template.ID,
@@ -625,7 +1002,17 @@ func (s *Service) CreateSummon(ctx context.Context, request CreateSummonRequest,
 		}
 		return SummonResult{}, err
 	}
-	if err := insertSummonEvent(ctx, tx, summon.ID, "", SummonStatusPending, actor, "manual summon record created", map[string]any{"execution_mode": ExecutionModeRecordOnly}, now); err != nil {
+	for _, wave := range waves {
+		metadata, _ := json.Marshal(wave.Metadata)
+		_, err = tx.ExecContext(ctx, `INSERT INTO boss_summon_waves(summon_id,source_wave_id,position,name,kind,pal_id,level,spawn_count,hp_multiplier,attack_multiplier,defense_multiplier,spawn_radius,delay_seconds,capturable,status,actor,metadata_json,result_json,failure,started_at,completed_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			summon.ID, wave.ID, wave.Position, wave.Name, wave.Kind, wave.PalID, wave.Level, wave.Count,
+			wave.HPMultiplier, wave.AttackMultiplier, wave.DefenseMultiplier, wave.SpawnRadius,
+			wave.DelaySeconds, boolInt(wave.Capturable), WaveStatusPending, "", string(metadata), "{}", "", "", "", now, now)
+		if err != nil {
+			return SummonResult{}, err
+		}
+	}
+	if err := insertSummonEvent(ctx, tx, summon.ID, "", SummonStatusPending, actor, "manual summon record created", map[string]any{"execution_mode": ExecutionModeRecordOnly, "wave_count": len(waves)}, now); err != nil {
 		return SummonResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -684,6 +1071,18 @@ func (s *Service) TransitionSummon(ctx context.Context, id string, request Trans
 		request.Status, string(resultJSON), failure, startedAt, completedAt, now, id)
 	if err != nil {
 		return Summon{}, err
+	}
+	if terminalStatus(request.Status) {
+		skipReason := ""
+		if request.Status != SummonStatusCompleted {
+			skipReason = request.Message
+			if skipReason == "" {
+				skipReason = "summon closed manually"
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE boss_summon_waves SET status='skipped',actor=?,failure=?,completed_at=?,updated_at=? WHERE summon_id=? AND status IN ('pending','active')`, actor, skipReason, now, now, id); err != nil {
+			return Summon{}, err
+		}
 	}
 	if err := insertSummonEvent(ctx, tx, id, current.Status, request.Status, actor, request.Message, result, now); err != nil {
 		return Summon{}, err
@@ -844,6 +1243,70 @@ func (s *Service) normalizeTemplateInput(ctx context.Context, input TemplateInpu
 	return input, nil
 }
 
+func normalizeWaveInput(input WaveInput, position int) (WaveInput, error) {
+	input.Name = strings.TrimSpace(input.Name)
+	input.Kind = strings.ToLower(strings.TrimSpace(input.Kind))
+	input.PalID = strings.TrimSpace(input.PalID)
+	if input.Name == "" {
+		input.Name = fmt.Sprintf("第%d波", position)
+	}
+	if input.Kind == "" {
+		if position == 1 {
+			input.Kind = WaveKindMain
+		} else {
+			input.Kind = WaveKindReinforcement
+		}
+	}
+	if len(input.Name) > 128 || !validWaveKind(input.Kind) || !identifierPattern.MatchString(input.PalID) {
+		return WaveInput{}, ErrInvalidWave
+	}
+	if input.Level < 1 || input.Level > 100 || input.Count < 1 || input.Count > 100 {
+		return WaveInput{}, ErrInvalidWave
+	}
+	if !validMultiplier(input.HPMultiplier) || !validMultiplier(input.AttackMultiplier) || !validMultiplier(input.DefenseMultiplier) {
+		return WaveInput{}, ErrInvalidWave
+	}
+	if math.IsNaN(input.SpawnRadius) || math.IsInf(input.SpawnRadius, 0) || input.SpawnRadius < 0 || input.SpawnRadius > 100000 {
+		return WaveInput{}, ErrInvalidWave
+	}
+	if input.DelaySeconds < 0 || input.DelaySeconds > 86400 {
+		return WaveInput{}, ErrInvalidWave
+	}
+	if _, err := marshalBounded(input.Metadata); err != nil {
+		return WaveInput{}, ErrInvalidWave
+	}
+	input.Metadata = normalizedMap(input.Metadata)
+	return input, nil
+}
+
+func validWaveKind(kind string) bool {
+	return kind == WaveKindMain || kind == WaveKindMinion || kind == WaveKindReinforcement
+}
+
+func validWaveStatus(status string) bool {
+	switch status {
+	case WaveStatusPending, WaveStatusActive, WaveStatusCompleted, WaveStatusFailed, WaveStatusSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
+func terminalWaveStatus(status string) bool {
+	return status == WaveStatusCompleted || status == WaveStatusFailed || status == WaveStatusSkipped
+}
+
+func waveTransitionAllowed(from, to string) bool {
+	switch from {
+	case WaveStatusPending:
+		return to == WaveStatusActive || to == WaveStatusFailed || to == WaveStatusSkipped
+	case WaveStatusActive:
+		return to == WaveStatusCompleted || to == WaveStatusFailed || to == WaveStatusSkipped
+	default:
+		return false
+	}
+}
+
 func validateLocation(location Location) error {
 	for _, value := range []float64{location.X, location.Y, location.Z} {
 		if math.IsNaN(value) || math.IsInf(value, 0) || math.Abs(value) > 10_000_000 {
@@ -916,6 +1379,47 @@ func scanTemplate(scanner interface{ Scan(...any) error }) (Template, error) {
 	_ = json.Unmarshal([]byte(locationJSON), &item.Location)
 	item.Metadata = decodeObject(metadataJSON)
 	return item, nil
+}
+
+func scanWave(scanner interface{ Scan(...any) error }) (Wave, error) {
+	var item Wave
+	var capturable int
+	var metadataJSON string
+	if err := scanner.Scan(&item.ID, &item.TemplateID, &item.Position, &item.Name, &item.Kind, &item.PalID,
+		&item.Level, &item.Count, &item.HPMultiplier, &item.AttackMultiplier, &item.DefenseMultiplier,
+		&item.SpawnRadius, &item.DelaySeconds, &capturable, &metadataJSON, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		return Wave{}, err
+	}
+	item.Capturable = capturable == 1
+	item.Metadata = decodeObject(metadataJSON)
+	return item, nil
+}
+
+const summonWaveSelect = `SELECT id,summon_id,source_wave_id,position,name,kind,pal_id,level,spawn_count,hp_multiplier,attack_multiplier,defense_multiplier,spawn_radius,delay_seconds,capturable,status,actor,metadata_json,result_json,failure,started_at,completed_at,created_at,updated_at FROM boss_summon_waves`
+
+func scanSummonWave(scanner interface{ Scan(...any) error }) (SummonWave, error) {
+	var item SummonWave
+	var capturable int
+	var metadataJSON, resultJSON string
+	if err := scanner.Scan(&item.ID, &item.SummonID, &item.SourceWaveID, &item.Position, &item.Name, &item.Kind,
+		&item.PalID, &item.Level, &item.Count, &item.HPMultiplier, &item.AttackMultiplier,
+		&item.DefenseMultiplier, &item.SpawnRadius, &item.DelaySeconds, &capturable, &item.Status,
+		&item.Actor, &metadataJSON, &resultJSON, &item.Failure, &item.StartedAt, &item.CompletedAt,
+		&item.CreatedAt, &item.UpdatedAt); err != nil {
+		return SummonWave{}, err
+	}
+	item.Capturable = capturable == 1
+	item.Metadata = decodeObject(metadataJSON)
+	item.Result = decodeObject(resultJSON)
+	return item, nil
+}
+
+func (s *Service) getSummonWave(ctx context.Context, summonID string, position int) (SummonWave, error) {
+	item, err := scanSummonWave(s.db.QueryRowContext(ctx, summonWaveSelect+` WHERE summon_id=? AND position=?`, summonID, position))
+	if errors.Is(err, sql.ErrNoRows) {
+		return SummonWave{}, ErrWaveNotFound
+	}
+	return item, err
 }
 
 const summonSelect = `SELECT id,request_key,template_id,template_name,reward_id,status,execution_mode,actor,pal_id,level,spawn_count,hp_multiplier,attack_multiplier,defense_multiplier,spawn_radius,capturable,location_json,notes,metadata_json,result_json,failure,requested_at,started_at,completed_at,updated_at FROM boss_summons`

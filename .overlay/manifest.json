@@ -1,91 +1,59 @@
 {
-  "schema_version": 1,
-  "project": "ninhua/palworld-panel",
+  "name": "Palworld-Panel-overlay-v0.8.66-to-v0.8.67",
+  "repository": "ninhua/palworld-panel",
   "branch": "custom-stable",
-  "overlay_type": "repository-root-replacement",
-  "from_version": "0.8.53",
-  "to_version": "0.8.54",
-  "created_at": "2026-07-31T19:53:00+08:00",
+  "base_patch_version": "0.8.66",
+  "target_patch_version": "0.8.67",
+  "overlay_mode": "copy_to_repository_root",
+  "created_at": "2026-08-01T15:50:31+08:00",
   "features": [
-    "configurable-game-command-prefix",
-    "prefix-free-game-commands",
-    "economy-settings-api",
-    "economy-admin-page",
-    "economy-account-search",
-    "economy-ledger-browser",
-    "economy-manual-adjustment-ui"
+    "boss-wave-config",
+    "boss-wave-editor",
+    "boss-wave-ordering",
+    "boss-wave-pal-catalog-selector",
+    "boss-wave-snapshot-ledger",
+    "boss-wave-state-machine",
+    "boss-wave-progress-ui",
+    "boss-wave-audit-events",
+    "boss-implicit-single-wave-compatibility",
+    "generated-api-contract-sync",
+    "patch-version-lockstep"
   ],
   "files": [
-    {
-      "path": ".overlay/README.md",
-      "sha256": "b0fd25b9bf54a38d87c87e2625c6fce69b7ff8b823104629bf260bef85230224",
-      "size": 1654
-    },
-    {
-      "path": "backend/internal/api/economy.go",
-      "sha256": "399c45775d7c86f7c1ca98f65a259bd6fb0e314c9934b201225af3e182631a31",
-      "size": 11955
-    },
-    {
-      "path": "backend/internal/api/patch_info.go",
-      "sha256": "f3310755a791dd410b759ab5656fc73641ab8afa25a47d04ce987ac585cb7977",
-      "size": 1733
-    },
-    {
-      "path": "backend/internal/economy/service.go",
-      "sha256": "d4cb5cdf55573e50b69edd160a88c1e847ee00a6f3681713f79921d2708bb94c",
-      "size": 38674
-    },
-    {
-      "path": "backend/internal/economy/service_test.go",
-      "sha256": "d916f693bc948d135d53ed6a965142facbd16ef1047907643e227f5a6ecc816d",
-      "size": 7294
-    },
-    {
-      "path": "docs/economy-api.md",
-      "sha256": "0a9a881784b9aaa4785ec70bd908fdd92ae9632b6e5140f3d8ac76d0b2761375",
-      "size": 3567
-    },
-    {
-      "path": "docs/releases/0.8.54.md",
-      "sha256": "d03e37494217c8c0a4702543f6e13d1b363f6bafa38f387b391fee34956e9e69",
-      "size": 2154
-    },
-    {
-      "path": "frontend/src/api/economy.ts",
-      "sha256": "e122a8672b1aa42c7903fb5b7af7d0ebb975693b45b46eaec531af35f6e40400",
-      "size": 3034
-    },
-    {
-      "path": "frontend/src/components/layout/Header.tsx",
-      "sha256": "cc0a367c8ae4e22ff6e766bf7184c68ef782b694cdbefd509b814099bfcf577b",
-      "size": 3356
-    },
-    {
-      "path": "frontend/src/components/layout/Sidebar.tsx",
-      "sha256": "d35072f0feb3d187a8777ecb2e1266c4a005b2e403ddabf8bcedbf77428d456d",
-      "size": 9466
-    },
-    {
-      "path": "frontend/src/pages/Economy.tsx",
-      "sha256": "a31e934e4bc4512c4e8b63cfb2f2ff4be1e83118cd966b6eae49ec10ba5ef809",
-      "size": 11996
-    },
-    {
-      "path": "frontend/src/routes.tsx",
-      "sha256": "dabebea21c2102ac48e6e7f1fa0b7a92eb36fd552081802b8a10704f45a3dfa8",
-      "size": 9781
-    },
-    {
-      "path": ".overlay/checksums.sha256",
-      "sha256": "a894bf1fc48b3d83d9d04a165bfda988a707ef16e88cfa23fa9d707aa800bcd1",
-      "size": 1167
-    }
+    ".overlay/README.md",
+    ".overlay/checksums.sha256",
+    ".overlay/manifest.json",
+    "backend/internal/api/boss.go",
+    "backend/internal/api/patch_info.go",
+    "backend/internal/boss/service.go",
+    "backend/internal/boss/service_test.go",
+    "docs/boss-api.md",
+    "docs/openapi.yaml",
+    "docs/releases/0.8.67.md",
+    "frontend/src/api/boss.ts",
+    "frontend/src/api/generated/contracts.ts",
+    "frontend/src/pages/BossOperations.tsx"
   ],
-  "notes": [
-    "直接解压到仓库根目录覆盖",
-    "要求基线版本为0.8.53",
-    "不包含Git提交或推送",
-    "AstrBot旧积分自动迁移仍不在本版本范围内"
+  "verification": [
+    "Go formatting for all modified Go files",
+    "Boss service and tests compiled with Go 1.23 against a local sqlite import stub",
+    "Boss API handlers compiled with local Gin and application stubs",
+    "go vet completed for the isolated Boss service and API handler builds",
+    "SQLite schema statements executed with foreign keys enabled and wave snapshot rows inserted",
+    "Isolated TypeScript typecheck for Boss API, generated contracts and Boss page",
+    "OpenAPI YAML parse and exact 326-operation inventory",
+    "All OpenAPI operationId values unique and all operations contain x-palpanel-permission",
+    "All 17 runtime Boss routes exactly match the 17 OpenAPI Boss operations",
+    "Generated TypeScript contracts reproduced byte-for-byte from OpenAPI",
+    "Patch version verified as 0.8.67 in runtime metadata, OpenAPI and generated contracts",
+    "UTF-8, LF, final newline and trailing-whitespace checks",
+    "Internal SHA-256 manifest, ZIP integrity and extract-and-verify checks"
+  ],
+  "limitations": [
+    "The complete repository go test ./... and frontend npm run check were not run in this environment",
+    "Boss tests were compiled but not executed against the real modernc SQLite driver",
+    "The Pal catalog selector was not exercised against a live PalDefender instance",
+    "Boss summons remain record_only and do not execute PalDefender or RCON commands",
+    "Automatic scheduling, warning broadcasts, participant detection and reward settlement are not included"
   ]
 }
