@@ -1,0 +1,542 @@
+[
+  {
+    "id": "Blueprint_Octavia001_Armor_5",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "Blueprint_Octavia002_Armor_5",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "Blueprint_OctaviaRevolver_2",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "Blueprint_OctaviaRevolver_3",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "Blueprint_OctaviaRevolver_4",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "Blueprint_OctaviaRevolver_5",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "Blueprint_OctaviaShotgun_2",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "Blueprint_OctaviaShotgun_3",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "Blueprint_OctaviaShotgun_4",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "Blueprint_OctaviaShotgun_5",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "Blueprint_PalSummon_YakushimaBoss002",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaArmor001",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaArmor001_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaArmor001_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaArmor001_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaArmor001_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade002",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade002_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade002_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade002_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade002_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade003",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade003_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade003_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade003_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade003_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade004",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade004_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade004_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade004_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBlade004_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaBoss002_Relic",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaGun001",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaGun001_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaGun001_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaGun001_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaGun001_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip001",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip001_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip001_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip001_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip001_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip002",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip002_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip002_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip002_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip002_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip003",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip003_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip003_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip003_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip003_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip004",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip004_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip004_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip004_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaHeadEquip004_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaLantern001",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaLantern001_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaLantern001_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaLantern001_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Blueprint_YakushimaLantern001_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Elixir_hp_Yakushima",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "Octavia001_Armor",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "Octavia001_Armor_5",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "Octavia002_Armor",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "Octavia002_Armor_5",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "OctaviaRevolver",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "OctaviaRevolver_2",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "OctaviaRevolver_3",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "OctaviaRevolver_4",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "OctaviaRevolver_5",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "OctaviaShotgun",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "OctaviaShotgun_2",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "OctaviaShotgun_3",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "OctaviaShotgun_4",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "OctaviaShotgun_5",
+    "collaboration": "ultrakill"
+  },
+  {
+    "id": "PalSummon_YakushimaBoss002",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "PalSummon_YakushimaBoss002_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaArmor001",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaArmor001_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaArmor001_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaArmor001_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaArmor001_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade002",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade002_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade002_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade002_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade002_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade003",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade003_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade003_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade003_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade003_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade004",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade004_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade004_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade004_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade004_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaBlade005",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaGun001",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaGun001_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaGun001_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaGun001_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaGun001_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip001",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip001_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip001_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip001_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip001_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip002",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip002_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip002_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip002_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip002_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip003",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip003_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip003_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip003_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip003_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip004",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip004_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip004_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip004_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip004_5",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip005",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaHeadEquip006",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaIngot001",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaIngot002",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaLantern001",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaLantern001_2",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaLantern001_3",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaLantern001_4",
+    "collaboration": "terraria"
+  },
+  {
+    "id": "YakushimaLantern001_5",
+    "collaboration": "terraria"
+  }
+]

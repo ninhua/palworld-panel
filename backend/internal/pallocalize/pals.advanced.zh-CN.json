@@ -1,0 +1,10 @@
+[
+  {"id":"BOSS_PlantSlime_Flower","name":"突然变异的叶泥泥","kind":"advanced"},
+  {"id":"BOSS_YakushimaBoss001","name":"克苏鲁之眼","kind":"advanced"},
+  {"id":"RAID_YakushimaBoss001_Green","name":"克苏鲁真眼","kind":"advanced"},
+  {"id":"RAID_YakushimaBoss002","name":"月亮领主","kind":"advanced"},
+  {"id":"PREDATOR_Garm_Quest","name":"狂暴化的猎狼","kind":"advanced"},
+  {"id":"PREDATOR_PinkLizard_Quest","name":"狂暴化的博爱蜥","kind":"advanced"},
+  {"id":"PREDATOR_Umihebi_Fire_Quest","name":"狂暴化的腾炎龙","kind":"advanced"},
+  {"id":"PREDATOR_WhiteShieldDragon_Quest","name":"狂暴化的艾基鲁迦","kind":"advanced"}
+]

@@ -1,0 +1,1497 @@
+[
+  {
+    "id": "Alpaca",
+    "name": "美露帕",
+    "kind": "standard"
+  },
+  {
+    "id": "AmaterasuWolf",
+    "name": "苍焰狼",
+    "kind": "standard"
+  },
+  {
+    "id": "AmaterasuWolf_Dark",
+    "name": "幽焰狼",
+    "kind": "standard"
+  },
+  {
+    "id": "Anubis",
+    "name": "阿努比斯",
+    "kind": "standard"
+  },
+  {
+    "id": "BadCatgirl",
+    "name": "妮瞅莎",
+    "kind": "standard"
+  },
+  {
+    "id": "Baphomet",
+    "name": "炎魔羊",
+    "kind": "standard"
+  },
+  {
+    "id": "Baphomet_Dark",
+    "name": "暗魔羊",
+    "kind": "standard"
+  },
+  {
+    "id": "Bastet",
+    "name": "喵丝特",
+    "kind": "standard"
+  },
+  {
+    "id": "Bastet_Ice",
+    "name": "冰丝特",
+    "kind": "standard"
+  },
+  {
+    "id": "BerryGoat",
+    "name": "灌木羊",
+    "kind": "standard"
+  },
+  {
+    "id": "BerryGoat_Dark",
+    "name": "郁木羊",
+    "kind": "standard"
+  },
+  {
+    "id": "BirdDragon",
+    "name": "烽歌龙",
+    "kind": "standard"
+  },
+  {
+    "id": "BirdDragon_Ice",
+    "name": "霜歌龙",
+    "kind": "standard"
+  },
+  {
+    "id": "BlackCentaur",
+    "name": "混沌骑士",
+    "kind": "standard"
+  },
+  {
+    "id": "BlackGriffon",
+    "name": "异构格里芬",
+    "kind": "standard"
+  },
+  {
+    "id": "BlackMetalDragon",
+    "name": "魔渊龙",
+    "kind": "standard"
+  },
+  {
+    "id": "BlackPuppy",
+    "name": "墨丸",
+    "kind": "standard"
+  },
+  {
+    "id": "BlackPuppy_Ice",
+    "name": "冬丸",
+    "kind": "standard"
+  },
+  {
+    "id": "BlueberryFairy",
+    "name": "梅莉姆",
+    "kind": "standard"
+  },
+  {
+    "id": "BlueDragon",
+    "name": "碧海龙",
+    "kind": "standard"
+  },
+  {
+    "id": "BlueDragon_Ice",
+    "name": "碧月龙",
+    "kind": "standard"
+  },
+  {
+    "id": "BluePlatypus",
+    "name": "冲浪鸭",
+    "kind": "standard"
+  },
+  {
+    "id": "BluePlatypus_Fire",
+    "name": "热浪鸭",
+    "kind": "standard"
+  },
+  {
+    "id": "BlueSkyDragon",
+    "name": "霄龙",
+    "kind": "standard"
+  },
+  {
+    "id": "BlueThunderHorse",
+    "name": "驭雷马",
+    "kind": "standard"
+  },
+  {
+    "id": "Boar",
+    "name": "草莽猪",
+    "kind": "standard"
+  },
+  {
+    "id": "BrownRabbit",
+    "name": "詹兔曼",
+    "kind": "standard"
+  },
+  {
+    "id": "CactusDoll",
+    "name": "球抱苞",
+    "kind": "standard"
+  },
+  {
+    "id": "CactusDoll_Dark",
+    "name": "妖抱苞",
+    "kind": "standard"
+  },
+  {
+    "id": "CandleGhost",
+    "name": "恐炬灵",
+    "kind": "standard"
+  },
+  {
+    "id": "CaptainPenguin",
+    "name": "企丸王",
+    "kind": "standard"
+  },
+  {
+    "id": "CaptainPenguin_Black",
+    "name": "闪丸王",
+    "kind": "standard"
+  },
+  {
+    "id": "Carbunclo",
+    "name": "翠叶鼠",
+    "kind": "standard"
+  },
+  {
+    "id": "CatBat",
+    "name": "猫蝠怪",
+    "kind": "standard"
+  },
+  {
+    "id": "CatMage",
+    "name": "暗巫猫",
+    "kind": "standard"
+  },
+  {
+    "id": "CatMage_Fire",
+    "name": "炽巫猫",
+    "kind": "standard"
+  },
+  {
+    "id": "CatVampire",
+    "name": "夜幕魔蝠",
+    "kind": "standard"
+  },
+  {
+    "id": "ChickenPal",
+    "name": "皮皮鸡",
+    "kind": "standard"
+  },
+  {
+    "id": "ClioneTwins",
+    "name": "莉欧·莉涅",
+    "kind": "standard"
+  },
+  {
+    "id": "CloverFairy",
+    "name": "幸叶茸",
+    "kind": "standard"
+  },
+  {
+    "id": "ClownRabbit",
+    "name": "拉比耶尔",
+    "kind": "standard"
+  },
+  {
+    "id": "ColorfulBird",
+    "name": "炸蛋鸟",
+    "kind": "standard"
+  },
+  {
+    "id": "CowPal",
+    "name": "波霸牛",
+    "kind": "standard"
+  },
+  {
+    "id": "CubeTurtle",
+    "name": "重岩龟",
+    "kind": "standard"
+  },
+  {
+    "id": "CubeTurtle_Neutral",
+    "name": "净岩龟",
+    "kind": "standard"
+  },
+  {
+    "id": "CuteButterfly",
+    "name": "幻悦蝶",
+    "kind": "standard"
+  },
+  {
+    "id": "CuteFox",
+    "name": "玉藻狐",
+    "kind": "standard"
+  },
+  {
+    "id": "CuteMole",
+    "name": "遁地鼠",
+    "kind": "standard"
+  },
+  {
+    "id": "DandelionGirl",
+    "name": "蒲蒲飞芽",
+    "kind": "standard"
+  },
+  {
+    "id": "DarkAlien",
+    "name": "杰诺贝达",
+    "kind": "standard"
+  },
+  {
+    "id": "DarkCrow",
+    "name": "黑鸦隐士",
+    "kind": "standard"
+  },
+  {
+    "id": "DarkFlameFox",
+    "name": "紫狐娇",
+    "kind": "standard"
+  },
+  {
+    "id": "DarkMechaDragon",
+    "name": "杰诺多兰",
+    "kind": "standard"
+  },
+  {
+    "id": "DarkScorpion",
+    "name": "冥铠蝎",
+    "kind": "standard"
+  },
+  {
+    "id": "DarkScorpion_Ground",
+    "name": "金铠蝎",
+    "kind": "standard"
+  },
+  {
+    "id": "Deer",
+    "name": "紫霞鹿",
+    "kind": "standard"
+  },
+  {
+    "id": "Deer_Ground",
+    "name": "祇岳鹿",
+    "kind": "standard"
+  },
+  {
+    "id": "DomeArmorDragon",
+    "name": "磐甲龙",
+    "kind": "standard"
+  },
+  {
+    "id": "DreamDemon",
+    "name": "寐魔",
+    "kind": "standard"
+  },
+  {
+    "id": "DrillGame",
+    "name": "碎岩龟",
+    "kind": "standard"
+  },
+  {
+    "id": "Eagle",
+    "name": "天擒鸟",
+    "kind": "standard"
+  },
+  {
+    "id": "ElecCat",
+    "name": "伏特喵",
+    "kind": "standard"
+  },
+  {
+    "id": "ElecLizard",
+    "name": "电懒懒",
+    "kind": "standard"
+  },
+  {
+    "id": "ElecPanda",
+    "name": "暴电熊",
+    "kind": "standard"
+  },
+  {
+    "id": "ElecPomeranian",
+    "name": "电汪汪",
+    "kind": "standard"
+  },
+  {
+    "id": "ElecSnail",
+    "name": "电涡蜗",
+    "kind": "standard"
+  },
+  {
+    "id": "ElecSnail_Ground",
+    "name": "金涡蜗",
+    "kind": "standard"
+  },
+  {
+    "id": "FairyDragon",
+    "name": "精灵龙",
+    "kind": "standard"
+  },
+  {
+    "id": "FairyDragon_Water",
+    "name": "水灵龙",
+    "kind": "standard"
+  },
+  {
+    "id": "FeatherOstrich",
+    "name": "战冠雀",
+    "kind": "standard"
+  },
+  {
+    "id": "FengyunDeeper",
+    "name": "云海鹿",
+    "kind": "standard"
+  },
+  {
+    "id": "FengyunDeeper_Electric",
+    "name": "雷隐鹿",
+    "kind": "standard"
+  },
+  {
+    "id": "FireKirin",
+    "name": "火麒麟",
+    "kind": "standard"
+  },
+  {
+    "id": "FireKirin_Dark",
+    "name": "邪麒麟",
+    "kind": "standard"
+  },
+  {
+    "id": "FlameBambi",
+    "name": "燎火鹿",
+    "kind": "standard"
+  },
+  {
+    "id": "FlameBuffalo",
+    "name": "炽焰牛",
+    "kind": "standard"
+  },
+  {
+    "id": "FlowerDinosaur",
+    "name": "花冠龙",
+    "kind": "standard"
+  },
+  {
+    "id": "FlowerDinosaur_Electric",
+    "name": "雷冠龙",
+    "kind": "standard"
+  },
+  {
+    "id": "FlowerDoll",
+    "name": "花丽娜",
+    "kind": "standard"
+  },
+  {
+    "id": "FlowerDoll_Fire",
+    "name": "樱丽娜",
+    "kind": "standard"
+  },
+  {
+    "id": "FlowerPrince",
+    "name": "夜蔓爵",
+    "kind": "standard"
+  },
+  {
+    "id": "FlowerRabbit",
+    "name": "波娜兔",
+    "kind": "standard"
+  },
+  {
+    "id": "FluffyBird",
+    "name": "雪绵啾",
+    "kind": "standard"
+  },
+  {
+    "id": "FlyingManta",
+    "name": "鲁米儿",
+    "kind": "standard"
+  },
+  {
+    "id": "FlyingManta_Thunder",
+    "name": "雷米儿",
+    "kind": "standard"
+  },
+  {
+    "id": "FoxExorcist",
+    "name": "昭炎狐",
+    "kind": "standard"
+  },
+  {
+    "id": "FoxMage",
+    "name": "焰巫狐",
+    "kind": "standard"
+  },
+  {
+    "id": "FoxMage_Dark",
+    "name": "幽巫狐",
+    "kind": "standard"
+  },
+  {
+    "id": "Ganesha",
+    "name": "壶小象",
+    "kind": "standard"
+  },
+  {
+    "id": "Garm",
+    "name": "猎狼",
+    "kind": "standard"
+  },
+  {
+    "id": "GhostAnglerfish",
+    "name": "冥灯鱼",
+    "kind": "standard"
+  },
+  {
+    "id": "GhostAnglerfish_Fire",
+    "name": "炙灯鱼",
+    "kind": "standard"
+  },
+  {
+    "id": "GhostBeast",
+    "name": "噬魂兽",
+    "kind": "standard"
+  },
+  {
+    "id": "GhostBlackCat",
+    "name": "念影喵",
+    "kind": "standard"
+  },
+  {
+    "id": "GhostDragon",
+    "name": "灵曦龙",
+    "kind": "standard"
+  },
+  {
+    "id": "GhostDragon_Fire",
+    "name": "狱熙龙",
+    "kind": "standard"
+  },
+  {
+    "id": "GhostRabbit",
+    "name": "魅爱莉",
+    "kind": "standard"
+  },
+  {
+    "id": "GhostRabbit_Grass",
+    "name": "碧艾莉",
+    "kind": "standard"
+  },
+  {
+    "id": "GoldenHorse",
+    "name": "金驰兽",
+    "kind": "standard"
+  },
+  {
+    "id": "Gorilla",
+    "name": "铁拳猿",
+    "kind": "standard"
+  },
+  {
+    "id": "Gorilla_Ground",
+    "name": "石掌猿",
+    "kind": "standard"
+  },
+  {
+    "id": "GrassGolem",
+    "name": "双心岩傀",
+    "kind": "standard"
+  },
+  {
+    "id": "GrassGolem_Dark",
+    "name": "咒心岩傀",
+    "kind": "standard"
+  },
+  {
+    "id": "GrassMammoth",
+    "name": "森猛犸",
+    "kind": "standard"
+  },
+  {
+    "id": "GrassMammoth_Ice",
+    "name": "雪猛犸",
+    "kind": "standard"
+  },
+  {
+    "id": "GrassMinotaur",
+    "name": "密林陶洛斯",
+    "kind": "standard"
+  },
+  {
+    "id": "GrassMinotaur_Ice",
+    "name": "冰峰陶洛斯",
+    "kind": "standard"
+  },
+  {
+    "id": "GrassPanda",
+    "name": "叶胖达",
+    "kind": "standard"
+  },
+  {
+    "id": "GrassPanda_Electric",
+    "name": "雷胖达",
+    "kind": "standard"
+  },
+  {
+    "id": "GrassRabbitMan",
+    "name": "踏春兔",
+    "kind": "standard"
+  },
+  {
+    "id": "GrimGirl",
+    "name": "幽恋娜",
+    "kind": "standard"
+  },
+  {
+    "id": "GuardianDog",
+    "name": "八云犬",
+    "kind": "standard"
+  },
+  {
+    "id": "HadesBird",
+    "name": "雷冥鸟",
+    "kind": "standard"
+  },
+  {
+    "id": "HadesBird_Electric",
+    "name": "雷鸣鸟",
+    "kind": "standard"
+  },
+  {
+    "id": "HawkBird",
+    "name": "疾风隼",
+    "kind": "standard"
+  },
+  {
+    "id": "Hedgehog",
+    "name": "电棘鼠",
+    "kind": "standard"
+  },
+  {
+    "id": "Hedgehog_Ice",
+    "name": "冰刺鼠",
+    "kind": "standard"
+  },
+  {
+    "id": "HerculesBeetle",
+    "name": "铠格力斯",
+    "kind": "standard"
+  },
+  {
+    "id": "HerculesBeetle_Ground",
+    "name": "格鲁力斯",
+    "kind": "standard"
+  },
+  {
+    "id": "HoodGhost",
+    "name": "兜兜灵",
+    "kind": "standard"
+  },
+  {
+    "id": "Horus",
+    "name": "荷鲁斯",
+    "kind": "standard"
+  },
+  {
+    "id": "Horus_Water",
+    "name": "伊西斯",
+    "kind": "standard"
+  },
+  {
+    "id": "IceCrocodile",
+    "name": "肚肚鳄",
+    "kind": "standard"
+  },
+  {
+    "id": "IceDeer",
+    "name": "严冬鹿",
+    "kind": "standard"
+  },
+  {
+    "id": "IceFox",
+    "name": "吹雪狐",
+    "kind": "standard"
+  },
+  {
+    "id": "IceHorse",
+    "name": "唤冬兽",
+    "kind": "standard"
+  },
+  {
+    "id": "IceHorse_Dark",
+    "name": "唤夜兽",
+    "kind": "standard"
+  },
+  {
+    "id": "IceNarwhal",
+    "name": "凉晶鲸",
+    "kind": "standard"
+  },
+  {
+    "id": "IceNarwhal_Fire",
+    "name": "桃晶鲸",
+    "kind": "standard"
+  },
+  {
+    "id": "IceSeal",
+    "name": "香草豹冰",
+    "kind": "standard"
+  },
+  {
+    "id": "IceSeal_Ground",
+    "name": "巧克力豹冰",
+    "kind": "standard"
+  },
+  {
+    "id": "IceWitch",
+    "name": "冰姬灵",
+    "kind": "standard"
+  },
+  {
+    "id": "JellyfishFairy",
+    "name": "海月仙",
+    "kind": "standard"
+  },
+  {
+    "id": "JellyfishGhost",
+    "name": "海月灵",
+    "kind": "standard"
+  },
+  {
+    "id": "JetDragon",
+    "name": "空涡龙",
+    "kind": "standard"
+  },
+  {
+    "id": "KabukiMan",
+    "name": "燎火舞伶",
+    "kind": "standard"
+  },
+  {
+    "id": "Kelpie",
+    "name": "水灵儿",
+    "kind": "standard"
+  },
+  {
+    "id": "Kelpie_Fire",
+    "name": "火灵儿",
+    "kind": "standard"
+  },
+  {
+    "id": "KendoFrog",
+    "name": "武道蛙",
+    "kind": "standard"
+  },
+  {
+    "id": "KendoFrog_Dark",
+    "name": "极道蛙",
+    "kind": "standard"
+  },
+  {
+    "id": "KingAlpaca",
+    "name": "君王美露帕",
+    "kind": "standard"
+  },
+  {
+    "id": "KingAlpaca_Ice",
+    "name": "冰帝美露帕",
+    "kind": "standard"
+  },
+  {
+    "id": "KingBahamut",
+    "name": "焰煌",
+    "kind": "standard"
+  },
+  {
+    "id": "KingBahamut_Dragon",
+    "name": "殁殃",
+    "kind": "standard"
+  },
+  {
+    "id": "KingSunfish",
+    "name": "曼波王",
+    "kind": "standard"
+  },
+  {
+    "id": "KingSunfish_Thunder",
+    "name": "曼波皇",
+    "kind": "standard"
+  },
+  {
+    "id": "KingWhale",
+    "name": "奥沧鲸",
+    "kind": "standard"
+  },
+  {
+    "id": "Kirin",
+    "name": "雷角马",
+    "kind": "standard"
+  },
+  {
+    "id": "Kirin_Ice",
+    "name": "凌角马",
+    "kind": "standard"
+  },
+  {
+    "id": "Kitsunebi",
+    "name": "火绒狐",
+    "kind": "standard"
+  },
+  {
+    "id": "Kitsunebi_Ice",
+    "name": "雪绒狐",
+    "kind": "standard"
+  },
+  {
+    "id": "LanternButler",
+    "name": "妖焰灯",
+    "kind": "standard"
+  },
+  {
+    "id": "LavaGirl",
+    "name": "融焰娘",
+    "kind": "standard"
+  },
+  {
+    "id": "LazyCatfish",
+    "name": "趴趴鲶",
+    "kind": "standard"
+  },
+  {
+    "id": "LazyCatfish_Gold",
+    "name": "梆梆鲶",
+    "kind": "standard"
+  },
+  {
+    "id": "LazyDragon",
+    "name": "佩克龙",
+    "kind": "standard"
+  },
+  {
+    "id": "LazyDragon_Electric",
+    "name": "派克龙",
+    "kind": "standard"
+  },
+  {
+    "id": "LeafMomonga",
+    "name": "达鼠泥",
+    "kind": "standard"
+  },
+  {
+    "id": "LeafPrincess",
+    "name": "春彩娘",
+    "kind": "standard"
+  },
+  {
+    "id": "LegendDeer",
+    "name": "默世鹿",
+    "kind": "standard"
+  },
+  {
+    "id": "LilyQueen",
+    "name": "百合女王",
+    "kind": "standard"
+  },
+  {
+    "id": "LilyQueen_Dark",
+    "name": "黑月女王",
+    "kind": "standard"
+  },
+  {
+    "id": "LittleBriarRose",
+    "name": "荊棘魔仙",
+    "kind": "standard"
+  },
+  {
+    "id": "LizardMan",
+    "name": "朋克蜥",
+    "kind": "standard"
+  },
+  {
+    "id": "LizardMan_Fire",
+    "name": "热血蜥",
+    "kind": "standard"
+  },
+  {
+    "id": "LongCat",
+    "name": "喵璐璐",
+    "kind": "standard"
+  },
+  {
+    "id": "LotusDragon",
+    "name": "沁莲龙",
+    "kind": "standard"
+  },
+  {
+    "id": "Manticore",
+    "name": "狱焰王",
+    "kind": "standard"
+  },
+  {
+    "id": "Manticore_Dark",
+    "name": "狱阎王",
+    "kind": "standard"
+  },
+  {
+    "id": "MimicDog",
+    "name": "旺财",
+    "kind": "standard"
+  },
+  {
+    "id": "Monkey",
+    "name": "新叶猿",
+    "kind": "standard"
+  },
+  {
+    "id": "Monkey_Fire",
+    "name": "秋叶猿",
+    "kind": "standard"
+  },
+  {
+    "id": "MonochromeQueen",
+    "name": "墨罗娜",
+    "kind": "standard"
+  },
+  {
+    "id": "MoonChild",
+    "name": "缀夜星",
+    "kind": "standard"
+  },
+  {
+    "id": "MoonQueen",
+    "name": "辉月伊",
+    "kind": "standard"
+  },
+  {
+    "id": "MopBaby",
+    "name": "毛掸儿",
+    "kind": "standard"
+  },
+  {
+    "id": "MopKing",
+    "name": "毛老爹",
+    "kind": "standard"
+  },
+  {
+    "id": "Mothman",
+    "name": "暮尘蛾",
+    "kind": "standard"
+  },
+  {
+    "id": "MummyPal",
+    "name": "缚乃伊",
+    "kind": "standard"
+  },
+  {
+    "id": "MushroomDragon",
+    "name": "菇咚",
+    "kind": "standard"
+  },
+  {
+    "id": "MushroomDragon_Dark",
+    "name": "菇波",
+    "kind": "standard"
+  },
+  {
+    "id": "MushroomLady",
+    "name": "红菇娘",
+    "kind": "standard"
+  },
+  {
+    "id": "Mutant",
+    "name": "秘斯媞雅",
+    "kind": "standard"
+  },
+  {
+    "id": "MysteryMask",
+    "name": "面惧",
+    "kind": "standard"
+  },
+  {
+    "id": "NaughtyCat",
+    "name": "笑魇猫",
+    "kind": "standard"
+  },
+  {
+    "id": "NegativeKoala",
+    "name": "瞅什魔",
+    "kind": "standard"
+  },
+  {
+    "id": "NegativeOctopus",
+    "name": "勾魂鱿",
+    "kind": "standard"
+  },
+  {
+    "id": "NegativeOctopus_Neutral",
+    "name": "蚀魂鱿",
+    "kind": "standard"
+  },
+  {
+    "id": "NightBlueHorse",
+    "name": "夜冥驹",
+    "kind": "standard"
+  },
+  {
+    "id": "NightBlueHorse_Neutral",
+    "name": "日耀驹",
+    "kind": "standard"
+  },
+  {
+    "id": "NightFox",
+    "name": "露娜蒂",
+    "kind": "standard"
+  },
+  {
+    "id": "NightLady",
+    "name": "贝菈诺娃",
+    "kind": "standard"
+  },
+  {
+    "id": "NightLady_Dark",
+    "name": "贝菈露洁",
+    "kind": "standard"
+  },
+  {
+    "id": "OctopusGirl",
+    "name": "墨沫姬",
+    "kind": "standard"
+  },
+  {
+    "id": "OctopusGirl_Neutral",
+    "name": "梦沫姬",
+    "kind": "standard"
+  },
+  {
+    "id": "OniGhostGirl",
+    "name": "吓丝妮",
+    "kind": "standard"
+  },
+  {
+    "id": "PandaGirl",
+    "name": "莉芳",
+    "kind": "standard"
+  },
+  {
+    "id": "Penguin",
+    "name": "企丸丸",
+    "kind": "standard"
+  },
+  {
+    "id": "Penguin_Electric",
+    "name": "闪丸丸",
+    "kind": "standard"
+  },
+  {
+    "id": "PinkCat",
+    "name": "捣蛋猫",
+    "kind": "standard"
+  },
+  {
+    "id": "PinkLizard",
+    "name": "博爱蜥",
+    "kind": "standard"
+  },
+  {
+    "id": "PinkRabbit",
+    "name": "姬小兔",
+    "kind": "standard"
+  },
+  {
+    "id": "PinkRabbit_Grass",
+    "name": "艾小兔",
+    "kind": "standard"
+  },
+  {
+    "id": "PlantSlime",
+    "name": "叶泥泥",
+    "kind": "standard"
+  },
+  {
+    "id": "PlantSlime_Flower",
+    "name": "叶泥泥",
+    "kind": "standard"
+  },
+  {
+    "id": "Plesiosaur",
+    "name": "梁叶龙",
+    "kind": "standard"
+  },
+  {
+    "id": "PoseidonOrca",
+    "name": "海皇鲸",
+    "kind": "standard"
+  },
+  {
+    "id": "PurpleSpider",
+    "name": "桃蛛娘",
+    "kind": "standard"
+  },
+  {
+    "id": "QueenBee",
+    "name": "女皇蜂",
+    "kind": "standard"
+  },
+  {
+    "id": "RaijinDaughter",
+    "name": "雷鸣童子",
+    "kind": "standard"
+  },
+  {
+    "id": "RaijinDaughter_Water",
+    "name": "天阴童子",
+    "kind": "standard"
+  },
+  {
+    "id": "RedArmorBird",
+    "name": "燧火鸟",
+    "kind": "standard"
+  },
+  {
+    "id": "RedFlowerBird",
+    "name": "大红呱",
+    "kind": "standard"
+  },
+  {
+    "id": "RobinHood",
+    "name": "羽箭射手",
+    "kind": "standard"
+  },
+  {
+    "id": "RobinHood_Ground",
+    "name": "山岳射手",
+    "kind": "standard"
+  },
+  {
+    "id": "RockBeast",
+    "name": "磐峰兽",
+    "kind": "standard"
+  },
+  {
+    "id": "RockBeast_Ice",
+    "name": "寒峰兽",
+    "kind": "standard"
+  },
+  {
+    "id": "Ronin",
+    "name": "浪刃武士",
+    "kind": "standard"
+  },
+  {
+    "id": "Ronin_Dark",
+    "name": "鬼刃武士",
+    "kind": "standard"
+  },
+  {
+    "id": "SaintCentaur",
+    "name": "圣光骑士",
+    "kind": "standard"
+  },
+  {
+    "id": "SakuraSaurus",
+    "name": "连理龙",
+    "kind": "standard"
+  },
+  {
+    "id": "SakuraSaurus_Water",
+    "name": "海誓龙",
+    "kind": "standard"
+  },
+  {
+    "id": "SamuraiDog",
+    "name": "宗铭丸",
+    "kind": "standard"
+  },
+  {
+    "id": "ScorpionMan",
+    "name": "蛊刺妖",
+    "kind": "standard"
+  },
+  {
+    "id": "ScorpionMan_Electric",
+    "name": "电针妖",
+    "kind": "standard"
+  },
+  {
+    "id": "Sekhmet",
+    "name": "塞赫麦特",
+    "kind": "standard"
+  },
+  {
+    "id": "Serpent",
+    "name": "滑水蛇",
+    "kind": "standard"
+  },
+  {
+    "id": "Serpent_Ground",
+    "name": "流沙蛇",
+    "kind": "standard"
+  },
+  {
+    "id": "SharkKid",
+    "name": "鲨小子",
+    "kind": "standard"
+  },
+  {
+    "id": "SharkKid_Fire",
+    "name": "红小鲨",
+    "kind": "standard"
+  },
+  {
+    "id": "SheepBall",
+    "name": "棉悠悠",
+    "kind": "standard"
+  },
+  {
+    "id": "SifuDog",
+    "name": "汪宗师",
+    "kind": "standard"
+  },
+  {
+    "id": "SkyDragon",
+    "name": "天羽龙",
+    "kind": "standard"
+  },
+  {
+    "id": "SkyDragon_Grass",
+    "name": "翠羽龙",
+    "kind": "standard"
+  },
+  {
+    "id": "SleeveRabbit",
+    "name": "兔绣袖",
+    "kind": "standard"
+  },
+  {
+    "id": "SmallArmadillo",
+    "name": "球犰",
+    "kind": "standard"
+  },
+  {
+    "id": "SmallYeti",
+    "name": "雪墩墩",
+    "kind": "standard"
+  },
+  {
+    "id": "SnakeGirl",
+    "name": "梅杜娜",
+    "kind": "standard"
+  },
+  {
+    "id": "SnowPeafowl",
+    "name": "白真雪雀",
+    "kind": "standard"
+  },
+  {
+    "id": "SnowTigerBeastman",
+    "name": "霜牙王",
+    "kind": "standard"
+  },
+  {
+    "id": "SoldierBee",
+    "name": "骑士蜂",
+    "kind": "standard"
+  },
+  {
+    "id": "StuffedShark",
+    "name": "布偶鲨",
+    "kind": "standard"
+  },
+  {
+    "id": "StuffedShark_Fire",
+    "name": "粉粉布偶鲨",
+    "kind": "standard"
+  },
+  {
+    "id": "SumoDog",
+    "name": "力士獒",
+    "kind": "standard"
+  },
+  {
+    "id": "Suzaku",
+    "name": "朱雀",
+    "kind": "standard"
+  },
+  {
+    "id": "Suzaku_Water",
+    "name": "清雀",
+    "kind": "standard"
+  },
+  {
+    "id": "SweetsSheep",
+    "name": "棉花糖",
+    "kind": "standard"
+  },
+  {
+    "id": "SweetsSheep_Ground",
+    "name": "可可棉花糖",
+    "kind": "standard"
+  },
+  {
+    "id": "SwordCutlassfish",
+    "name": "鞘刀鱼",
+    "kind": "standard"
+  },
+  {
+    "id": "SwordCutlassfish_Fire",
+    "name": "炼刃鱼",
+    "kind": "standard"
+  },
+  {
+    "id": "TentacleTurtle",
+    "name": "盔盔仔",
+    "kind": "standard"
+  },
+  {
+    "id": "TentacleTurtle_Ground",
+    "name": "金盔仔",
+    "kind": "standard"
+  },
+  {
+    "id": "ThiefBird",
+    "name": "盗影鸦",
+    "kind": "standard"
+  },
+  {
+    "id": "ThunderBird",
+    "name": "迅雷鸟",
+    "kind": "standard"
+  },
+  {
+    "id": "ThunderBird_Ice",
+    "name": "疾霜鸟",
+    "kind": "standard"
+  },
+  {
+    "id": "ThunderDog",
+    "name": "霹雳犬",
+    "kind": "standard"
+  },
+  {
+    "id": "ThunderDog_Ice",
+    "name": "凛光犬",
+    "kind": "standard"
+  },
+  {
+    "id": "ThunderDragonMan",
+    "name": "波鲁杰克斯",
+    "kind": "standard"
+  },
+  {
+    "id": "ThunderFluffyBird",
+    "name": "雷云鹫",
+    "kind": "standard"
+  },
+  {
+    "id": "TropicalOstrich",
+    "name": "咕咕桑葩",
+    "kind": "standard"
+  },
+  {
+    "id": "Umihebi",
+    "name": "覆海龙",
+    "kind": "standard"
+  },
+  {
+    "id": "Umihebi_Fire",
+    "name": "腾炎龙",
+    "kind": "standard"
+  },
+  {
+    "id": "VenusFlytrap",
+    "name": "颚莉丝",
+    "kind": "standard"
+  },
+  {
+    "id": "VioletFairy",
+    "name": "薇莉塔",
+    "kind": "standard"
+  },
+  {
+    "id": "VolcanicMonster",
+    "name": "熔岩兽",
+    "kind": "standard"
+  },
+  {
+    "id": "VolcanicMonster_Ice",
+    "name": "寒霜兽",
+    "kind": "standard"
+  },
+  {
+    "id": "VolcanoDragon",
+    "name": "流焰龙",
+    "kind": "standard"
+  },
+  {
+    "id": "VolcanoDragon_Ice",
+    "name": "川霜龙",
+    "kind": "standard"
+  },
+  {
+    "id": "WeaselDragon",
+    "name": "疾旋鼬",
+    "kind": "standard"
+  },
+  {
+    "id": "WeaselDragon_Fire",
+    "name": "桃旋鼬",
+    "kind": "standard"
+  },
+  {
+    "id": "Werewolf",
+    "name": "月镰魔",
+    "kind": "standard"
+  },
+  {
+    "id": "Werewolf_Ice",
+    "name": "霜镰魔",
+    "kind": "standard"
+  },
+  {
+    "id": "WhiteAlienDragon",
+    "name": "杰诺路达",
+    "kind": "standard"
+  },
+  {
+    "id": "WhiteDeer",
+    "name": "净世鹿",
+    "kind": "standard"
+  },
+  {
+    "id": "WhiteDeer_Dark",
+    "name": "织夜鹿",
+    "kind": "standard"
+  },
+  {
+    "id": "WhiteMoth",
+    "name": "绸笠蛾",
+    "kind": "standard"
+  },
+  {
+    "id": "WhiteMoth_Neutral",
+    "name": "绢笠蛾",
+    "kind": "standard"
+  },
+  {
+    "id": "WhiteShieldDragon",
+    "name": "艾基鲁迦",
+    "kind": "standard"
+  },
+  {
+    "id": "WhiteTiger",
+    "name": "冰棘兽",
+    "kind": "standard"
+  },
+  {
+    "id": "WhiteTiger_Ground",
+    "name": "金棘兽",
+    "kind": "standard"
+  },
+  {
+    "id": "WindChimes",
+    "name": "吊缚灵",
+    "kind": "standard"
+  },
+  {
+    "id": "WindChimes_Ice",
+    "name": "冰缚灵",
+    "kind": "standard"
+  },
+  {
+    "id": "WingGolem",
+    "name": "泰锋",
+    "kind": "standard"
+  },
+  {
+    "id": "WingGolem_Fire",
+    "name": "丹烽",
+    "kind": "standard"
+  },
+  {
+    "id": "WizardOwl",
+    "name": "啼卡尔",
+    "kind": "standard"
+  },
+  {
+    "id": "WoolFox",
+    "name": "米露菲",
+    "kind": "standard"
+  },
+  {
+    "id": "YakushimaBoss001",
+    "name": "克苏鲁之眼",
+    "kind": "standard"
+  },
+  {
+    "id": "YakushimaBoss001_Small",
+    "name": "恶魔眼",
+    "kind": "standard"
+  },
+  {
+    "id": "YakushimaMonster001",
+    "name": "绿史莱姆",
+    "kind": "standard"
+  },
+  {
+    "id": "YakushimaMonster001_Blue",
+    "name": "蓝史莱姆",
+    "kind": "standard"
+  },
+  {
+    "id": "YakushimaMonster001_Pink",
+    "name": "夜明史莱姆",
+    "kind": "standard"
+  },
+  {
+    "id": "YakushimaMonster001_Purple",
+    "name": "紫史莱姆",
+    "kind": "standard"
+  },
+  {
+    "id": "YakushimaMonster001_Rainbow",
+    "name": "彩虹史莱姆",
+    "kind": "standard"
+  },
+  {
+    "id": "YakushimaMonster001_Red",
+    "name": "红史莱姆",
+    "kind": "standard"
+  },
+  {
+    "id": "YakushimaMonster002",
+    "name": "附魔剑",
+    "kind": "standard"
+  },
+  {
+    "id": "YakushimaMonster003",
+    "name": "洞穴蝙蝠",
+    "kind": "standard"
+  },
+  {
+    "id": "YakushimaMonster003_Purple",
+    "name": "夜明蝙蝠",
+    "kind": "standard"
+  },
+  {
+    "id": "Yeti",
+    "name": "白绒雪怪",
+    "kind": "standard"
+  },
+  {
+    "id": "Yeti_Grass",
+    "name": "绿苔绒怪",
+    "kind": "standard"
+  }
+]

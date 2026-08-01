@@ -5,7 +5,9 @@ import {
   Clock3,
   FileCode2,
   FolderCog,
+  ExternalLink,
   LoaderCircle,
+  MapPinned,
   RotateCcw,
   Save,
   Search,
@@ -24,6 +26,7 @@ import type {
   ModItem,
 } from '../../types';
 import { useI18n, type TranslationKey } from '../../i18n';
+import PalZonesEditorWorkspace from './palzones/PalZonesEditorWorkspace';
 
 interface Props {
   mods: ModItem[];
@@ -72,6 +75,10 @@ export const ModConfigWorkspace: React.FC<Props> = ({ mods, localFindings, canWr
     }
     return values.sort((left, right) => left.name.localeCompare(right.name, locale));
   }, [localFindings, locale, mods, t]);
+
+  const selectedAdapter = selection?.kind === 'adapter'
+    ? adapters.find((item) => item.id === selection.id)
+    : undefined;
 
   useEffect(() => {
     let active = true;
@@ -148,7 +155,28 @@ export const ModConfigWorkspace: React.FC<Props> = ({ mods, localFindings, canWr
     ? buildLineDiff(document.content, content)
     : [], [content, document]);
 
-  const save = async () => {
+  const runAdapterAction = async (action: 'initialize' | 'enable') => {
+    if (!selectedAdapter || !canWrite) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await modConfigurationsApi.runAction(selectedAdapter.id, action);
+      setAdapters((current) => current.map((item) => item.id === result.adapter.id ? result.adapter : item));
+      if (result.document) {
+        setFiles([result.document.file]);
+        setSelectedFile(result.document.file);
+        setDocument(result.document);
+        setContent(result.document.content);
+      }
+      setNotice(result.restart_required ? '配置已写入，等待安全重启服务器后生效。' : '配置状态未发生变化。');
+    } catch (reason) {
+      setError(getErrorMessage(reason));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveContent = async (nextContent: string) => {
     if (!selection || !document || !canWrite) return;
     const executable = document.file.executable;
     if (executable && !window.confirm(t('modConfig.luaConfirm'))) return;
@@ -156,8 +184,8 @@ export const ModConfigWorkspace: React.FC<Props> = ({ mods, localFindings, canWr
     setError(null);
     try {
       const next = selection.kind === 'adapter'
-        ? await modConfigurationsApi.saveAdapter(selection.id, document.file.id, content, document.file.revision, executable)
-        : await modConfigurationsApi.saveFile(selection.id, document.file.id, content, document.file.revision, executable);
+        ? await modConfigurationsApi.saveAdapter(selection.id, document.file.id, nextContent, document.file.revision, executable)
+        : await modConfigurationsApi.saveFile(selection.id, document.file.id, nextContent, document.file.revision, executable);
       setDocument(next);
       setContent(next.content);
       const adapter = selection.kind === 'adapter' ? adapters.find((item) => item.id === selection.id) : undefined;
@@ -283,8 +311,14 @@ export const ModConfigWorkspace: React.FC<Props> = ({ mods, localFindings, canWr
           {error && <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">{error}</div>}
           {notice && <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700">{notice}</div>}
           {loading && <div className="flex h-64 items-center justify-center gap-2 text-xs font-bold text-slate-400"><LoaderCircle size={16} className="animate-spin" />{t('modConfig.reading')}</div>}
-          {!loading && selection && files.length === 0 && <EmptyConfig name={selection.name} />}
-          {!loading && document && (
+          {!loading && selection && files.length === 0 && selectedAdapter?.id === 'palzones' && (
+            <PalZonesSetup adapter={selectedAdapter} canWrite={canWrite} saving={saving} onInitialize={() => runAdapterAction('initialize')} />
+          )}
+          {!loading && selection && files.length === 0 && selectedAdapter?.id !== 'palzones' && <EmptyConfig name={selection.name} />}
+          {!loading && document && selection?.kind === 'adapter' && selection.id === 'palzones' && (
+            <PalZonesEditorWorkspace document={document} canWrite={canWrite} saving={saving} onSave={saveContent} />
+          )}
+          {!loading && document && !(selection?.kind === 'adapter' && selection.id === 'palzones') && (
             <div className="space-y-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -298,7 +332,7 @@ export const ModConfigWorkspace: React.FC<Props> = ({ mods, localFindings, canWr
                       {canReloadPalDefender && <button type="button" disabled={saving || content !== document.content} onClick={reloadPalDefender} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs font-black text-emerald-700 hover:bg-emerald-100 disabled:opacity-40">{t('modConfig.reloadOnline')}</button>}
                     </>
                   )}
-                  <button type="button" disabled={!canWrite || saving || content === document.content} onClick={save} className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-xs font-black text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40">
+                  <button type="button" disabled={!canWrite || saving || content === document.content} onClick={() => void saveContent(content)} className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-xs font-black text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40">
                     {saving ? <LoaderCircle size={14} className="animate-spin" /> : <Save size={14} />}{t('modConfig.saveChanges')}
                   </button>
                 </div>
@@ -356,6 +390,26 @@ const EmptyConfig: React.FC<{ name: string }> = ({ name }) => {
     <p className="mt-3 text-sm font-black text-slate-700">{t('modConfig.noConfig')}</p>
     <p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">{t('modConfig.noConfigDescription', { name })}</p>
   </div>
+  );
+};
+
+const PalZonesSetup: React.FC<{
+  adapter: ModConfigurationAdapter;
+  canWrite: boolean;
+  saving: boolean;
+  onInitialize: () => void;
+}> = ({ adapter, canWrite, saving, onInitialize }) => {
+  const action = adapter.actions.find((item) => item.id === 'initialize');
+  return (
+    <div className={'flex min-h-72 flex-col items-center justify-center border border-dashed border-slate-200 bg-slate-50 px-6 text-center'}>
+      <span className={'grid h-11 w-11 place-items-center rounded-lg bg-sky-100 text-sky-700'}><MapPinned size={22} /></span>
+      <h2 className={'mt-4 text-sm font-black text-slate-800'}>尚未创建区域配置</h2>
+      <p className={'mt-2 max-w-md text-xs leading-5 text-slate-500'}>PalZones 已安装。创建操作只会在 Mod 目录中新增合法的 Config/zones.json，不会覆盖已有文件。</p>
+      <div className={'mt-4 flex flex-wrap items-center justify-center gap-2'}>
+        <button type={'button'} disabled={!canWrite || saving || !action?.available} onClick={onInitialize} className={'rounded-lg bg-sky-600 px-4 py-2.5 text-xs font-black text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-40'}>创建默认配置</button>
+        {adapter.reference_urls?.editor && <a href={adapter.reference_urls.editor} target={'_blank'} rel={'noreferrer'} className={'inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600'}>参考原版编辑器 <ExternalLink size={13} /></a>}
+      </div>
+    </div>
   );
 };
 
