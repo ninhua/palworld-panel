@@ -99,9 +99,9 @@ const presets: TaskPreset[] = [
     name: 'Boss参与',
     description: '指定 Boss 击杀或活动完成任务。',
     input: {
-      name: '每周击败指定 Boss',
-      description: '每周参与并完成一次指定 Boss 击杀。',
-      event_type: 'BOSS_KILLED',
+      name: '每周参与指定 Boss',
+      description: '每周参与并完成一次指定 Boss 活动。',
+      event_type: 'BOSS_PARTICIPATION',
       target_amount: 1,
       reward_points: 100,
       cycle: 'weekly',
@@ -112,7 +112,23 @@ const presets: TaskPreset[] = [
   },
 ];
 
-const eventSuggestions = ['PAL_CAPTURED', 'PAL_KILLED', 'PLAYER_ONLINE', 'BOSS_KILLED', 'PLAYER_LOGIN', 'ITEM_CRAFTED'];
+interface TaskEventOption {
+  value: string;
+  label: string;
+  help: string;
+  amountField: string;
+}
+
+const eventOptions: TaskEventOption[] = [
+  { value: 'PAL_CAPTURED', label: '捕获帕鲁', help: '捕获事件；可用 pal_id 等Payload字段筛选。', amountField: 'count' },
+  { value: 'PAL_KILLED', label: '击杀帕鲁或敌对目标', help: '击杀事件；可用 pal_id、target_id 等字段筛选。', amountField: 'count' },
+  { value: 'PLAYER_ONLINE', label: '累计在线时长', help: '在线采样事件；通常读取 minutes 字段。', amountField: 'minutes' },
+  { value: 'CHECKIN_COMPLETED', label: '完成签到', help: '签到成功事件；每个事件通常增加1。', amountField: 'count' },
+  { value: 'BOSS_PARTICIPATION', label: '参与Boss活动', help: 'Boss参与事件；可用 boss_id 筛选指定Boss。', amountField: 'count' },
+  { value: 'BOSS_KILLED', label: '击败Boss', help: 'Boss击杀事件；要求事件桥接器实际发送该类型。', amountField: 'count' },
+  { value: 'PLAYER_LOGIN', label: '玩家登录', help: '登录事件；每次有效登录通常增加1。', amountField: 'count' },
+  { value: 'ITEM_CRAFTED', label: '制作物品', help: '制作事件；可用 item_id 筛选并读取 count。', amountField: 'count' },
+];
 const number = new Intl.NumberFormat('zh-CN');
 
 const cycleLabel: Record<OperationsTaskCycle, string> = {
@@ -383,7 +399,26 @@ export const OperationsTasks: React.FC = () => {
           <div className="grid gap-4 p-5 sm:grid-cols-2">
             <label className="block sm:col-span-2"><FieldLabel>任务名称</FieldLabel><input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} maxLength={120} className="pp-input w-full" /></label>
             <label className="block sm:col-span-2"><FieldLabel>说明</FieldLabel><textarea value={draft.description || ''} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} rows={2} maxLength={500} className="pp-input w-full resize-y" /></label>
-            <label className="block"><FieldLabel>事件类型</FieldLabel><input list="operations-task-events" value={draft.event_type} onChange={(event) => setDraft((current) => ({ ...current, event_type: event.target.value }))} className="pp-input w-full font-mono" /><datalist id="operations-task-events">{eventSuggestions.map((eventType) => <option key={eventType} value={eventType} />)}</datalist></label>
+            <label className="block">
+              <FieldLabel>事件类型</FieldLabel>
+              <select
+                value={draft.event_type}
+                onChange={(event) => {
+                  const next = eventOptions.find((option) => option.value === event.target.value);
+                  if (!next) return;
+                  const previous = eventOptions.find((option) => option.value === draft.event_type);
+                  setDraft((current) => ({
+                    ...current,
+                    event_type: next.value,
+                    amount_field: !current.amount_field || current.amount_field === previous?.amountField ? next.amountField : current.amount_field,
+                  }));
+                }}
+                className="pp-input w-full"
+              >
+                {eventOptions.map((option) => <option key={option.value} value={option.value}>{option.label} · {option.value}</option>)}
+              </select>
+              <span className="mt-1.5 block text-xs leading-5 text-slate-400">{eventOptions.find((option) => option.value === draft.event_type)?.help}</span>
+            </label>
             <label className="block"><FieldLabel>周期</FieldLabel><select value={draft.cycle} onChange={(event) => setDraft((current) => ({ ...current, cycle: event.target.value as OperationsTaskCycle }))} className="pp-input w-full"><option value="daily">每日</option><option value="weekly">每周</option><option value="once">永久一次</option></select></label>
             <label className="block"><FieldLabel>目标数量</FieldLabel><input type="number" min={1} max={1000000000000} value={draft.target_amount} onChange={(event) => setDraft((current) => ({ ...current, target_amount: Number(event.target.value) }))} className="pp-input w-full" /></label>
             <label className="block"><FieldLabel>奖励积分</FieldLabel><input type="number" min={0} max={1000000000000} value={draft.reward_points} onChange={(event) => setDraft((current) => ({ ...current, reward_points: Number(event.target.value) }))} className="pp-input w-full" /></label>

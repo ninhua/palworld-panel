@@ -4479,7 +4479,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.64}
+            version: {type: string, const: 0.8.65}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

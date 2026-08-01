@@ -1,6 +1,6 @@
 # 事件任务系统 API
 
-版本：PalPanel patch `0.8.59`
+版本：PalPanel patch `0.8.65`
 
 ## 功能范围
 
@@ -13,6 +13,12 @@
 - `once`：每个玩家永久只完成一次。
 
 运营时区继续使用 `PALPANEL_OPERATIONS_TIMEZONE`，默认 `Asia/Shanghai`。
+
+## 事件类型和任务 Payload
+
+面板任务编辑器使用真正的下拉选择框提供常用事件类型：`PAL_CAPTURED`、`PAL_KILLED`、`PLAYER_ONLINE`、`CHECKIN_COMPLETED`、`BOSS_PARTICIPATION`、`BOSS_KILLED`、`PLAYER_LOGIN` 和 `ITEM_CRAFTED`。任务只有在事件桥接器上报相同 `type` 时才会推进。
+
+任务定义中的 `filters` 用于匹配游戏事件 `payload` 中的字段。例如 `{"pal_id":"SheepBall"}` 表示只统计指定帕鲁；空对象 `{}` 表示接受该事件类型的全部事件。`amount_field` 则指定从事件 Payload 的哪个字段读取增量，例如在线时长通常读取 `minutes`。
 
 ## 创建任务
 
