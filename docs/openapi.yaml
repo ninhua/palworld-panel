@@ -1019,9 +1019,6 @@ paths:
       parameters: *modConfigFileQuery
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ModConfigWriteRequest'}}}}
       responses: {'200': *modConfigDocument, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error, '413': *error}
-  /mods/configurations/{adapter}/actions:
-    parameters: [{name: adapter, in: path, required: true, schema: {type: string}}]
-    post: {operationId: runModConfigurationAction, tags: [content], x-palpanel-permission: 'mods:write', requestBody: *jsonRequest, responses: *writeResponses}
   /mods/configurations/{adapter}/backups:
     parameters: [{name: adapter, in: path, required: true, schema: {type: string}}]
     get:
@@ -4833,7 +4830,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.68}
+            version: {type: string, const: 0.8.69}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array
