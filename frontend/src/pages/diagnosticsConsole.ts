@@ -1,6 +1,7 @@
 import type { DiagnosticHTTPResult, DiagnosticShellResult } from '../api/diagnostics';
 
 export type DiagnosticConsoleMode = 'http' | 'shell';
+export type DiagnosticAuthorizationScheme = 'Bearer' | 'Basic' | 'Custom';
 
 export interface DiagnosticHTTPRequestSnapshot {
   method: string;
@@ -11,6 +12,21 @@ export interface DiagnosticHTTPRequestSnapshot {
 
 export interface DiagnosticShellRequestSnapshot {
   command: string;
+}
+
+export interface DiagnosticHeaderRow {
+  id: string;
+  name: string;
+  value: string;
+  authorization_scheme: DiagnosticAuthorizationScheme;
+}
+
+export interface DiagnosticCommonHeaderOption {
+  name: string;
+  label: string;
+  description: string;
+  default_value: string;
+  authorization_scheme?: DiagnosticAuthorizationScheme;
 }
 
 export type DiagnosticHistoryEntry =
@@ -36,6 +52,8 @@ export interface DiagnosticTemplate {
   mode: DiagnosticConsoleMode;
   label: string;
   description: string;
+  custom?: boolean;
+  created_at?: string;
   method?: string;
   url?: string;
   headers?: Record<string, string>;
@@ -44,45 +62,197 @@ export interface DiagnosticTemplate {
 }
 
 export const diagnosticHistoryStorageKey = 'palpanel:diagnostic-console-history:v1';
+export const diagnosticTemplateStorageKey = 'palpanel:diagnostic-console-templates:v1';
 export const maxDiagnosticHistoryEntries = 30;
+export const maxDiagnosticCustomTemplates = 20;
 
-const sensitiveNamePattern = /(authorization|cookie|token|api[-_]?key|secret|password|passwd|credential)/i;
-const placeholderPattern = /<(?:填入|按实际|修改为|已隐藏|replace|token|password)[^>]*>/i;
+export const diagnosticCommonHeaderOptions: DiagnosticCommonHeaderOption[] = [
+  {
+    name: 'Authorization',
+    label: 'Authorization（Bearer Token）',
+    description: '默认使用 Bearer。只需填写 Token；粘贴 Bearer 或 Basic 前缀时会自动识别。',
+    default_value: '',
+    authorization_scheme: 'Bearer',
+  },
+  {
+    name: 'Accept',
+    label: 'Accept',
+    description: '声明期望接收的响应格式。',
+    default_value: 'application/json',
+  },
+  {
+    name: 'Content-Type',
+    label: 'Content-Type',
+    description: '声明请求体格式。',
+    default_value: 'application/json',
+  },
+  {
+    name: 'User-Agent',
+    label: 'User-Agent',
+    description: '标识诊断请求来源。',
+    default_value: 'PalPanel-Diagnostics',
+  },
+  {
+    name: 'X-API-Key',
+    label: 'X-API-Key',
+    description: '常见 API Key 请求头。',
+    default_value: '',
+  },
+  {
+    name: 'X-Auth-Token',
+    label: 'X-Auth-Token',
+    description: '常见自定义 Token 请求头。',
+    default_value: '',
+  },
+  {
+    name: 'Cookie',
+    label: 'Cookie',
+    description: '调试基于 Cookie 的私网接口。',
+    default_value: '',
+  },
+];
 
-const historyID = () => {
+const placeholderPattern = /<(?:填入|按实际|修改为|replace|token|password)[^>]*>/i;
+
+const generatedID = (prefix: string) => {
   const uuid = globalThis.crypto?.randomUUID?.();
-  if (uuid) return `diagnostic-${uuid}`;
-  return `diagnostic-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  if (uuid) return `${prefix}-${uuid}`;
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 };
+
+const historyID = () => generatedID('diagnostic');
+const headerRowID = () => generatedID('diagnostic-header');
 
 const clip = (value: string, limit = 96) => {
   const normalized = value.replace(/\s+/g, ' ').trim();
   return normalized.length <= limit ? normalized : `${normalized.slice(0, limit - 1)}…`;
 };
 
-export const sanitizeDiagnosticHeaders = (headers: Record<string, string>) =>
-  Object.fromEntries(Object.entries(headers).map(([name, value]) => [
-    name,
-    sensitiveNamePattern.test(name) ? '<已隐藏，不会保存到历史>' : value,
-  ]));
-
-export const sanitizeDiagnosticText = (value: string) => value
-  .replace(/((?:Bearer|Basic)\s+)[A-Za-z0-9._~+/=-]+/gi, '$1<已隐藏>')
-  .replace(/("(?:password|passwd|token|secret|api[_-]?key|authorization|cookie)"\s*:\s*)"(?:\\.|[^"\\])*"/gi, '$1"<已隐藏>"')
-  .replace(/((?:password|passwd|token|secret|api[_-]?key)=)[^&\s]+/gi, '$1<已隐藏>');
-
-export const sanitizeDiagnosticURL = (value: string) => {
-  try {
-    const parsed = new URL(value);
-    const names: string[] = [];
-    parsed.searchParams.forEach((_value, name) => names.push(name));
-    for (const name of names) {
-      if (sensitiveNamePattern.test(name)) parsed.searchParams.set(name, '<已隐藏>');
-    }
-    return parsed.toString();
-  } catch {
-    return sanitizeDiagnosticText(value);
+export const parseDiagnosticAuthorization = (value: string): { scheme: DiagnosticAuthorizationScheme; value: string } => {
+  const trimmed = value.trim();
+  const match = /^(Bearer|Basic)\s+(.+)$/i.exec(trimmed);
+  if (match) {
+    return {
+      scheme: match[1].toLowerCase() === 'basic' ? 'Basic' : 'Bearer',
+      value: match[2].trim(),
+    };
   }
+  if (/^[A-Za-z][A-Za-z0-9_-]*\s+.+$/.test(trimmed)) {
+    return { scheme: 'Custom', value: trimmed };
+  }
+  return { scheme: 'Bearer', value: trimmed };
+};
+
+export const createDiagnosticHeaderRow = (
+  name = '',
+  value = '',
+  authorizationScheme?: DiagnosticAuthorizationScheme,
+): DiagnosticHeaderRow => {
+  const normalizedName = name.trim();
+  if (normalizedName.toLowerCase() === 'authorization') {
+    const parsed = parseDiagnosticAuthorization(value);
+    return {
+      id: headerRowID(),
+      name: 'Authorization',
+      value: parsed.value,
+      authorization_scheme: authorizationScheme || parsed.scheme,
+    };
+  }
+  return {
+    id: headerRowID(),
+    name: normalizedName,
+    value,
+    authorization_scheme: authorizationScheme || 'Bearer',
+  };
+};
+
+export const normalizeDiagnosticHeaderName = (name: string) => {
+  const trimmed = name.trim();
+  const known = diagnosticCommonHeaderOptions.find((item) => item.name.toLowerCase() === trimmed.toLowerCase());
+  return known?.name || trimmed;
+};
+
+export const updateDiagnosticHeaderName = (row: DiagnosticHeaderRow, name: string): DiagnosticHeaderRow => {
+  const normalized = normalizeDiagnosticHeaderName(name);
+  if (normalized.toLowerCase() !== 'authorization') return { ...row, name: normalized };
+  const parsed = parseDiagnosticAuthorization(row.value);
+  return {
+    ...row,
+    name: 'Authorization',
+    value: parsed.value,
+    authorization_scheme: parsed.scheme,
+  };
+};
+
+export const updateDiagnosticHeaderValue = (row: DiagnosticHeaderRow, value: string): DiagnosticHeaderRow => {
+  if (row.name.trim().toLowerCase() !== 'authorization') return { ...row, value };
+  const match = /^(Bearer|Basic)\s+(.+)$/i.exec(value.trim());
+  if (!match) return { ...row, value };
+  return {
+    ...row,
+    authorization_scheme: match[1].toLowerCase() === 'basic' ? 'Basic' : 'Bearer',
+    value: match[2].trim(),
+  };
+};
+
+export const diagnosticHeadersToRows = (headers: Record<string, string>): DiagnosticHeaderRow[] =>
+  Object.entries(headers).map(([name, value]) => createDiagnosticHeaderRow(name, String(value)));
+
+export const diagnosticHeaderJSONToRows = (source: string): DiagnosticHeaderRow[] => {
+  const parsed = JSON.parse(source || '{}') as unknown;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('请求头 JSON 的根节点必须是对象');
+  }
+  return Object.entries(parsed as Record<string, unknown>).map(([name, value]) => {
+    if (value != null && typeof value === 'object') {
+      throw new Error(`请求头 ${name} 的值必须是字符串、数字、布尔值或 null`);
+    }
+    return createDiagnosticHeaderRow(name, value == null ? '' : String(value));
+  });
+};
+
+export const diagnosticHeaderRowsToRecord = (rows: DiagnosticHeaderRow[]): Record<string, string> => {
+  if (rows.length > 32) throw new Error('请求头最多允许 32 项');
+  const result: Record<string, string> = {};
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    const name = normalizeDiagnosticHeaderName(row.name);
+    const rawValue = row.value.trim();
+    if (!name && !rawValue) continue;
+    if (!name) throw new Error('请求头名称不能为空');
+    if (/[:\r\n]/.test(name)) throw new Error(`请求头名称 ${name} 包含非法字符`);
+
+    const lookup = name.toLowerCase();
+    if (seen.has(lookup)) throw new Error(`请求头 ${name} 重复，请删除重复项`);
+    seen.add(lookup);
+
+    if (lookup === 'authorization') {
+      const scheme = row.authorization_scheme || 'Bearer';
+      if (!rawValue) throw new Error('Authorization 需要填写凭据');
+      if (scheme === 'Custom') {
+        result.Authorization = rawValue;
+        continue;
+      }
+      const token = rawValue.replace(/^(?:Bearer|Basic)\s+/i, '').trim();
+      if (!token) throw new Error(`Authorization ${scheme} 需要填写凭据`);
+      result.Authorization = `${scheme} ${token}`;
+      continue;
+    }
+
+    if (!rawValue) throw new Error(`请求头 ${name} 的值不能为空`);
+    result[name] = rawValue;
+  }
+
+  return result;
+};
+
+export const diagnosticHeaderRowsJSON = (rows: DiagnosticHeaderRow[], compact = false) =>
+  JSON.stringify(diagnosticHeaderRowsToRecord(rows), null, compact ? 0 : 2);
+
+export const formatDiagnosticHeaderJSON = (source: string, compact = false) => {
+  const rows = diagnosticHeaderJSONToRows(source);
+  return diagnosticHeaderRowsJSON(rows, compact);
 };
 
 export const createHTTPHistoryEntry = (
@@ -92,21 +262,18 @@ export const createHTTPHistoryEntry = (
   id: historyID(),
   mode: 'http',
   created_at: new Date().toISOString(),
-  title: `${request.method.toUpperCase()} ${clip(sanitizeDiagnosticURL(request.url), 58)} · ${result.status || result.status_code}`,
+  title: `${request.method.toUpperCase()} ${clip(request.url, 58)} · ${result.status || result.status_code}`,
   request: {
     method: request.method.toUpperCase(),
-    url: sanitizeDiagnosticURL(request.url),
-    headers: sanitizeDiagnosticHeaders(request.headers),
-    body: sanitizeDiagnosticText(request.body),
+    url: request.url,
+    headers: { ...request.headers },
+    body: request.body,
   },
   result: {
     ...result,
-    url: sanitizeDiagnosticURL(result.url || request.url),
-    headers: Object.fromEntries(Object.entries(result.headers || {}).map(([name, values]) => [
-      name,
-      sensitiveNamePattern.test(name) ? ['<已隐藏>'] : values.map(sanitizeDiagnosticText),
-    ])),
-    body: sanitizeDiagnosticText(result.body || ''),
+    url: result.url || request.url,
+    headers: Object.fromEntries(Object.entries(result.headers || {}).map(([name, values]) => [name, [...values]])),
+    body: result.body || '',
   },
 });
 
@@ -117,13 +284,13 @@ export const createShellHistoryEntry = (
   id: historyID(),
   mode: 'shell',
   created_at: new Date().toISOString(),
-  title: `${clip(sanitizeDiagnosticText(request.command), 70)} · exit=${result.exit_code}`,
-  request: { command: sanitizeDiagnosticText(request.command) },
+  title: `${clip(request.command, 70)} · exit=${result.exit_code}`,
+  request: { command: request.command },
   result: {
     ...result,
-    command: sanitizeDiagnosticText(result.command || request.command),
-    output: sanitizeDiagnosticText(result.output || ''),
-    error: sanitizeDiagnosticText(result.error || ''),
+    command: result.command || request.command,
+    output: result.output || '',
+    error: result.error || '',
   },
 });
 
@@ -138,9 +305,34 @@ const isHistoryEntry = (value: unknown): value is DiagnosticHistoryEntry => {
     && Boolean(entry.result);
 };
 
+const stableDiagnosticValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(stableDiagnosticValue);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, item]) => [name, stableDiagnosticValue(item)]));
+};
+
+export const diagnosticHistorySignature = (entry: DiagnosticHistoryEntry) => JSON.stringify(stableDiagnosticValue({
+  mode: entry.mode,
+  request: entry.request,
+}));
+
+export const diagnosticHistoryEquivalent = (left: DiagnosticHistoryEntry, right: DiagnosticHistoryEntry) =>
+  diagnosticHistorySignature(left) === diagnosticHistorySignature(right);
+
 export const normalizeDiagnosticHistory = (value: unknown): DiagnosticHistoryEntry[] => {
   if (!Array.isArray(value)) return [];
-  return value.filter(isHistoryEntry).slice(0, maxDiagnosticHistoryEntries);
+  const seen = new Set<string>();
+  const result: DiagnosticHistoryEntry[] = [];
+  for (const entry of value.filter(isHistoryEntry)) {
+    const signature = diagnosticHistorySignature(entry);
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    result.push(entry);
+    if (result.length >= maxDiagnosticHistoryEntries) break;
+  }
+  return result;
 };
 
 export const loadDiagnosticHistory = (): DiagnosticHistoryEntry[] => {
@@ -158,7 +350,7 @@ export const saveDiagnosticHistory = (entries: DiagnosticHistoryEntry[]) => {
     try {
       window.localStorage.setItem(diagnosticHistoryStorageKey, JSON.stringify(normalized));
     } catch {
-      // History is a convenience feature. Quota or privacy-mode failures must not block diagnostics.
+      // Storage failures must not block diagnostics execution.
     }
   }
   return normalized;
@@ -167,7 +359,82 @@ export const saveDiagnosticHistory = (entries: DiagnosticHistoryEntry[]) => {
 export const appendDiagnosticHistory = (
   entries: DiagnosticHistoryEntry[],
   entry: DiagnosticHistoryEntry,
-) => saveDiagnosticHistory([entry, ...entries.filter((item) => item.id !== entry.id)]);
+) => saveDiagnosticHistory([entry, ...entries.filter((item) => !diagnosticHistoryEquivalent(item, entry))]);
+
+const isDiagnosticTemplate = (value: unknown): value is DiagnosticTemplate => {
+  if (!value || typeof value !== 'object') return false;
+  const template = value as Partial<DiagnosticTemplate>;
+  return typeof template.id === 'string'
+    && (template.mode === 'http' || template.mode === 'shell')
+    && typeof template.label === 'string'
+    && typeof template.description === 'string';
+};
+
+export const normalizeDiagnosticTemplates = (value: unknown): DiagnosticTemplate[] => {
+  if (!Array.isArray(value)) return [];
+  const labels = new Set<string>();
+  const result: DiagnosticTemplate[] = [];
+  for (const template of value.filter(isDiagnosticTemplate)) {
+    const label = template.label.trim().toLocaleLowerCase();
+    if (!label || labels.has(label)) continue;
+    labels.add(label);
+    result.push({ ...template, custom: true });
+    if (result.length >= maxDiagnosticCustomTemplates) break;
+  }
+  return result;
+};
+
+export const loadDiagnosticTemplates = (): DiagnosticTemplate[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    return normalizeDiagnosticTemplates(JSON.parse(window.localStorage.getItem(diagnosticTemplateStorageKey) || '[]'));
+  } catch {
+    return [];
+  }
+};
+
+export const saveDiagnosticTemplates = (templates: DiagnosticTemplate[]) => {
+  const normalized = normalizeDiagnosticTemplates(templates);
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(diagnosticTemplateStorageKey, JSON.stringify(normalized));
+    } catch {
+      // Storage failures must not block diagnostics execution.
+    }
+  }
+  return normalized;
+};
+
+export const createCustomDiagnosticTemplate = (
+  label: string,
+  template: Omit<DiagnosticTemplate, 'id' | 'label' | 'description' | 'custom' | 'created_at'>,
+): DiagnosticTemplate => {
+  const normalizedLabel = label.trim();
+  if (!normalizedLabel) throw new Error('模板名称不能为空');
+  return {
+    ...template,
+    id: generatedID('diagnostic-template'),
+    label: normalizedLabel,
+    description: '保存在当前浏览器中的自定义诊断模板，包含当前请求的完整值。',
+    custom: true,
+    created_at: new Date().toISOString(),
+    headers: template.headers ? { ...template.headers } : undefined,
+  };
+};
+
+export const upsertDiagnosticTemplate = (
+  templates: DiagnosticTemplate[],
+  template: DiagnosticTemplate,
+) => {
+  const label = template.label.trim().toLocaleLowerCase();
+  return saveDiagnosticTemplates([
+    template,
+    ...templates.filter((item) => item.id !== template.id && item.label.trim().toLocaleLowerCase() !== label),
+  ]);
+};
+
+export const removeDiagnosticTemplate = (templates: DiagnosticTemplate[], id: string) =>
+  saveDiagnosticTemplates(templates.filter((item) => item.id !== id));
 
 export const formatHTTPResult = (result: DiagnosticHTTPResult | null) => {
   if (!result) return '';
@@ -228,7 +495,7 @@ export const getDiagnosticTemplates = (platform = ''): DiagnosticTemplate[] => {
       id: 'http-palworld-rest-info',
       mode: 'http',
       label: 'Palworld REST 服务器信息',
-      description: '调用 Palworld REST /v1/api/info。请按实际 REST 端口和 Basic 凭据修改。',
+      description: '调用 Palworld REST /v1/api/info。Authorization 会自动识别为 Basic。',
       method: 'GET',
       url: 'http://127.0.0.1:8212/v1/api/info',
       headers: { Authorization: 'Basic <按实际凭据修改>' },
@@ -238,7 +505,7 @@ export const getDiagnosticTemplates = (platform = ''): DiagnosticTemplate[] => {
       id: 'http-paldefender-version',
       mode: 'http',
       label: 'PalDefender REST 版本',
-      description: '调用 PalDefender /v1/pdapi/version。请按实际端口填写 Bearer Token。',
+      description: '调用 PalDefender /v1/pdapi/version。Authorization 默认使用 Bearer。',
       method: 'GET',
       url: 'http://127.0.0.1:8212/v1/pdapi/version',
       headers: { Authorization: 'Bearer <填入 PalDefender Token>' },
@@ -290,7 +557,7 @@ export const getDiagnosticTemplates = (platform = ''): DiagnosticTemplate[] => {
       mode: 'shell',
       label: 'Linux CPU、内存与磁盘摘要',
       description: '只读输出负载、内存、磁盘和高 CPU 进程。',
-      command: "uptime; free -h 2>/dev/null || true; df -hT; ps -eo pid,ppid,stat,%cpu,%mem,etime,cmd --sort=-%cpu | head -n 25",
+      command: 'uptime; free -h 2>/dev/null || true; df -hT; ps -eo pid,ppid,stat,%cpu,%mem,etime,cmd --sort=-%cpu | head -n 25',
     },
     {
       id: 'shell-unix-runtime-files',

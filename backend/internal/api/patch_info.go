@@ -1,8 +1,6 @@
 package api
 
 import (
-	"strings"
-
 	"github.com/gin-gonic/gin"
 
 	"palpanel/internal/buildinfo"
@@ -12,28 +10,11 @@ const (
 	patchSourceRepository = "uitok/palworld-panel"
 	patchSourceRef        = "v1.3.1"
 	patchTargetVersion    = "v1.3.1"
-	patchVersion          = "0.8.72"
+	patchVersion          = "0.8.73"
 	panelRepository       = "ninhua/palworld-panel"
 )
 
-var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-self-update", "external-package-updater", "exec-hot-updater", "startup-health-rollback", "audit-log-response-display", "player-presence-history", "host-save-migrator", "diagnostic-console", "config-revision-history", "save-history-diff", "crash-loop-guard", "incident-center", "signed-incident-webhook", "uid-remap-custom-version-sentinel", "palops-offline-map", "palops-map-poi", "self-hosted-maplibre", "offline-vendor-mirror", "diagnostic-health-checks", "redacted-support-bundle", "maplibre-raster-fallback", "save-history-response-normalization", "panel-version-display", "palops-resource-layout-discovery", "maplibre-v5-webgl-fallback", "async-host-save-migration", "semantic-save-history-events", "distinct-map-marker-icons", "save-snapshot-pal-tracking", "task-management-ui", "task-template-presets", "player-task-progress-browser", "generated-api-contract-sync", "patch-version-contract-guard", "task-event-type-select", "shop-item-catalog-selector", "shop-pal-template-selector", "shop-payload-builder", "task-chinese-display-labels", "boss-management-ui", "boss-catalog-selectors", "boss-summon-audit-ui", "boss-wave-editor", "boss-wave-snapshot-ledger", "boss-wave-progress-ui", "diagnostic-console-history", "diagnostic-console-templates", "diagnostic-console-copy", "diagnostic-structured-header-editor", "diagnostic-common-header-presets", "diagnostic-bearer-prefix", "boss-paldefender-warning-broadcast", "boss-warning-test-action", "boss-warning-delivery-audit", "checkin-streak-policy", "configurable-checkin-aliases", "bare-game-command-aliases", "paldefender-log-event-bridge", "game-event-bridge-diagnostics", "checkin-task-event-derivation", "save-migration-wizard-entry", "palpanel-bridge-runtime-diagnostics", "china-timezone-default", "upstream-save-migration-primary-ui", "patch-feature-deduplication"}
-
-func normalizePatchFeatures(features []string) []string {
-	result := make([]string, 0, len(features))
-	seen := make(map[string]struct{}, len(features))
-	for _, feature := range features {
-		feature = strings.TrimSpace(feature)
-		if feature == "" {
-			continue
-		}
-		if _, exists := seen[feature]; exists {
-			continue
-		}
-		seen[feature] = struct{}{}
-		result = append(result, feature)
-	}
-	return result
-}
+var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-self-update", "external-package-updater", "exec-hot-updater", "startup-health-rollback", "audit-log-response-display", "player-presence-history", "host-save-migrator", "diagnostic-console", "config-revision-history", "save-history-diff", "crash-loop-guard", "incident-center", "signed-incident-webhook", "uid-remap-custom-version-sentinel", "palops-offline-map", "palops-map-poi", "self-hosted-maplibre", "offline-vendor-mirror", "diagnostic-health-checks", "redacted-support-bundle", "maplibre-raster-fallback", "save-history-response-normalization", "panel-version-display", "palops-resource-layout-discovery", "maplibre-v5-webgl-fallback", "async-host-save-migration", "semantic-save-history-events", "distinct-map-marker-icons", "save-snapshot-pal-tracking", "task-management-ui", "task-template-presets", "player-task-progress-browser", "generated-api-contract-sync", "patch-version-contract-guard", "task-event-type-select", "shop-item-catalog-selector", "shop-pal-template-selector", "shop-payload-builder", "task-chinese-display-labels", "boss-management-ui", "boss-catalog-selectors", "boss-summon-audit-ui", "boss-wave-editor", "boss-wave-snapshot-ledger", "boss-wave-progress-ui", "diagnostic-console-history", "diagnostic-console-templates", "diagnostic-console-copy", "diagnostic-structured-header-editor", "diagnostic-common-header-presets", "diagnostic-bearer-prefix", "boss-paldefender-warning-broadcast", "boss-warning-test-action", "boss-warning-delivery-audit", "checkin-streak-policy", "configurable-checkin-aliases", "bare-game-command-aliases", "paldefender-log-event-bridge", "game-event-bridge-diagnostics", "checkin-task-event-derivation", "diagnostic-header-json-tree", "diagnostic-custom-template-storage", "diagnostic-history-request-dedup", "diagnostic-history-full-value-storage"}
 
 func (s Server) patchInfo(c *gin.Context) {
 	info := buildinfo.Current()
@@ -50,7 +31,7 @@ func (s Server) patchInfo(c *gin.Context) {
 		"patch": gin.H{
 			"version":    patchVersion,
 			"repository": panelRepository,
-			"features":   normalizePatchFeatures(patchFeatures),
+			"features":   patchFeatures,
 		},
 		"build": info,
 	})

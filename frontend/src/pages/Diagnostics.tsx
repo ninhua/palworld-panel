@@ -1,27 +1,38 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Archive, BookOpen, Braces, CheckCircle2, CircleAlert, Clock3, Copy, Download, FileArchive,
-  History, LoaderCircle, Network, Play, RefreshCw, RotateCcw, ShieldCheck, SquareTerminal, Trash2, X,
+  History, LoaderCircle, Network, Play, RefreshCw, RotateCcw, Save, ShieldCheck, SquareTerminal, Trash2, X,
 } from 'lucide-react';
 import { diagnosticsApi, type DiagnosticHTTPResult, type DiagnosticShellResult, type DiagnosticStatus } from '../api/diagnostics';
 import { getErrorMessage } from '../api/client';
 import { supportBundlesApi, type SupportBundleMetadata, type SupportBundleStatus } from '../api/supportBundles';
 import {
   appendDiagnosticHistory,
+  createCustomDiagnosticTemplate,
   createHTTPHistoryEntry,
   createShellHistoryEntry,
+  diagnosticHeaderRowsJSON,
+  diagnosticHeaderRowsToRecord,
+  diagnosticHeadersToRows,
   diagnosticHistoryStorageKey,
+  diagnosticTemplateStorageKey,
   formatHTTPResult,
   formatShellResult,
   getDiagnosticTemplates,
   hasUnresolvedDiagnosticPlaceholder,
   loadDiagnosticHistory,
+  loadDiagnosticTemplates,
+  maxDiagnosticCustomTemplates,
   maxDiagnosticHistoryEntries,
+  removeDiagnosticTemplate,
   saveDiagnosticHistory,
+  upsertDiagnosticTemplate,
   type DiagnosticConsoleMode,
+  type DiagnosticHeaderRow,
   type DiagnosticHistoryEntry,
   type DiagnosticTemplate,
 } from './diagnosticsConsole';
+import { DiagnosticHeaderEditor } from '../components/diagnostics/DiagnosticHeaderEditor';
 
 const formatBytes = (value: number) => {
   if (!Number.isFinite(value) || value <= 0) return '0 B';
@@ -61,13 +72,14 @@ export const Diagnostics: React.FC = () => {
   const [bundleBusy, setBundleBusy] = useState('');
   const [method, setMethod] = useState('GET');
   const [url, setURL] = useState('http://127.0.0.1:17993/');
-  const [headersText, setHeadersText] = useState('{}');
+  const [headerRows, setHeaderRows] = useState<DiagnosticHeaderRow[]>([]);
   const [body, setBody] = useState('');
   const [command, setCommand] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [httpResult, setHTTPResult] = useState<DiagnosticHTTPResult | null>(null);
   const [shellResult, setShellResult] = useState<DiagnosticShellResult | null>(null);
   const [historyEntries, setHistoryEntries] = useState<DiagnosticHistoryEntry[]>(loadDiagnosticHistory);
+  const [customTemplates, setCustomTemplates] = useState<DiagnosticTemplate[]>(loadDiagnosticTemplates);
   const [selectedHistoryID, setSelectedHistoryID] = useState('');
   const [selectedTemplateID, setSelectedTemplateID] = useState('');
   const [busy, setBusy] = useState(false);
@@ -75,7 +87,7 @@ export const Diagnostics: React.FC = () => {
   const [notice, setNotice] = useState('');
   const [bundleError, setBundleError] = useState('');
 
-  const templates = useMemo(() => getDiagnosticTemplates(status?.platform || ''), [status?.platform]);
+  const templates = useMemo(() => [...getDiagnosticTemplates(status?.platform || ''), ...customTemplates], [customTemplates, status?.platform]);
   const selectedHistory = useMemo(
     () => historyEntries.find((entry) => entry.id === selectedHistoryID) || null,
     [historyEntries, selectedHistoryID],
@@ -84,17 +96,34 @@ export const Diagnostics: React.FC = () => {
     () => mode === 'http' ? formatHTTPResult(httpResult) : formatShellResult(shellResult),
     [httpResult, mode, shellResult],
   );
+  const headersPreview = useMemo(() => {
+    try {
+      return diagnosticHeaderRowsJSON(headerRows);
+    } catch {
+      const preview = Object.fromEntries(headerRows
+        .filter((row) => row.name.trim())
+        .map((row) => {
+          const name = row.name.trim();
+          if (name.toLowerCase() !== 'authorization' || row.authorization_scheme === 'Custom') {
+            return [name, row.value];
+          }
+          const token = row.value.replace(/^(?:Bearer|Basic)\s+/i, '').trim();
+          return [name, `${row.authorization_scheme} ${token}`.trim()];
+        }));
+      return JSON.stringify(preview, null, 2);
+    }
+  }, [headerRows]);
   const requestText = useMemo(() => mode === 'http'
     ? [
         `${method} ${url.trim() || '(未填写 URL)'}`,
         '',
         '请求头 JSON：',
-        headersText || '{}',
+        headersPreview,
         '',
         '请求体：',
         body || '(空)',
       ].join('\n')
-    : command || '(未填写命令)', [body, command, headersText, method, mode, url]);
+    : command || '(未填写命令)', [body, command, headersPreview, method, mode, url]);
   const transcript = useMemo(() => [
     `时间：${selectedHistory ? formatHistoryTime(selectedHistory.created_at) : new Date().toLocaleString()}`,
     `类型：${mode === 'http' ? '内网 HTTP' : '终端命令'}`,
@@ -105,7 +134,7 @@ export const Diagnostics: React.FC = () => {
     '===== 响应 =====',
     result || '(尚未执行)',
   ].join('\n'), [mode, requestText, result, selectedHistory]);
-  const unresolvedPlaceholder = mode === 'http' && hasUnresolvedDiagnosticPlaceholder([url, headersText, body]);
+  const unresolvedPlaceholder = mode === 'http' && hasUnresolvedDiagnosticPlaceholder([url, headersPreview, body]);
 
   const loadBundles = useCallback(async () => {
     setBundleError('');
@@ -194,7 +223,7 @@ export const Diagnostics: React.FC = () => {
     if (template.mode === 'http') {
       setMethod(template.method || 'GET');
       setURL(template.url || '');
-      setHeadersText(JSON.stringify(template.headers || {}, null, 2));
+      setHeaderRows(diagnosticHeadersToRows(template.headers || {}));
       setBody(template.body || '');
     } else {
       setCommand(template.command || '');
@@ -212,7 +241,7 @@ export const Diagnostics: React.FC = () => {
     if (entry.mode === 'http') {
       setMethod(entry.request.method);
       setURL(entry.request.url);
-      setHeadersText(JSON.stringify(entry.request.headers || {}, null, 2));
+      setHeaderRows(diagnosticHeadersToRows(entry.request.headers || {}));
       setBody(entry.request.body || '');
       setHTTPResult(entry.result);
       setShellResult(null);
@@ -256,15 +285,40 @@ export const Diagnostics: React.FC = () => {
     }
   };
 
+  const saveCurrentTemplate = () => {
+    const label = window.prompt('请输入模板名称');
+    if (label == null) return;
+    try {
+      const template = createCustomDiagnosticTemplate(label, mode === 'http'
+        ? { mode: 'http', method, url: url.trim(), headers: diagnosticHeaderRowsToRecord(headerRows), body }
+        : { mode: 'shell', command });
+      const next = upsertDiagnosticTemplate(customTemplates, template);
+      setCustomTemplates(next);
+      setSelectedTemplateID(template.id);
+      setNotice(`已保存自定义模板：${template.label}（${next.length}/${maxDiagnosticCustomTemplates}）`);
+      setError('');
+    } catch (templateError) {
+      setError(getErrorMessage(templateError));
+    }
+  };
+
+  const removeSelectedTemplate = () => {
+    const template = customTemplates.find((item) => item.id === selectedTemplateID);
+    if (!template) return;
+    if (!window.confirm(`删除自定义模板“${template.label}”？`)) return;
+    const next = removeDiagnosticTemplate(customTemplates, template.id);
+    setCustomTemplates(next);
+    setSelectedTemplateID('');
+    setNotice(`已删除自定义模板：${template.label}`);
+  };
+
   const runHTTP = async () => {
     setBusy(true);
     setError('');
     setNotice('');
     try {
       if (unresolvedPlaceholder) throw new Error('模板中仍有未替换的占位内容，请先填写实际凭据或删除该请求头');
-      const parsedHeaders = JSON.parse(headersText || '{}') as unknown;
-      if (!parsedHeaders || Array.isArray(parsedHeaders) || typeof parsedHeaders !== 'object') throw new Error('请求头必须是 JSON 对象');
-      const headers = Object.fromEntries(Object.entries(parsedHeaders as Record<string, unknown>).map(([name, value]) => [name, String(value)]));
+      const headers = diagnosticHeaderRowsToRecord(headerRows);
       const request = { method, url: url.trim(), headers, body };
       const nextResult = await diagnosticsApi.http(request);
       setHTTPResult(nextResult);
@@ -273,7 +327,7 @@ export const Diagnostics: React.FC = () => {
       const nextHistory = appendDiagnosticHistory(historyEntries, entry);
       setHistoryEntries(nextHistory);
       setSelectedHistoryID(entry.id);
-      setNotice(`请求完成，已保存到当前浏览器历史（${nextHistory.length}/${maxDiagnosticHistoryEntries}）`);
+      setNotice(`请求完成，已更新当前浏览器历史（相同请求不重复，${nextHistory.length}/${maxDiagnosticHistoryEntries}）`);
     } catch (runError) {
       setError(getErrorMessage(runError));
     } finally {
@@ -293,7 +347,7 @@ export const Diagnostics: React.FC = () => {
       const nextHistory = appendDiagnosticHistory(historyEntries, entry);
       setHistoryEntries(nextHistory);
       setSelectedHistoryID(entry.id);
-      setNotice(`命令完成，已保存到当前浏览器历史（${nextHistory.length}/${maxDiagnosticHistoryEntries}）`);
+      setNotice(`命令完成，已更新当前浏览器历史（相同命令不重复，${nextHistory.length}/${maxDiagnosticHistoryEntries}）`);
       setConfirmed(false);
     } catch (runError) {
       setError(getErrorMessage(runError));
@@ -404,14 +458,16 @@ export const Diagnostics: React.FC = () => {
                 }}
               >
                 <option value="">选择常用模板…</option>
-                {templates.map((template) => <option key={template.id} value={template.id}>{template.mode === 'http' ? 'HTTP' : '终端'} · {template.label}</option>)}
+                {templates.map((template) => <option key={template.id} value={template.id}>{template.custom ? '自定义' : template.mode === 'http' ? 'HTTP' : '终端'} · {template.label}</option>)}
               </select>
               {selectedTemplateID && <button type="button" className="pp-btn" onClick={() => {
                 const template = templates.find((item) => item.id === selectedTemplateID);
                 if (template) applyTemplate(template);
               }}><RotateCcw size={14} />重新载入</button>}
+              <button type="button" className="pp-btn pp-btn--primary" onClick={saveCurrentTemplate}><Save size={14} />保存当前</button>
+              <button type="button" className="pp-btn pp-btn--danger" disabled={!customTemplates.some((item) => item.id === selectedTemplateID)} onClick={removeSelectedTemplate}><Trash2 size={14} />删除模板</button>
             </div>
-            <p className="mt-2 text-xs leading-5 text-slate-500">{templates.find((item) => item.id === selectedTemplateID)?.description || '模板只填充请求，不会自动执行。带凭据占位符的模板必须先替换后才能运行。'}</p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">{templates.find((item) => item.id === selectedTemplateID)?.description || '模板只填充请求，不会自动执行。可把当前请求完整保存为浏览器自定义模板，包含 Authorization 等字段。'}</p>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -435,7 +491,7 @@ export const Diagnostics: React.FC = () => {
               <button type="button" className="pp-btn pp-btn--danger" disabled={!selectedHistory} onClick={removeSelectedHistory}><Trash2 size={14} />删除</button>
               <button type="button" className="pp-btn" disabled={historyEntries.length === 0} onClick={clearHistory}><X size={14} />清空</button>
             </div>
-            <p className="mt-2 text-xs leading-5 text-slate-500">历史保存在本机浏览器的 <code className="font-mono">localStorage</code>；Authorization、Cookie、Token、密码等敏感字段写入历史前会自动脱敏。键名：<code className="font-mono">{diagnosticHistoryStorageKey}</code></p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">历史保存在本机浏览器的 <code className="font-mono">localStorage</code>，会保留 Authorization、Cookie、Token 和请求体原值。相同请求只保留最新一次响应，不重复新增。历史键：<code className="font-mono">{diagnosticHistoryStorageKey}</code>；模板键：<code className="font-mono">{diagnosticTemplateStorageKey}</code></p>
           </div>
         </div>
 
@@ -447,7 +503,19 @@ export const Diagnostics: React.FC = () => {
                   <label className="pp-field"><span className="pp-field__label">方法</span><select className="pp-input" value={method} onChange={(event) => { setMethod(event.target.value); setSelectedHistoryID(''); }}>{['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'].map((item) => <option key={item}>{item}</option>)}</select></label>
                   <label className="pp-field"><span className="pp-field__label">私网接口 URL</span><input className="pp-input font-mono" value={url} onChange={(event) => { setURL(event.target.value); setSelectedHistoryID(''); }} placeholder="http://127.0.0.1:17993/" /></label>
                 </div>
-                <label className="pp-field"><span className="pp-field__label">请求头（JSON 对象）</span><textarea className="pp-input min-h-28 resize-y font-mono text-xs" value={headersText} onChange={(event) => { setHeadersText(event.target.value); setSelectedHistoryID(''); }} spellCheck={false} /></label>
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-slate-700">请求头 JSON</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">左侧可直接编辑 JSON；右侧通过“＋/－”增删字段。两侧解析后同步，Authorization 会自动识别 Bearer、Basic 或自定义值。</p>
+                    </div>
+                  </div>
+                  <DiagnosticHeaderEditor
+                    rows={headerRows}
+                    onChange={(next) => { setHeaderRows(next); setSelectedHistoryID(''); setSelectedTemplateID(''); }}
+                    onNotice={(message) => { setNotice(message); setError(''); }}
+                  />
+                </div>
                 <label className="pp-field"><span className="pp-field__label">请求体</span><textarea className="pp-input min-h-36 resize-y font-mono text-xs" value={body} onChange={(event) => { setBody(event.target.value); setSelectedHistoryID(''); }} spellCheck={false} placeholder="GET/HEAD 可留空" /></label>
                 {unresolvedPlaceholder && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">模板中仍包含凭据占位符。请替换为实际值，或删除不需要的请求头。</div>}
                 <button type="button" onClick={() => void runHTTP()} disabled={busy || !url.trim() || unresolvedPlaceholder} className="pp-btn pp-btn--primary">{busy ? <LoaderCircle className="animate-spin" size={15} /> : <Play size={15} />} 执行请求</button>
@@ -478,7 +546,7 @@ export const Diagnostics: React.FC = () => {
               </div>
             </div>
             <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-slate-800 bg-slate-900 p-4 font-mono text-xs leading-6">{result || '执行后将在这里显示状态、响应头和输出。可从上方选择历史记录恢复请求与响应。'}</pre>
-            <p className="mt-3 text-[11px] leading-5 text-slate-500">实时结果最大 {formatBytes(status?.max_output || 65536)}。复制“响应”使用当前显示内容；保存到历史的副本会自动脱敏。</p>
+            <p className="mt-3 text-[11px] leading-5 text-slate-500">实时结果最大 {formatBytes(status?.max_output || 65536)}。历史和自定义模板会在当前浏览器中原样保存请求数据，请仅在受信任设备使用。</p>
           </div>
         </div>
       </section>
