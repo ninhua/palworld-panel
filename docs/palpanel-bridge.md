@@ -10,7 +10,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.4`
+- PalPanelBridge：`0.1.5`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -58,7 +58,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.4",
+  "bridge_version": "0.1.5",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -74,6 +74,18 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 ```
 
 两次请求都必须携带同一个 Authorization 请求头。最终任务应从 `queued` 变为 `completed`。
+
+## 游戏线程运行状态
+
+携带同一个 Authorization 请求头执行：
+
+```text
+GET http://127.0.0.1:18083/v1/runtime
+```
+
+响应包含 `game_thread_tick_count`、`last_game_thread_tick_unix_ms`、
+`last_game_thread_tick_age_ms` 和 `bridge_uptime_ms`。间隔几秒请求两次，
+`game_thread_tick_count` 应持续增长；该接口只读，不会修改游戏状态。
 
 ## 故障判断
 
