@@ -1,4 +1,8 @@
 #include <Mod/CppUserModBase.hpp>
+#include <Helpers/String.hpp>
+#include <Unreal/CoreUObject/UObject/Class.hpp>
+#include <Unreal/UObject.hpp>
+#include <Unreal/UObjectGlobals.hpp>
 
 #include <WinSock2.h>
 #include <WS2tcpip.h>
@@ -26,12 +30,23 @@ struct Config
     std::string token{};
 };
 
+enum class JobKind
+{
+    GameThread,
+    World,
+};
+
 struct Job
 {
     std::string id;
+    JobKind kind{JobKind::GameThread};
     std::string status{"queued"};
     bool unreal_initialized{};
     bool game_thread_tick_seen{};
+    bool world_found{};
+    std::string world_name{};
+    std::string world_full_name{};
+    std::string world_class_name{};
 };
 
 std::filesystem::path mod_directory()
@@ -99,6 +114,32 @@ unsigned long long unix_time_ms()
                                                .count());
 }
 
+std::string json_escape(const std::string& value)
+{
+    static constexpr char hex[] = "0123456789abcdef";
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (const auto character : value) {
+        const auto byte = static_cast<unsigned char>(character);
+        if (byte == '"' || byte == '\\') {
+            escaped.push_back('\\');
+            escaped.push_back(static_cast<char>(byte));
+        } else if (byte < 0x20) {
+            escaped.append("\\u00");
+            escaped.push_back(hex[byte >> 4]);
+            escaped.push_back(hex[byte & 0x0f]);
+        } else {
+            escaped.push_back(static_cast<char>(byte));
+        }
+    }
+    return escaped;
+}
+
+const char* job_kind_name(JobKind kind)
+{
+    return kind == JobKind::World ? "world" : "game_thread";
+}
+
 std::string response(int status, const std::string& body)
 {
     const char* reason = status == 200 ? "OK" : status == 202 ? "Accepted" : status == 401 ? "Unauthorized"
@@ -121,8 +162,8 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.5");
-        ModDescription = STR("Read-only localhost HTTP and UE4SS runtime diagnostics");
+        ModVersion = STR("0.1.6");
+        ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
     }
@@ -160,6 +201,22 @@ class PalPanelBridge final : public RC::CppUserModBase
             if (job.status != "queued") continue;
             job.unreal_initialized = unreal_initialized_.load();
             job.game_thread_tick_seen = true;
+            if (job.kind == JobKind::World) {
+                try {
+                    auto* world = RC::Unreal::UObjectGlobals::FindFirstOf(STR("World"));
+                    job.world_found = world != nullptr;
+                    if (world) {
+                        job.world_name = RC::to_utf8_string(world->GetName());
+                        job.world_full_name = RC::to_utf8_string(world->GetFullName());
+                        if (auto* world_class = world->GetClassPrivate(); world_class) {
+                            job.world_class_name = RC::to_utf8_string(world_class->GetName());
+                        }
+                    }
+                } catch (...) {
+                    job.status = "failed";
+                    break;
+                }
+            }
             job.status = "completed";
             break;
         }
@@ -189,7 +246,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.5\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.6\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -202,7 +259,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.5\","
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.6\","
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -211,15 +268,16 @@ class PalPanelBridge final : public RC::CppUserModBase
         return body.str();
     }
 
-    std::string enqueue()
+    std::string enqueue(JobKind kind)
     {
         const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::system_clock::now().time_since_epoch())
                              .count();
-        const auto id = "probe_" + std::to_string(now) + "_" + std::to_string(++sequence_);
+        const auto id = std::string(kind == JobKind::World ? "world_" : "probe_") + std::to_string(now) + "_" +
+                        std::to_string(++sequence_);
         std::scoped_lock lock(jobs_mutex_);
         if (jobs_.size() >= 64) jobs_.erase(jobs_.begin());
-        jobs_.emplace(id, Job{.id = id});
+        jobs_.emplace(id, Job{.id = id, .kind = kind});
         return id;
     }
 
@@ -230,9 +288,16 @@ class PalPanelBridge final : public RC::CppUserModBase
         if (found == jobs_.end()) return {};
         const auto& job = found->second;
         std::ostringstream body;
-        body << "{\"ok\":true,\"job\":{\"id\":\"" << job.id << "\",\"status\":\"" << job.status
+        body << "{\"ok\":true,\"job\":{\"id\":\"" << job.id << "\",\"type\":\"" << job_kind_name(job.kind)
+             << "\",\"status\":\"" << job.status
              << "\",\"result\":{\"unreal_initialized\":" << (job.unreal_initialized ? "true" : "false")
-             << ",\"game_thread_tick_seen\":" << (job.game_thread_tick_seen ? "true" : "false") << "}}}";
+             << ",\"game_thread_tick_seen\":" << (job.game_thread_tick_seen ? "true" : "false");
+        if (job.kind == JobKind::World) {
+            body << ",\"world_found\":" << (job.world_found ? "true" : "false") << ",\"world_name\":\""
+                 << json_escape(job.world_name) << "\",\"world_full_name\":\"" << json_escape(job.world_full_name)
+                 << "\",\"world_class_name\":\"" << json_escape(job.world_class_name) << '"';
+        }
+        body << "}}}";
         return body.str();
     }
 
@@ -262,8 +327,12 @@ class PalPanelBridge final : public RC::CppUserModBase
         } else if (first == "GET /v1/runtime HTTP/1.1") {
             status = 200;
             body = runtime();
+        } else if (first == "POST /v1/world HTTP/1.1") {
+            const auto id = enqueue(JobKind::World);
+            status = 202;
+            body = "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
         } else if (first == "POST /v1/probe/game-thread HTTP/1.1") {
-            const auto id = enqueue();
+            const auto id = enqueue(JobKind::GameThread);
             status = 202;
             body = "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
         } else if (first.rfind("GET /v1/jobs/", 0) == 0 && first.ends_with(" HTTP/1.1")) {

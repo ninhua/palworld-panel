@@ -21,7 +21,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.5-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.6-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -42,7 +42,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.5-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.6-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -66,6 +66,7 @@ Authorization: Bearer <token>
 ```bash
 curl -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/health
 curl -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/runtime
+curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/world
 curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/probe/game-thread
 curl -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/jobs/<job_id>
 ```
@@ -76,3 +77,7 @@ Success means the job changes from `queued` to `completed` and reports
 Calling `/v1/runtime` twice should show an increasing
 `game_thread_tick_count`. It also reports the last game-thread tick time and
 bridge uptime without modifying game state.
+
+`POST /v1/world` queues a game-thread-safe UE object lookup. Poll its returned
+job ID through `/v1/jobs/<job_id>`; a successful result reports the current
+World object's name, full name, and class without changing the object.
