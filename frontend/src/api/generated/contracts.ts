@@ -1225,6 +1225,7 @@ export interface components {
       "returned": number;
     };
     "PalDefenderItemCatalogEntry": {
+      "collaboration"?: string;
       "icon"?: string;
       "id": string;
       "name": string;
@@ -1248,6 +1249,7 @@ export interface components {
     };
     "PalDefenderPalCatalogEntry": {
       "id": string;
+      "kind"?: string;
       "name": string;
     };
     "PalDefenderPalGrant": {

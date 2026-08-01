@@ -18,6 +18,8 @@ import (
 	"palpanel/internal/server"
 )
 
+const defaultTimezone = "Asia/Shanghai"
+
 type Manager struct {
 	store   *db.Store
 	server  Server
@@ -127,7 +129,7 @@ func (m Manager) save(ctx context.Context, item db.Schedule) (db.Schedule, error
 	item.Type = strings.TrimSpace(item.Type)
 	item.Timezone = strings.TrimSpace(item.Timezone)
 	if item.Timezone == "" {
-		item.Timezone = "UTC"
+		item.Timezone = defaultTimezone
 	}
 	if _, err := time.LoadLocation(item.Timezone); err != nil {
 		return db.Schedule{}, fmt.Errorf("invalid timezone %q", item.Timezone)
@@ -292,7 +294,7 @@ func nextRun(item db.Schedule, from time.Time) (time.Time, error) {
 	}
 	timezone := strings.TrimSpace(item.Timezone)
 	if timezone == "" {
-		timezone = "UTC"
+		timezone = defaultTimezone
 	}
 	location, err := time.LoadLocation(timezone)
 	if err != nil {

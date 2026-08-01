@@ -102,7 +102,7 @@ func TestManagerCRUDAndRunTypes(t *testing.T) {
 	manager.now = func() time.Time { return fixed }
 
 	created, err := manager.Create(t.Context(), db.Schedule{Type: "backup", IntervalMinutes: 60})
-	if err != nil || created.ID == "" || created.Timezone != "UTC" || created.NextRunAt != fixed.Add(time.Hour).Format(time.RFC3339Nano) {
+	if err != nil || created.ID == "" || created.Timezone != "Asia/Shanghai" || created.NextRunAt != fixed.Add(time.Hour).Format(time.RFC3339Nano) {
 		t.Fatalf("Create = %#v, %v", created, err)
 	}
 	items, err := manager.List(t.Context())
@@ -110,7 +110,7 @@ func TestManagerCRUDAndRunTypes(t *testing.T) {
 		t.Fatalf("List = %#v, %v", items, err)
 	}
 	updated, err := manager.Update(t.Context(), created.ID, db.Schedule{Type: "backup", Enabled: false, TimeOfDay: "09:00"})
-	if err != nil || updated.Timezone != "UTC" || updated.CreatedAt != created.CreatedAt {
+	if err != nil || updated.Timezone != "Asia/Shanghai" || updated.CreatedAt != created.CreatedAt {
 		t.Fatalf("Update = %#v, %v", updated, err)
 	}
 
@@ -235,13 +235,13 @@ func TestManagerSkipsDuplicateAndStopsBackgroundLoop(t *testing.T) {
 	}
 }
 
-func TestNextRunDefaultsLegacySchedulesToUTC(t *testing.T) {
+func TestNextRunDefaultsToChinaTimezone(t *testing.T) {
 	from := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 	next, err := nextRun(db.Schedule{TimeOfDay: "09:30"}, from)
 	if err != nil {
 		t.Fatalf("nextRun returned error: %v", err)
 	}
-	want := time.Date(2026, 7, 15, 9, 30, 0, 0, time.UTC)
+	want := time.Date(2026, 7, 15, 1, 30, 0, 0, time.UTC)
 	if !next.Equal(want) {
 		t.Fatalf("nextRun = %s, want %s", next, want)
 	}

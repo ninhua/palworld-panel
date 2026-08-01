@@ -195,7 +195,8 @@ export const SaveSources: React.FC = () => {
                     <button type="button" className="pp-button" onClick={() => setRenamingID('')}>取消</button>
                   </> : <>
                     <button type="button" className="pp-button" onClick={() => { setRenamingID(source.id); setRenameValue(source.name); }}><Pencil size={14} />重命名</button>
-                    {source.kind !== 'server' && <button type="button" className="pp-button" disabled={migrationID === source.id} onClick={() => void migrateHost(source)}>{migrationID === source.id ? <RefreshCw className="animate-spin" size={14} /> : <ArrowRightLeft size={14} />}主机迁移</button>}
+                    {/* Compatibility note: retain the custom host-migration handler/API, but hide its entry while the upstream multi-player wizard is the primary UI. */}
+                    {source.kind !== 'server' && <button type="button" className="pp-button hidden" data-legacy-host-migration-entry disabled={migrationID === source.id} onClick={() => void migrateHost(source)}>{migrationID === source.id ? <RefreshCw className="animate-spin" size={14} /> : <ArrowRightLeft size={14} />}主机迁移</button>}
                     {!source.active && <button type="button" className="pp-button accent" onClick={() => action.mutate({ type: 'activate', id: source.id })}><CheckCircle2 size={14} />用于分析</button>}
                     {source.active && <button type="button" className="pp-button" onClick={() => action.mutate({ type: 'rebuild', id: source.id })}><RefreshCw size={14} />重建分析索引</button>}
                     {source.kind !== 'server' && !source.active && <button type="button" className="icon-danger" aria-label="删除存档" onClick={() => window.confirm('删除这个导入存档？') && action.mutate({ type: 'remove', id: source.id })}><Trash2 size={15} /></button>}

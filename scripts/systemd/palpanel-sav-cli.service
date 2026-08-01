@@ -8,6 +8,7 @@ Type=simple
 User=palpanel
 Group=palpanel
 UMask=0077
+Environment=TZ=Asia/Shanghai
 ExecStart=/opt/palpanel/current/bin/sav-cli serve --host 127.0.0.1 --port 8090
 Restart=always
 RestartSec=3s

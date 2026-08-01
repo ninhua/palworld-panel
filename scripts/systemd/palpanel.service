@@ -9,6 +9,7 @@ Type=simple
 User=palpanel
 Group=palpanel
 UMask=0077
+Environment=TZ=Asia/Shanghai
 Environment=PALPANEL_DATA_DIR=/var/lib/palpanel
 Environment=HOME=/var/lib/palpanel
 Environment=DOCKER_CONFIG=/var/lib/palpanel/docker-client
