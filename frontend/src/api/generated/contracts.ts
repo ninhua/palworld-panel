@@ -867,6 +867,9 @@ export interface components {
       "skipped_paths": Array<string>;
       "warnings": Array<string>;
     };
+    "ModConfigActionRequest": {
+      "action": string;
+    };
     "ModConfigBackup": {
       "created_at": string;
       "id": string;
