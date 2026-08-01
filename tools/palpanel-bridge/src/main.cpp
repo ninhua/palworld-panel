@@ -92,6 +92,13 @@ Config load_config()
     return config;
 }
 
+unsigned long long unix_time_ms()
+{
+    return static_cast<unsigned long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                               std::chrono::system_clock::now().time_since_epoch())
+                                               .count());
+}
+
 std::string response(int status, const std::string& body)
 {
     const char* reason = status == 200 ? "OK" : status == 202 ? "Accepted" : status == 401 ? "Unauthorized"
@@ -114,8 +121,8 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.4");
-        ModDescription = STR("Read-only localhost HTTP and UE4SS game-thread probe");
+        ModVersion = STR("0.1.5");
+        ModDescription = STR("Read-only localhost HTTP and UE4SS runtime diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
     }
@@ -146,6 +153,8 @@ class PalPanelBridge final : public RC::CppUserModBase
     auto on_update() -> void override
     {
         game_thread_tick_seen_.store(true);
+        game_thread_tick_count_.fetch_add(1, std::memory_order_relaxed);
+        last_game_thread_tick_unix_ms_.store(unix_time_ms(), std::memory_order_relaxed);
         std::scoped_lock lock(jobs_mutex_);
         for (auto& [_, job] : jobs_) {
             if (job.status != "queued") continue;
@@ -157,11 +166,14 @@ class PalPanelBridge final : public RC::CppUserModBase
     }
 
   private:
+    const unsigned long long started_at_unix_ms_{unix_time_ms()};
     Config config_{};
     std::atomic<bool> stopping_{false};
     std::atomic<bool> server_started_{false};
     std::atomic<bool> unreal_initialized_{false};
     std::atomic<bool> game_thread_tick_seen_{false};
+    std::atomic<unsigned long long> game_thread_tick_count_{0};
+    std::atomic<unsigned long long> last_game_thread_tick_unix_ms_{0};
     std::atomic<SOCKET> listener_{INVALID_SOCKET};
     std::atomic<unsigned long long> sequence_{0};
     std::thread worker_{};
@@ -177,10 +189,25 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.4\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.5\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
+        return body.str();
+    }
+
+    std::string runtime() const
+    {
+        const auto now = unix_time_ms();
+        const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
+        const auto started = started_at_unix_ms_;
+        std::ostringstream body;
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.5\","
+             << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
+             << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
+             << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
+             << "\"last_game_thread_tick_age_ms\":" << (last_tick > 0 && now >= last_tick ? now - last_tick : 0) << ','
+             << "\"bridge_uptime_ms\":" << (now >= started ? now - started : 0) << '}';
         return body.str();
     }
 
@@ -232,6 +259,9 @@ class PalPanelBridge final : public RC::CppUserModBase
         } else if (first == "GET /v1/health HTTP/1.1") {
             status = 200;
             body = health();
+        } else if (first == "GET /v1/runtime HTTP/1.1") {
+            status = 200;
+            body = runtime();
         } else if (first == "POST /v1/probe/game-thread HTTP/1.1") {
             const auto id = enqueue();
             status = 202;
