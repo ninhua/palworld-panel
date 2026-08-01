@@ -62,6 +62,7 @@ func (s Server) registerRoutes(router *gin.Engine) {
 	s.registerGameEventRoutes(api)
 	s.registerTaskRoutes(api)
 	s.registerShopRoutes(api)
+	s.registerBossRoutes(api)
 	api.GET("/catalog", s.apiCatalog(router))
 	s.registerFrontendRoutes(router)
 }

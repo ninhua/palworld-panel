@@ -18,6 +18,7 @@ tags:
   - {name: integrations}
   - {name: economy}
   - {name: events}
+  - {name: boss}
 x-success: &success
   description: Successful response wrapped in an API envelope.
   content:
@@ -1622,6 +1623,130 @@ paths:
       tags: [economy]
       x-palpanel-permission: 'players:write'
       responses: {'200': *success, '401': *error, '403': *error, '404': *error, '409': *error, '500': *error}
+  /boss/summary:
+    get:
+      operationId: getBossSummary
+      tags: [boss]
+      x-palpanel-permission: read
+      responses: {'200': *success, '401': *error, '500': *error}
+  /boss/rewards:
+    get:
+      operationId: listBossRewards
+      tags: [boss]
+      x-palpanel-permission: read
+      parameters:
+        - {name: include_archived, in: query, required: false, schema: {type: boolean, default: false}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      responses: {'200': *success, '400': *error, '401': *error, '500': *error}
+    post:
+      operationId: createBossReward
+      tags: [boss]
+      x-palpanel-permission: 'config:write'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BossRewardInput'}
+      responses: {'201': *success, '400': *error, '401': *error, '403': *error, '500': *error}
+  /boss/rewards/{id}:
+    parameters: [*idParameter]
+    put:
+      operationId: updateBossReward
+      tags: [boss]
+      x-palpanel-permission: 'config:write'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BossRewardInput'}
+      responses: {'200': *success, '400': *error, '401': *error, '403': *error, '404': *error, '500': *error}
+    delete:
+      operationId: archiveBossReward
+      tags: [boss]
+      x-palpanel-permission: 'config:write'
+      responses: {'200': *success, '401': *error, '403': *error, '404': *error, '500': *error}
+  /boss/templates:
+    get:
+      operationId: listBossTemplates
+      tags: [boss]
+      x-palpanel-permission: read
+      parameters:
+        - {name: include_archived, in: query, required: false, schema: {type: boolean, default: false}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      responses: {'200': *success, '400': *error, '401': *error, '500': *error}
+    post:
+      operationId: createBossTemplate
+      tags: [boss]
+      x-palpanel-permission: 'config:write'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BossTemplateInput'}
+      responses: {'201': *success, '400': *error, '401': *error, '403': *error, '404': *error, '500': *error}
+  /boss/templates/{id}:
+    parameters: [*idParameter]
+    put:
+      operationId: updateBossTemplate
+      tags: [boss]
+      x-palpanel-permission: 'config:write'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BossTemplateInput'}
+      responses: {'200': *success, '400': *error, '401': *error, '403': *error, '404': *error, '500': *error}
+    delete:
+      operationId: archiveBossTemplate
+      tags: [boss]
+      x-palpanel-permission: 'config:write'
+      responses: {'200': *success, '401': *error, '403': *error, '404': *error, '500': *error}
+  /boss/summons:
+    get:
+      operationId: listBossSummons
+      tags: [boss]
+      x-palpanel-permission: read
+      parameters:
+        - {name: status, in: query, required: false, schema: {type: string, enum: [pending, active, completed, failed, cancelled]}}
+        - {name: template_id, in: query, required: false, schema: {type: string}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      responses: {'200': *success, '400': *error, '401': *error, '500': *error}
+    post:
+      operationId: createBossSummon
+      description: Creates an idempotent record-only manual summon request. This version does not execute a PalDefender summon command.
+      tags: [boss]
+      x-palpanel-permission: 'server:control'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BossCreateSummonRequest'}
+      responses: {'201': *success, '200': *success, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error, '500': *error}
+  /boss/summons/{id}/transition:
+    parameters: [*idParameter]
+    post:
+      operationId: transitionBossSummon
+      tags: [boss]
+      x-palpanel-permission: 'server:control'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BossTransitionRequest'}
+      responses: {'200': *success, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error, '500': *error}
+  /boss/summons/{id}/events:
+    parameters: [*idParameter]
+    get:
+      operationId: listBossSummonEvents
+      tags: [boss]
+      x-palpanel-permission: read
+      parameters:
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+        - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      responses: {'200': *success, '400': *error, '401': *error, '404': *error, '500': *error}
   /players:
     get:
       operationId: listSavePlayers
@@ -4169,6 +4294,170 @@ components:
     JsonObject:
       type: object
       additionalProperties: true
+    BossLocation:
+      type: object
+      required: [x, y, z]
+      additionalProperties: false
+      properties:
+        x: {type: number, minimum: -10000000, maximum: 10000000}
+        y: {type: number, minimum: -10000000, maximum: 10000000}
+        z: {type: number, minimum: -10000000, maximum: 10000000}
+        label: {type: string, maxLength: 128}
+    BossRewardItem:
+      type: object
+      required: [item_id, count]
+      additionalProperties: false
+      properties:
+        item_id: {type: string, pattern: '^[A-Za-z0-9_:-]{1,128}$'}
+        count: {type: integer, minimum: 1, maximum: 2147483647}
+    BossRewardInput:
+      type: object
+      required: [name, points, items, pal_templates, enabled, metadata]
+      additionalProperties: false
+      properties:
+        name: {type: string, minLength: 1, maxLength: 128}
+        description: {type: string, maxLength: 4096}
+        points: {type: integer, minimum: 0, maximum: 1000000000000}
+        items: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/BossRewardItem'}}
+        pal_templates: {type: array, maxItems: 100, uniqueItems: true, items: {type: string, pattern: '^[A-Za-z0-9_.-]{1,128}$'}}
+        enabled: {type: boolean}
+        metadata: {$ref: '#/components/schemas/JsonObject'}
+    BossReward:
+      type: object
+      required: [id, name, points, items, pal_templates, enabled, metadata, created_at, updated_at]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        description: {type: string}
+        points: {type: integer}
+        items: {type: array, items: {$ref: '#/components/schemas/BossRewardItem'}}
+        pal_templates: {type: array, items: {type: string}}
+        enabled: {type: boolean}
+        metadata: {$ref: '#/components/schemas/JsonObject'}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        archived_at: {type: string, format: date-time}
+    BossTemplateInput:
+      type: object
+      required: [name, pal_id, level, count, hp_multiplier, attack_multiplier, defense_multiplier, spawn_radius, capturable, cooldown_seconds, reward_id, location, enabled, metadata]
+      additionalProperties: false
+      properties:
+        name: {type: string, minLength: 1, maxLength: 128}
+        description: {type: string, maxLength: 4096}
+        pal_id: {type: string, pattern: '^[A-Za-z0-9_:-]{1,128}$'}
+        level: {type: integer, minimum: 1, maximum: 100}
+        count: {type: integer, minimum: 1, maximum: 100}
+        hp_multiplier: {type: number, minimum: 0.1, maximum: 100}
+        attack_multiplier: {type: number, minimum: 0.1, maximum: 100}
+        defense_multiplier: {type: number, minimum: 0.1, maximum: 100}
+        spawn_radius: {type: number, minimum: 0, maximum: 100000}
+        capturable: {type: boolean}
+        cooldown_seconds: {type: integer, minimum: 0, maximum: 604800}
+        reward_id: {type: string}
+        location: {$ref: '#/components/schemas/BossLocation'}
+        enabled: {type: boolean}
+        metadata: {$ref: '#/components/schemas/JsonObject'}
+    BossTemplate:
+      type: object
+      required: [id, name, pal_id, level, count, hp_multiplier, attack_multiplier, defense_multiplier, spawn_radius, capturable, cooldown_seconds, location, enabled, metadata, created_at, updated_at]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        description: {type: string}
+        pal_id: {type: string}
+        level: {type: integer}
+        count: {type: integer}
+        hp_multiplier: {type: number}
+        attack_multiplier: {type: number}
+        defense_multiplier: {type: number}
+        spawn_radius: {type: number}
+        capturable: {type: boolean}
+        cooldown_seconds: {type: integer}
+        reward_id: {type: string}
+        location: {$ref: '#/components/schemas/BossLocation'}
+        enabled: {type: boolean}
+        metadata: {$ref: '#/components/schemas/JsonObject'}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        archived_at: {type: string, format: date-time}
+    BossCreateSummonRequest:
+      type: object
+      required: [template_id, request_key]
+      additionalProperties: false
+      properties:
+        template_id: {type: string, minLength: 1}
+        request_key: {type: string, minLength: 1, maxLength: 128}
+        location_override: {$ref: '#/components/schemas/BossLocation'}
+        notes: {type: string, maxLength: 4096}
+        metadata: {$ref: '#/components/schemas/JsonObject'}
+    BossTransitionRequest:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status: {type: string, enum: [pending, active, completed, failed, cancelled]}
+        message: {type: string, maxLength: 4096}
+        result: {$ref: '#/components/schemas/JsonObject'}
+    BossSummon:
+      type: object
+      required: [id, request_key, template_id, template_name, status, execution_mode, pal_id, level, count, hp_multiplier, attack_multiplier, defense_multiplier, spawn_radius, capturable, location, metadata, result, requested_at, updated_at]
+      properties:
+        id: {type: string}
+        request_key: {type: string}
+        template_id: {type: string}
+        template_name: {type: string}
+        reward_id: {type: string}
+        status: {type: string, enum: [pending, active, completed, failed, cancelled]}
+        execution_mode: {type: string, const: record_only}
+        actor: {type: string}
+        pal_id: {type: string}
+        level: {type: integer}
+        count: {type: integer}
+        hp_multiplier: {type: number}
+        attack_multiplier: {type: number}
+        defense_multiplier: {type: number}
+        spawn_radius: {type: number}
+        capturable: {type: boolean}
+        location: {$ref: '#/components/schemas/BossLocation'}
+        notes: {type: string}
+        metadata: {$ref: '#/components/schemas/JsonObject'}
+        result: {$ref: '#/components/schemas/JsonObject'}
+        failure: {type: string}
+        requested_at: {type: string, format: date-time}
+        started_at: {type: string, format: date-time}
+        completed_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    BossSummonResult:
+      type: object
+      required: [summon, duplicate]
+      properties:
+        summon: {$ref: '#/components/schemas/BossSummon'}
+        duplicate: {type: boolean}
+    BossSummonEvent:
+      type: object
+      required: [id, summon_id, to_status, details, created_at]
+      properties:
+        id: {type: integer}
+        summon_id: {type: string}
+        from_status: {type: string}
+        to_status: {type: string, enum: [pending, active, completed, failed, cancelled]}
+        actor: {type: string}
+        message: {type: string}
+        details: {$ref: '#/components/schemas/JsonObject'}
+        created_at: {type: string, format: date-time}
+    BossSummary:
+      type: object
+      required: [rewards, enabled_rewards, templates, enabled_templates, pending_summons, active_summons, completed_summons, failed_summons, cancelled_summons]
+      properties:
+        rewards: {type: integer, minimum: 0}
+        enabled_rewards: {type: integer, minimum: 0}
+        templates: {type: integer, minimum: 0}
+        enabled_templates: {type: integer, minimum: 0}
+        pending_summons: {type: integer, minimum: 0}
+        active_summons: {type: integer, minimum: 0}
+        completed_summons: {type: integer, minimum: 0}
+        failed_summons: {type: integer, minimum: 0}
+        cancelled_summons: {type: integer, minimum: 0}
     PatchInfo:
       type: object
       required: [upstream, compatibility, patch, build]
@@ -4190,7 +4479,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.63}
+            version: {type: string, const: 0.8.64}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

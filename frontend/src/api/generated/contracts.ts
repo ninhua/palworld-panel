@@ -167,6 +167,140 @@ export interface components {
       "summary": components["schemas"]["BaseWorkerSummary"];
       "workers": Array<components["schemas"]["BaseWorkerDetail"]>;
     };
+    "BossCreateSummonRequest": {
+      "location_override"?: components["schemas"]["BossLocation"];
+      "metadata"?: components["schemas"]["JsonObject"];
+      "notes"?: string;
+      "request_key": string;
+      "template_id": string;
+    };
+    "BossLocation": {
+      "label"?: string;
+      "x": number;
+      "y": number;
+      "z": number;
+    };
+    "BossReward": {
+      "archived_at"?: string;
+      "created_at": string;
+      "description"?: string;
+      "enabled": boolean;
+      "id": string;
+      "items": Array<components["schemas"]["BossRewardItem"]>;
+      "metadata": components["schemas"]["JsonObject"];
+      "name": string;
+      "pal_templates": Array<string>;
+      "points": number;
+      "updated_at": string;
+    };
+    "BossRewardInput": {
+      "description"?: string;
+      "enabled": boolean;
+      "items": Array<components["schemas"]["BossRewardItem"]>;
+      "metadata": components["schemas"]["JsonObject"];
+      "name": string;
+      "pal_templates": Array<string>;
+      "points": number;
+    };
+    "BossRewardItem": {
+      "count": number;
+      "item_id": string;
+    };
+    "BossSummary": {
+      "active_summons": number;
+      "cancelled_summons": number;
+      "completed_summons": number;
+      "enabled_rewards": number;
+      "enabled_templates": number;
+      "failed_summons": number;
+      "pending_summons": number;
+      "rewards": number;
+      "templates": number;
+    };
+    "BossSummon": {
+      "actor"?: string;
+      "attack_multiplier": number;
+      "capturable": boolean;
+      "completed_at"?: string;
+      "count": number;
+      "defense_multiplier": number;
+      "execution_mode": "record_only";
+      "failure"?: string;
+      "hp_multiplier": number;
+      "id": string;
+      "level": number;
+      "location": components["schemas"]["BossLocation"];
+      "metadata": components["schemas"]["JsonObject"];
+      "notes"?: string;
+      "pal_id": string;
+      "request_key": string;
+      "requested_at": string;
+      "result": components["schemas"]["JsonObject"];
+      "reward_id"?: string;
+      "spawn_radius": number;
+      "started_at"?: string;
+      "status": "pending" | "active" | "completed" | "failed" | "cancelled";
+      "template_id": string;
+      "template_name": string;
+      "updated_at": string;
+    };
+    "BossSummonEvent": {
+      "actor"?: string;
+      "created_at": string;
+      "details": components["schemas"]["JsonObject"];
+      "from_status"?: string;
+      "id": number;
+      "message"?: string;
+      "summon_id": string;
+      "to_status": "pending" | "active" | "completed" | "failed" | "cancelled";
+    };
+    "BossSummonResult": {
+      "duplicate": boolean;
+      "summon": components["schemas"]["BossSummon"];
+    };
+    "BossTemplate": {
+      "archived_at"?: string;
+      "attack_multiplier": number;
+      "capturable": boolean;
+      "cooldown_seconds": number;
+      "count": number;
+      "created_at": string;
+      "defense_multiplier": number;
+      "description"?: string;
+      "enabled": boolean;
+      "hp_multiplier": number;
+      "id": string;
+      "level": number;
+      "location": components["schemas"]["BossLocation"];
+      "metadata": components["schemas"]["JsonObject"];
+      "name": string;
+      "pal_id": string;
+      "reward_id"?: string;
+      "spawn_radius": number;
+      "updated_at": string;
+    };
+    "BossTemplateInput": {
+      "attack_multiplier": number;
+      "capturable": boolean;
+      "cooldown_seconds": number;
+      "count": number;
+      "defense_multiplier": number;
+      "description"?: string;
+      "enabled": boolean;
+      "hp_multiplier": number;
+      "level": number;
+      "location": components["schemas"]["BossLocation"];
+      "metadata": components["schemas"]["JsonObject"];
+      "name": string;
+      "pal_id": string;
+      "reward_id": string;
+      "spawn_radius": number;
+    };
+    "BossTransitionRequest": {
+      "message"?: string;
+      "result"?: components["schemas"]["JsonObject"];
+      "status": "pending" | "active" | "completed" | "failed" | "cancelled";
+    };
     "BreedingStatus": {
       "available": boolean;
       "checked_at"?: string;
@@ -1206,7 +1340,7 @@ export interface components {
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/palworld-panel";
-        "version": "0.8.63";
+        "version": "0.8.64";
       };
       "upstream": {
         "commit": string;
