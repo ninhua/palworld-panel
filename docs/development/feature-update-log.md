@@ -1,5 +1,15 @@
 # 功能移植更新记录
 
+## 2026-08-02：PalPanelBridge 使用 PalUtility 获取在线玩家
+
+已完成：
+
+- `0.1.9` 实机确认 Controller 与 PlayerState 的 `FindAllOf` 均可能在玩家在线时返回 0。
+- PalPanelBridge 升级至 `0.1.10`，以已验证的当前 World 作为上下文，只读调用 `PalUtility.GetAllPlayerStates`。
+- 调用前校验 World、CDO、UFunction、对象参数、输出数组类型和数组尺寸；输出数组读取后执行销毁。
+- 结果增加 PalUtility 可用状态、玩家数量和错误信息，原 Controller/PlayerState 扫描继续作为对照。
+- 不读取背包/帕鲁，不执行任何玩家写操作。
+
 ## 2026-08-02：PalPanelBridge 在线玩家枚举回退
 
 已完成：

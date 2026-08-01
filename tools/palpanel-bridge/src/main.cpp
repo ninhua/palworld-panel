@@ -3,7 +3,9 @@
 #include <Unreal/CoreUObject/UObject/Class.hpp>
 #include <Unreal/CoreUObject/UObject/FStrProperty.hpp>
 #include <Unreal/CoreUObject/UObject/UnrealType.hpp>
+#include <Unreal/Core/Containers/Array.hpp>
 #include <Unreal/FField.hpp>
+#include <Unreal/UFunctionStructs.hpp>
 #include <Unreal/UObject.hpp>
 #include <Unreal/UObjectGlobals.hpp>
 
@@ -82,6 +84,9 @@ struct Job
     std::string world_class_name{};
     size_t controller_object_count{};
     size_t player_state_object_count{};
+    size_t pal_utility_player_state_count{};
+    bool pal_utility_available{};
+    std::string pal_utility_error{};
     std::vector<OnlinePlayerSnapshot> online_players{};
 };
 
@@ -105,19 +110,24 @@ ObjectSnapshot describe_object(RC::Unreal::UObject* object)
     return snapshot;
 }
 
-RC::Unreal::FProperty* find_property(
-    RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names)
+RC::Unreal::FProperty* find_struct_property(
+    RC::Unreal::UStruct* owner, std::initializer_list<const TCHAR*> names)
 {
-    if (!object || !RC::Unreal::UObject::IsReal(object)) return nullptr;
-    auto* object_class = object->GetClassPrivate();
-    if (!object_class) return nullptr;
+    if (!owner) return nullptr;
     for (const auto* name : names) {
-        if (auto* property = object_class->FindProperty(
+        if (auto* property = owner->FindProperty(
                 RC::Unreal::FName(name, RC::Unreal::FNAME_Find)); property) {
             return property;
         }
     }
     return nullptr;
+}
+
+RC::Unreal::FProperty* find_property(
+    RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names)
+{
+    if (!object || !RC::Unreal::UObject::IsReal(object)) return nullptr;
+    return find_struct_property(object->GetClassPrivate(), names);
 }
 
 RC::Unreal::UObject* read_object_property(
@@ -172,6 +182,71 @@ void append_instances(
             }
         }
     } catch (...) {
+    }
+}
+
+void append_pal_utility_player_states(
+    RC::Unreal::UObject* world,
+    std::vector<RC::Unreal::UObject*>& output,
+    std::unordered_set<RC::Unreal::UObject*>& seen,
+    bool& available,
+    std::string& error)
+{
+    using namespace RC::Unreal;
+    available = false;
+    error.clear();
+    try {
+        auto* utility = UObjectGlobals::StaticFindObject<UObject*>(
+            nullptr, nullptr, STR("/Script/Pal.Default__PalUtility"));
+        auto* function = UObjectGlobals::StaticFindObject<UFunction*>(
+            nullptr, nullptr, STR("/Script/Pal.PalUtility:GetAllPlayerStates"));
+        if (!world || !UObject::IsReal(world)) {
+            error = "World context is unavailable";
+            return;
+        }
+        if (!utility || !UObject::IsReal(utility) || !function || !UObject::IsReal(function)) {
+            error = "PalUtility.GetAllPlayerStates is unavailable";
+            return;
+        }
+        auto* context_property = find_struct_property(function, {STR("WorldContextObject")});
+        auto* context_object_property = CastField<FObjectPropertyBase>(context_property);
+        auto* states_property = find_struct_property(function, {STR("OutPlayerStates")});
+        auto* states_array_property = CastField<FArrayProperty>(states_property);
+        auto* inner_object_property = states_array_property
+                                          ? CastField<FObjectPropertyBase>(states_array_property->GetInner())
+                                          : nullptr;
+        auto* player_state_class = inner_object_property
+                                       ? inner_object_property->GetPropertyClass().Get()
+                                       : nullptr;
+        if (!context_property || !context_object_property || !states_property || !states_array_property ||
+            !player_state_class ||
+            states_property->GetSize() < static_cast<std::int32_t>(sizeof(TArray<UObject*>))) {
+            error = "PalUtility.GetAllPlayerStates parameters do not match this game build";
+            return;
+        }
+        std::vector<std::uint8_t> parameters(
+            static_cast<size_t>(function->GetParmsSize()), std::uint8_t{0});
+        context_object_property->SetObjectPropertyValue(
+            context_property->ContainerPtrToValuePtr<void>(parameters.data()), world);
+        utility->ProcessEvent(function, parameters.data());
+        auto* states = static_cast<TArray<UObject*>*>(
+            states_property->ContainerPtrToValuePtr<void>(parameters.data()));
+        const auto count = states->Num();
+        if (count < 0 || count > 1024) {
+            states_property->DestroyValue_InContainer(parameters.data());
+            error = "PalUtility.GetAllPlayerStates returned an invalid array size";
+            return;
+        }
+        for (TArray<UObject*>::SizeType index = 0; index < count; ++index) {
+            auto* state = (*states)[index];
+            if (state && UObject::IsReal(state) && state->IsA(player_state_class) && seen.insert(state).second) {
+                output.emplace_back(state);
+            }
+        }
+        states_property->DestroyValue_InContainer(parameters.data());
+        available = true;
+    } catch (...) {
+        error = "PalUtility.GetAllPlayerStates invocation failed";
     }
 }
 
@@ -307,7 +382,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.9");
+        ModVersion = STR("0.1.10");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -386,6 +461,24 @@ class PalPanelBridge final : public RC::CppUserModBase
                     }
                     std::vector<RC::Unreal::UObject*> player_states;
                     std::unordered_set<RC::Unreal::UObject*> all_player_states;
+                    auto* world = RC::Unreal::UObjectGlobals::FindFirstOf(STR("World"));
+                    std::vector<RC::Unreal::UObject*> utility_player_states;
+                    std::unordered_set<RC::Unreal::UObject*> utility_seen;
+                    append_pal_utility_player_states(
+                        world,
+                        utility_player_states,
+                        utility_seen,
+                        job.pal_utility_available,
+                        job.pal_utility_error);
+                    job.pal_utility_player_state_count = utility_player_states.size();
+                    for (auto* player_state : utility_player_states) {
+                        if (job.online_players.size() >= max_results) break;
+                        if (!seen_player_states.insert(player_state).second) continue;
+                        OnlinePlayerSnapshot player;
+                        player.source = "pal_utility";
+                        populate_player_state(player_state, player);
+                        job.online_players.emplace_back(std::move(player));
+                    }
                     append_instances("PalPlayerState", player_states, all_player_states);
                     append_instances("BP_PalPlayerState_C", player_states, all_player_states);
                     job.player_state_object_count = player_states.size();
@@ -431,7 +524,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.9\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.10\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -444,7 +537,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.9\","
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.10\","
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -486,6 +579,9 @@ class PalPanelBridge final : public RC::CppUserModBase
         } else if (job.kind == JobKind::OnlinePlayers) {
             body << ",\"controller_object_count\":" << job.controller_object_count
                  << ",\"player_state_object_count\":" << job.player_state_object_count
+                 << ",\"pal_utility_available\":" << (job.pal_utility_available ? "true" : "false")
+                 << ",\"pal_utility_player_state_count\":" << job.pal_utility_player_state_count
+                 << ",\"pal_utility_error\":\"" << json_escape(job.pal_utility_error) << '"'
                  << ",\"online_player_count\":" << job.online_players.size() << ",\"players\":[";
             for (size_t index = 0; index < job.online_players.size(); ++index) {
                 if (index > 0) body << ',';
