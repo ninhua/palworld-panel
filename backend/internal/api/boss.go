@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -26,6 +27,8 @@ func init() {
 		"boss-schedule-config",
 		"boss-schedule-worker",
 		"boss-schedule-warning-ledger",
+		"boss-paldefender-warning-broadcast",
+		"boss-warning-test-action",
 	)
 }
 
@@ -53,12 +56,21 @@ func (s Server) registerBossRoutes(api *gin.RouterGroup) {
 	group.PUT("/schedules/:id", Require(PermConfigWrite), s.updateBossSchedule)
 	group.DELETE("/schedules/:id", Require(PermConfigWrite), s.archiveBossSchedule)
 	group.POST("/schedules/:id/run-now", Require(PermServerControl), s.runBossScheduleNow)
+	group.POST("/schedules/:id/test-warning", Require(PermServerControl), s.testBossScheduleWarning)
 	group.GET("/schedule-events", Require(PermRead), s.bossScheduleEvents)
 	group.POST("/maintenance/run-due", Require(PermServerControl), s.runDueBossSchedules)
 }
 
 func (s Server) bossService() (*boss.Service, error) {
-	return boss.ForPath(s.cfg.DBPath)
+	service, err := boss.ForPath(s.cfg.DBPath)
+	if err != nil {
+		return nil, err
+	}
+	service.SetWarningBroadcaster(boss.WarningBroadcasterFunc(func(ctx context.Context, message string) error {
+		_, broadcastErr := s.defender.RESTBroadcast(ctx, message, true)
+		return broadcastErr
+	}))
+	return service, nil
 }
 
 func (s Server) bossSummary(c *gin.Context) {
@@ -436,6 +448,20 @@ func (s Server) runBossScheduleNow(c *gin.Context) {
 	created(c, result)
 }
 
+func (s Server) testBossScheduleWarning(c *gin.Context) {
+	service, err := s.bossService()
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	event, err := service.SendTestWarning(c.Request.Context(), c.Param("id"), CurrentPrincipal(c).Name)
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	ok(c, event)
+}
+
 func (s Server) bossScheduleEvents(c *gin.Context) {
 	service, err := s.bossService()
 	if err != nil {
@@ -488,6 +514,10 @@ func bossFailure(c *gin.Context, err error) {
 		fail(c, http.StatusNotFound, "boss_resource_not_found", err.Error())
 	case errors.Is(err, boss.ErrTemplateDisabled), errors.Is(err, boss.ErrInvalidTransition), errors.Is(err, boss.ErrInvalidWaveTransition), errors.Is(err, boss.ErrScheduleDisabled), errors.Is(err, boss.ErrScheduleRunConflict):
 		fail(c, http.StatusConflict, "boss_state_conflict", err.Error())
+	case errors.Is(err, boss.ErrWarningBroadcasterMissing):
+		fail(c, http.StatusServiceUnavailable, "boss_warning_broadcaster_unavailable", err.Error())
+	case errors.Is(err, boss.ErrWarningBroadcastFailed):
+		fail(c, http.StatusBadGateway, "boss_warning_broadcast_failed", err.Error())
 	default:
 		fail(c, http.StatusInternalServerError, "boss_operation_failed", err.Error())
 	}

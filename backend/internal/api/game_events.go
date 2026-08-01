@@ -30,7 +30,11 @@ func init() {
 
 func (s Server) registerGameEventRoutes(api *gin.RouterGroup) {
 	api.GET("/game-events", Require(PermRead), s.listGameEvents)
+	api.GET("/game-events/bridge/status", Require(PermRead), s.gameEventBridgeStatusHandler)
+	api.GET("/game-events/bridge/observations", Require(PermRead), s.listGameEventBridgeObservations)
+	api.POST("/game-events/bridge/repair", Require(PermSecurityWrite), s.repairGameEventBridge)
 	api.GET("/game-events/:id", Require(PermRead), s.getGameEvent)
+	s.startGameEventBridge()
 }
 
 func (s Server) gameEventService() (*gameevents.Service, error) {
@@ -103,6 +107,7 @@ func (s Server) ingestGameEvent(c *gin.Context) {
 	}
 
 	result := map[string]any{"accepted": true, "retry": claim.Retry}
+	var commandResult *economy.CommandResult
 	if claim.Record.Type == "PLAYER_CHAT" {
 		message, _ := claim.Record.Payload["message"].(string)
 		economyService, economyErr := s.economyService()
@@ -111,7 +116,7 @@ func (s Server) ingestGameEvent(c *gin.Context) {
 			economyFailure(c, economyErr)
 			return
 		}
-		command, commandErr := economyService.ExecuteCommand(c.Request.Context(), economy.CommandRequest{
+		command, commandErr := economyService.ExecuteCommandDetailed(c.Request.Context(), economy.CommandRequest{
 			EventID: claim.Record.EventID, PlayerUID: claim.Record.PlayerUID, Nickname: claim.Record.Nickname,
 			SteamID: claim.Record.SteamID, Message: message,
 		})
@@ -121,6 +126,7 @@ func (s Server) ingestGameEvent(c *gin.Context) {
 			return
 		}
 		result["command"] = command
+		commandResult = &command
 		if command.Handled && command.Reply != "" && !command.Duplicate {
 			delivery, deliveryErr := s.deliverGameEventReply(c.Request.Context(), claim.Record, command.Reply)
 			result["reply_delivery"] = delivery
@@ -141,16 +147,18 @@ func (s Server) ingestGameEvent(c *gin.Context) {
 		economyFailure(c, pointErr)
 		return
 	}
-	taskUpdates, taskErr := taskService.ProcessEvent(c.Request.Context(), tasks.Event{
-		EventID: claim.Record.EventID, Type: claim.Record.Type, PlayerUID: claim.Record.PlayerUID,
-		Nickname: claim.Record.Nickname, SteamID: claim.Record.SteamID, OccurredAt: claim.Record.OccurredAt,
-		Payload: claim.Record.Payload,
-	}, pointService)
-	if taskErr != nil {
-		_, _ = service.Fail(c.Request.Context(), claim.Record.EventID, taskErr)
-		taskFailure(c, taskErr)
-		return
+	taskEvents := gameTaskEvents(claim.Record, commandResult)
+	taskUpdates := make([]tasks.ProgressUpdate, 0)
+	for _, taskEvent := range taskEvents {
+		updates, processErr := taskService.ProcessEvent(c.Request.Context(), taskEvent, pointService)
+		if processErr != nil {
+			_, _ = service.Fail(c.Request.Context(), claim.Record.EventID, processErr)
+			taskFailure(c, processErr)
+			return
+		}
+		taskUpdates = append(taskUpdates, updates...)
 	}
+	result["task_event_types"] = taskEventTypes(taskEvents)
 	result["tasks"] = taskUpdates
 	completed, err := service.Complete(c.Request.Context(), claim.Record.EventID, result)
 	if err != nil {
@@ -158,6 +166,30 @@ func (s Server) ingestGameEvent(c *gin.Context) {
 		return
 	}
 	ok(c, gin.H{"duplicate": false, "event": completed, "result": result})
+}
+
+func gameTaskEvents(record gameevents.Record, command *economy.CommandResult) []tasks.Event {
+	events := []tasks.Event{{
+		EventID: record.EventID, Type: record.Type, PlayerUID: record.PlayerUID,
+		Nickname: record.Nickname, SteamID: record.SteamID, OccurredAt: record.OccurredAt,
+		Payload: record.Payload,
+	}}
+	if command != nil && command.Handled && command.Command == "checkin" && command.Awarded && !command.Duplicate {
+		events = append(events, tasks.Event{
+			EventID: record.EventID + ":checkin", Type: "CHECKIN_COMPLETED", PlayerUID: record.PlayerUID,
+			Nickname: record.Nickname, SteamID: record.SteamID, OccurredAt: record.OccurredAt,
+			Payload: map[string]any{"count": 1, "local_date": command.LocalDate, "balance": command.Balance},
+		})
+	}
+	return events
+}
+
+func taskEventTypes(events []tasks.Event) []string {
+	result := make([]string, 0, len(events))
+	for _, event := range events {
+		result = append(result, event.Type)
+	}
+	return result
 }
 
 func (s Server) deliverGameEventReply(ctx context.Context, event gameevents.Record, reply string) (string, error) {

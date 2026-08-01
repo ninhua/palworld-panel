@@ -1,50 +1,121 @@
-# PalPanel 积分系统 API
+# PalPanel 积分与签到 API
 
-## 身份规则
+版本：PalPanel patch `0.8.72`
 
-积分账户以 Palworld `PlayerUID` 为唯一主键。昵称和 Steam ID 只作为可更新的辅助字段，不作为余额归属依据。
+## 账户身份
 
-## 积分与游戏命令配置
+积分账户以 Palworld `PlayerUID` 为唯一主键。昵称和 Steam ID 只作为辅助信息，不参与余额归属判断。
 
-查询配置：
+## 签到与游戏命令配置
 
 ```http
 GET /api/economy/config
+PUT /api/economy/config
+Content-Type: application/json
 ```
 
-修改配置：
+完整配置示例：
+
+```json
+{
+  "command_prefix": "!",
+  "allow_bare_commands": true,
+  "daily_checkin_points": 10,
+  "checkin_streak_enabled": true,
+  "checkin_streak_bonus_per_day": 2,
+  "checkin_streak_max_days": 7,
+  "checkin_cycle_days": 7,
+  "checkin_cycle_bonus": 10,
+  "checkin_aliases": ["签到", "qd", "checkin"],
+  "points_aliases": ["积分", "jf", "points"],
+  "help_aliases": ["帮助", "菜单", "help"]
+}
+```
+
+积分计算规则：
+
+```text
+当日积分 = 基础积分 + 连续签到奖励 + 周期额外奖励
+连续签到奖励 = min(连续天数 - 1, 递增封顶天数 - 1) × 每日递增奖励
+```
+
+- 漏签后连续天数从 1 重新开始。
+- 同一天重复签到不会重复发放积分。
+- `checkin_cycle_days=0` 表示关闭周期奖励。
+- `allow_bare_commands=true` 时，配置 `!` 前缀后仍同时接受 `签到` 和 `!签到`。
+- 修改规则不会重算已经入账的历史签到。
+
+## 人工签到
 
 ```http
-PUT /api/economy/config
+POST /api/economy/accounts/<player_uid>/checkin
 Content-Type: application/json
 ```
 
 ```json
 {
-  "command_prefix": "!",
-  "daily_checkin_points": 10
+  "nickname": "玩家名称",
+  "steam_id": "steam_7656119...",
+  "local_date": "2026-08-01"
 }
 ```
 
-`command_prefix` 规则：
+`points` 为可选字段。省略时使用当前配置的 `daily_checkin_points`；填写后只覆盖本次基础积分，连续奖励和周期奖励仍按配置计算。
 
-- 默认值为 `!`。
-- 可以设置为 `/`、`#`、`。`、`指令:` 等任意不含空白或控制字符的前缀。
-- 最多 16 个 Unicode 字符。
-- 可以保存为空字符串。留空后玩家直接发送 `签到`、`积分`、`帮助`。
-- 无前缀模式只识别完整的已知命令；普通聊天不会作为命令处理。
+## 签到历史
 
-`daily_checkin_points` 允许 `0` 到 `1000000`。设置为 `0` 时仍记录当日签到，但不增加积分。
-
-首次建立积分设置时支持以下环境变量作为初始值：
-
-```env
-PALPANEL_GAME_COMMAND_PREFIX=!
-PALPANEL_DAILY_CHECKIN_POINTS=10
-PALPANEL_OPERATIONS_TIMEZONE=Asia/Shanghai
+```http
+GET /api/economy/accounts/<player_uid>/checkins?limit=30
 ```
 
-设置写入数据库后，以数据库配置为准。环境变量不会覆盖已经保存的配置。
+每条记录包含：
+
+- `points`：本次总积分。
+- `base_points`：基础积分。
+- `streak_bonus`：连续签到奖励。
+- `cycle_bonus`：周期额外奖励。
+- `streak_day`：连续签到天数。
+
+## 游戏内命令
+
+游戏聊天事件进入面板后，命令执行接口等价于：
+
+```http
+POST /api/economy/commands/execute
+Content-Type: application/json
+```
+
+```json
+{
+  "event_id": "paldefender-chat-20260801-000001",
+  "player_uid": "00000000000000000000000000000000",
+  "nickname": "玩家名称",
+  "steam_id": "steam_76561198000000000",
+  "message": "签到"
+}
+```
+
+同一 `event_id` 重试时返回原结果，不会重复签到或重复加分。当天首次签到成功后，事件链路还会派生一个任务事件：
+
+```json
+{
+  "type": "CHECKIN_COMPLETED",
+  "payload": {
+    "count": 1,
+    "local_date": "2026-08-01",
+    "balance": 120
+  }
+}
+```
+
+因此签到任务应配置：
+
+```text
+event_type = CHECKIN_COMPLETED
+amount_field = count
+```
+
+重复签到不会派生 `CHECKIN_COMPLETED`，也不会推进任务。
 
 ## 管理员调整积分
 
@@ -56,151 +127,12 @@ Content-Type: application/json
 ```json
 {
   "nickname": "玩家名称",
-  "steam_id": "7656119...",
+  "steam_id": "steam_7656119...",
   "delta": 100,
-  "reason": "admin_compensation",
+  "reason": "活动补偿",
   "reference_type": "manual_adjustment",
-  "reference_id": "ticket-20260731-001",
-  "metadata": {
-    "note": "活动补偿"
-  }
+  "reference_id": "ticket-20260801-001"
 }
 ```
 
-`reference_id` 建议始终填写。相同玩家、业务类型和业务引用重复提交时不会重复记账。
-
-## 每日签到
-
-```http
-POST /api/economy/accounts/<player_uid>/checkin
-Content-Type: application/json
-```
-
-```json
-{
-  "nickname": "玩家名称",
-  "steam_id": "7656119..."
-}
-```
-
-不传 `points` 或传入 `0` 时使用积分系统中保存的每日签到奖励。`local_date` 省略时由后端按 `PALPANEL_OPERATIONS_TIMEZONE` 计算。
-
-## 游戏内命令入口
-
-```http
-POST /api/economy/commands/execute
-Content-Type: application/json
-```
-
-```json
-{
-  "event_id": "paldefender-chat-20260731-000001",
-  "player_uid": "00000000000000000000000000000000",
-  "nickname": "玩家名称",
-  "steam_id": "7656119...",
-  "message": "!签到"
-}
-```
-
-命令入口始终使用数据库中的当前命令前缀。返回的 `reply` 由事件采集器通过 PalDefender 私聊发回游戏。`event_id` 必须稳定且唯一；同一事件重试会返回原结果。
-
-未匹配当前前缀、未知命令或普通聊天返回：
-
-```json
-{
-  "handled": false
-}
-```
-
-这类消息不会创建积分账户，也不会写入命令去重表。
-
-## 积分预留
-
-下单前预留：
-
-```http
-POST /api/economy/reservations
-```
-
-```json
-{
-  "player_uid": "00000000000000000000000000000000",
-  "reference_id": "shop-order-0001",
-  "amount": 300,
-  "ttl_seconds": 900
-}
-```
-
-发货成功：
-
-```http
-POST /api/economy/reservations/<reservation_id>/commit
-```
-
-发货失败或取消：
-
-```http
-POST /api/economy/reservations/<reservation_id>/release
-```
-
-预留时余额立即减少；提交只确认最终状态，释放和过期会原额退款。
-
-## 面板页面
-
-管理员登录后访问：
-
-```text
-/economy
-```
-
-页面支持：
-
-- 查看积分账户数、流通积分、今日签到和最近 24 小时净发放。
-- 设置游戏命令前缀及每日签到奖励。
-- 按昵称、PlayerUID 或 Steam ID 查询账户。
-- 查看单个玩家最近流水。
-- 人工增加或扣除积分。
-
-## AstrBot旧积分数据库迁移
-
-该入口只接受浏览器上传的SQLite文件，不接受服务器任意文件路径。最大文件大小为64 MiB，并要求管理员浏览器会话。
-
-检查数据库，不写入积分：
-
-```http
-POST /api/economy/imports/astrbot/inspect
-Content-Type: multipart/form-data
-```
-
-表单字段：
-
-```text
-database=<astrbot_plugin_palpanel/palpanel.sqlite3>
-```
-
-确认迁移：
-
-```http
-POST /api/economy/imports/astrbot
-Content-Type: multipart/form-data
-```
-
-迁移规则：
-
-- 从旧库 `accounts`、`bindings` 和 `checkins` 表读取数据。
-- 只将已经绑定 `PlayerUID` 的QQ账户迁入面板积分系统。
-- 余额以 `PlayerUID` 入账，QQ号只保留在迁移审计元数据中。
-- 同一QQ账户重复上传不会重复加分。
-- 如果旧库余额比上次迁移时更高，只导入新增差额。
-- 如果旧库余额下降，不自动扣除面板积分，检查结果会标记 `source_balance_decreased`。
-- 旧签到记录会写入面板签到去重表，防止迁移当天再次签到重复领取。
-- 每次确认迁移都会生成独立批次ID和积分流水。
-
-推荐步骤：
-
-1. 停止AstrBot旧插件的签到和积分写入。
-2. 备份插件目录中的 `palpanel.sqlite3`。
-3. 在积分系统页面上传并执行“检查数据库”。
-4. 核对可导入积分、未绑定账户和余额下降账户。
-5. 点击“确认迁移”。
-6. 将AstrBot签到和积分查询改为调用PalPanel统一积分接口。
+`reference_id` 应保持稳定，避免业务重试产生重复记账。

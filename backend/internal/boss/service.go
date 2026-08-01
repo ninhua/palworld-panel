@@ -18,17 +18,19 @@ import (
 )
 
 var (
-	ErrInvalidReward         = errors.New("boss reward is invalid")
-	ErrRewardNotFound        = errors.New("boss reward not found")
-	ErrInvalidTemplate       = errors.New("boss template is invalid")
-	ErrTemplateNotFound      = errors.New("boss template not found")
-	ErrTemplateDisabled      = errors.New("boss template is disabled")
-	ErrInvalidWave           = errors.New("boss wave is invalid")
-	ErrWaveNotFound          = errors.New("boss wave not found")
-	ErrInvalidSummon         = errors.New("boss summon request is invalid")
-	ErrSummonNotFound        = errors.New("boss summon not found")
-	ErrInvalidTransition     = errors.New("boss summon transition is invalid")
-	ErrInvalidWaveTransition = errors.New("boss wave transition is invalid")
+	ErrInvalidReward             = errors.New("boss reward is invalid")
+	ErrRewardNotFound            = errors.New("boss reward not found")
+	ErrInvalidTemplate           = errors.New("boss template is invalid")
+	ErrTemplateNotFound          = errors.New("boss template not found")
+	ErrTemplateDisabled          = errors.New("boss template is disabled")
+	ErrInvalidWave               = errors.New("boss wave is invalid")
+	ErrWaveNotFound              = errors.New("boss wave not found")
+	ErrInvalidSummon             = errors.New("boss summon request is invalid")
+	ErrSummonNotFound            = errors.New("boss summon not found")
+	ErrInvalidTransition         = errors.New("boss summon transition is invalid")
+	ErrInvalidWaveTransition     = errors.New("boss wave transition is invalid")
+	ErrWarningBroadcasterMissing = errors.New("boss warning broadcaster is not configured")
+	ErrWarningBroadcastFailed    = errors.New("boss warning broadcast failed")
 
 	identifierPattern   = regexp.MustCompile(`^[A-Za-z0-9_:-]{1,128}$`)
 	templateNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}$`)
@@ -62,11 +64,46 @@ const (
 )
 
 type Service struct {
-	db           *sql.DB
-	now          func() time.Time
-	scheduleStop chan struct{}
-	scheduleDone chan struct{}
-	closeOnce    sync.Once
+	db                 *sql.DB
+	now                func() time.Time
+	warningMu          sync.RWMutex
+	warningBroadcaster WarningBroadcaster
+	scheduleRunMu      sync.Mutex
+	scheduleStop       chan struct{}
+	scheduleDone       chan struct{}
+	closeOnce          sync.Once
+}
+
+type WarningBroadcaster interface {
+	BroadcastBossWarning(context.Context, string) error
+}
+
+type WarningBroadcasterFunc func(context.Context, string) error
+
+func (function WarningBroadcasterFunc) BroadcastBossWarning(ctx context.Context, message string) error {
+	if function == nil {
+		return ErrWarningBroadcasterMissing
+	}
+	return function(ctx, message)
+}
+
+func (s *Service) SetWarningBroadcaster(broadcaster WarningBroadcaster) {
+	if s == nil {
+		return
+	}
+	s.warningMu.Lock()
+	s.warningBroadcaster = broadcaster
+	s.warningMu.Unlock()
+}
+
+func (s *Service) warningBroadcasterSnapshot() WarningBroadcaster {
+	if s == nil {
+		return nil
+	}
+	s.warningMu.RLock()
+	broadcaster := s.warningBroadcaster
+	s.warningMu.RUnlock()
+	return broadcaster
 }
 
 type Location struct {
