@@ -436,14 +436,60 @@ export const upsertDiagnosticTemplate = (
 export const removeDiagnosticTemplate = (templates: DiagnosticTemplate[], id: string) =>
   saveDiagnosticTemplates(templates.filter((item) => item.id !== id));
 
-export const formatHTTPResult = (result: DiagnosticHTTPResult | null) => {
+export interface DiagnosticJSONDocument {
+  value: unknown;
+  formatted: string;
+  compact: string;
+  summary: string;
+}
+
+const diagnosticJSONSummary = (value: unknown) => {
+  if (Array.isArray(value)) return `数组 · ${value.length} 项`;
+  if (value === null) return 'null';
+  if (typeof value === 'object') return `对象 · ${Object.keys(value as Record<string, unknown>).length} 项`;
+  if (typeof value === 'string') return '字符串';
+  if (typeof value === 'number') return '数字';
+  if (typeof value === 'boolean') return '布尔值';
+  return typeof value;
+};
+
+export const parseDiagnosticJSON = (source: string): DiagnosticJSONDocument | null => {
+  const normalized = source.replace(/^\uFEFF/, '').trim();
+  if (!normalized) return null;
+  try {
+    const value = JSON.parse(normalized) as unknown;
+    return {
+      value,
+      formatted: JSON.stringify(value, null, 2),
+      compact: JSON.stringify(value),
+      summary: diagnosticJSONSummary(value),
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const formatDiagnosticJSON = (source: string, compact = false) => {
+  const document = parseDiagnosticJSON(source);
+  if (!document) throw new Error('响应体不是有效 JSON');
+  return compact ? document.compact : document.formatted;
+};
+
+export const formatHTTPResultMetadata = (result: DiagnosticHTTPResult | null) => {
   if (!result) return '';
   return [
     `${result.status} · ${result.duration_ms} ms${result.truncated ? ' · 输出已截断' : ''}`,
     '',
     ...Object.entries(result.headers || {}).map(([name, values]) => `${name}: ${values.join(', ')}`),
+  ].join('\n');
+};
+
+export const formatHTTPResult = (result: DiagnosticHTTPResult | null, bodyOverride?: string) => {
+  if (!result) return '';
+  return [
+    formatHTTPResultMetadata(result),
     '',
-    result.body || '(空响应体)',
+    (bodyOverride ?? result.body) || '(空响应体)',
   ].join('\n');
 };
 

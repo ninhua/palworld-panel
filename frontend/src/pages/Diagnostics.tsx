@@ -17,6 +17,7 @@ import {
   diagnosticHistoryStorageKey,
   diagnosticTemplateStorageKey,
   formatHTTPResult,
+  formatHTTPResultMetadata,
   formatShellResult,
   getDiagnosticTemplates,
   hasUnresolvedDiagnosticPlaceholder,
@@ -24,6 +25,7 @@ import {
   loadDiagnosticTemplates,
   maxDiagnosticCustomTemplates,
   maxDiagnosticHistoryEntries,
+  parseDiagnosticJSON,
   removeDiagnosticTemplate,
   saveDiagnosticHistory,
   upsertDiagnosticTemplate,
@@ -33,6 +35,7 @@ import {
   type DiagnosticTemplate,
 } from './diagnosticsConsole';
 import { DiagnosticHeaderEditor } from '../components/diagnostics/DiagnosticHeaderEditor';
+import { DiagnosticJSONViewer } from '../components/diagnostics/DiagnosticJSONViewer';
 
 const formatBytes = (value: number) => {
   if (!Number.isFinite(value) || value <= 0) return '0 B';
@@ -40,6 +43,8 @@ const formatBytes = (value: number) => {
   const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
   return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 };
+
+type DiagnosticResponseView = 'formatted' | 'compact' | 'tree' | 'raw';
 
 const formatHistoryTime = (value: string) => {
   const timestamp = Date.parse(value);
@@ -78,6 +83,7 @@ export const Diagnostics: React.FC = () => {
   const [confirmed, setConfirmed] = useState(false);
   const [httpResult, setHTTPResult] = useState<DiagnosticHTTPResult | null>(null);
   const [shellResult, setShellResult] = useState<DiagnosticShellResult | null>(null);
+  const [responseView, setResponseView] = useState<DiagnosticResponseView>('formatted');
   const [historyEntries, setHistoryEntries] = useState<DiagnosticHistoryEntry[]>(loadDiagnosticHistory);
   const [customTemplates, setCustomTemplates] = useState<DiagnosticTemplate[]>(loadDiagnosticTemplates);
   const [selectedHistoryID, setSelectedHistoryID] = useState('');
@@ -92,9 +98,19 @@ export const Diagnostics: React.FC = () => {
     () => historyEntries.find((entry) => entry.id === selectedHistoryID) || null,
     [historyEntries, selectedHistoryID],
   );
+  const responseJSON = useMemo(
+    () => mode === 'http' ? parseDiagnosticJSON(httpResult?.body || '') : null,
+    [httpResult?.body, mode],
+  );
+  const responseBodyText = useMemo(() => {
+    if (!httpResult) return '';
+    if (!responseJSON || responseView === 'raw') return httpResult.body || '';
+    if (responseView === 'compact') return responseJSON.compact;
+    return responseJSON.formatted;
+  }, [httpResult, responseJSON, responseView]);
   const result = useMemo(
-    () => mode === 'http' ? formatHTTPResult(httpResult) : formatShellResult(shellResult),
-    [httpResult, mode, shellResult],
+    () => mode === 'http' ? formatHTTPResult(httpResult, responseBodyText) : formatShellResult(shellResult),
+    [httpResult, mode, responseBodyText, shellResult],
   );
   const headersPreview = useMemo(() => {
     try {
@@ -151,6 +167,11 @@ export const Diagnostics: React.FC = () => {
     void diagnosticsApi.status().then(setStatus).catch((loadError) => setError(getErrorMessage(loadError)));
     void loadBundles();
   }, [loadBundles]);
+
+  useEffect(() => {
+    if (!httpResult) return;
+    setResponseView(parseDiagnosticJSON(httpResult.body || '') ? 'formatted' : 'raw');
+  }, [httpResult?.body]);
 
   const syncHistory = (entries: DiagnosticHistoryEntry[]) => {
     const next = saveDiagnosticHistory(entries);
@@ -545,8 +566,46 @@ export const Diagnostics: React.FC = () => {
                 <button type="button" className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-40" disabled={!result} onClick={clearResult}><X size={13} className="mr-1 inline" />清空结果</button>
               </div>
             </div>
-            <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-slate-800 bg-slate-900 p-4 font-mono text-xs leading-6">{result || '执行后将在这里显示状态、响应头和输出。可从上方选择历史记录恢复请求与响应。'}</pre>
-            <p className="mt-3 text-[11px] leading-5 text-slate-500">实时结果最大 {formatBytes(status?.max_output || 65536)}。历史和自定义模板会在当前浏览器中原样保存请求数据，请仅在受信任设备使用。</p>
+
+            {mode === 'http' && httpResult && (
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2">
+                <span className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${responseJSON ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+                  {responseJSON ? `JSON · ${responseJSON.summary}` : '文本响应 · 未识别为 JSON'}
+                </span>
+                {(['formatted', 'compact', 'tree', 'raw'] as DiagnosticResponseView[]).map((view) => {
+                  const labels: Record<DiagnosticResponseView, string> = { formatted: '格式化 JSON', compact: '压缩 JSON', tree: '树形查看', raw: '原始响应' };
+                  const disabled = view !== 'raw' && !responseJSON;
+                  return (
+                    <button
+                      key={view}
+                      type="button"
+                      disabled={disabled}
+                      aria-pressed={responseView === view}
+                      onClick={() => setResponseView(view)}
+                      className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-35 ${responseView === view ? 'border-sky-500 bg-sky-950 text-sky-300' : 'border-slate-700 text-slate-400 hover:bg-slate-800'}`}
+                    >
+                      {labels[view]}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {mode === 'http' && httpResult && responseJSON && responseView === 'tree' ? (
+              <div className="min-h-0 flex-1 space-y-3 overflow-auto">
+                <pre className="whitespace-pre-wrap break-words rounded-2xl border border-slate-800 bg-slate-900 p-4 font-mono text-xs leading-6">{formatHTTPResultMetadata(httpResult)}</pre>
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <span className="text-xs font-bold text-slate-300">JSON 响应体</span>
+                    <span className="text-[11px] text-slate-500">点击对象或数组节点展开/折叠</span>
+                  </div>
+                  <DiagnosticJSONViewer value={responseJSON.value} />
+                </div>
+              </div>
+            ) : (
+              <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-slate-800 bg-slate-900 p-4 font-mono text-xs leading-6">{result || '执行后将在这里显示状态、响应头和输出。可从上方选择历史记录恢复请求与响应。'}</pre>
+            )}
+            <p className="mt-3 text-[11px] leading-5 text-slate-500">检测到有效 JSON 时默认格式化显示，也可切换压缩、树形或原始响应。复制响应和完整记录会采用当前视图对应的文本。实时结果最大 {formatBytes(status?.max_output || 65536)}。</p>
           </div>
         </div>
       </section>

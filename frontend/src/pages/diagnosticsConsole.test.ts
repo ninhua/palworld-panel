@@ -8,9 +8,12 @@ import {
   diagnosticHeaderRowsToRecord,
   diagnosticHistoryEquivalent,
   formatDiagnosticHeaderJSON,
+  formatDiagnosticJSON,
+  formatHTTPResult,
   getDiagnosticTemplates,
   normalizeDiagnosticHistory,
   parseDiagnosticAuthorization,
+  parseDiagnosticJSON,
   updateDiagnosticHeaderValue,
 } from './diagnosticsConsole';
 
@@ -44,6 +47,25 @@ describe('diagnostics console helpers', () => {
     expect(diagnosticHeaderRowsToRecord(rows)).toEqual({ Authorization: 'Bearer token', Accept: 'application/json' });
     expect(formatDiagnosticHeaderJSON('{"Authorization":"token"}', false)).toContain('"Authorization": "Bearer token"');
     expect(formatDiagnosticHeaderJSON('{"Authorization":"token"}', true)).toBe('{"Authorization":"Bearer token"}');
+  });
+
+  it('detects and formats JSON response bodies', () => {
+    const document = parseDiagnosticJSON('{"ok":true,"items":[1,2],"nested":{"name":"Pal"}}');
+    expect(document).not.toBeNull();
+    expect(document?.summary).toBe('对象 · 3 项');
+    expect(document?.formatted).toContain('  "items": [');
+    expect(document?.compact).toBe('{"ok":true,"items":[1,2],"nested":{"name":"Pal"}}');
+    expect(formatDiagnosticJSON(' [1, 2, 3] ', false)).toBe('[\n  1,\n  2,\n  3\n]');
+    expect(formatDiagnosticJSON('{"ok":true}', true)).toBe('{"ok":true}');
+    expect(parseDiagnosticJSON('plain text')).toBeNull();
+    expect(parseDiagnosticJSON('null')?.summary).toBe('null');
+  });
+
+  it('uses a formatted JSON body in the complete HTTP response text', () => {
+    const formatted = formatHTTPResult(result('{"ok":true}'), '{\n  "ok": true\n}');
+    expect(formatted).toContain('200 OK · 8 ms');
+    expect(formatted).toContain('Content-Type: application/json');
+    expect(formatted).toContain('{\n  "ok": true\n}');
   });
 
   it('preserves Authorization and request data in history', () => {
