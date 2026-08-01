@@ -87,7 +87,7 @@ func TestNewContractRoutes(t *testing.T) {
 	router.ServeHTTP(patchInfoRecorder, patchInfoRequest)
 	if patchInfoRecorder.Code != http.StatusOK ||
 		!strings.Contains(patchInfoRecorder.Body.String(), `"repository":"ninhua/palworld-panel"`) ||
-		!strings.Contains(patchInfoRecorder.Body.String(), `"target_version":"v1.3.0"`) {
+		!strings.Contains(patchInfoRecorder.Body.String(), `"target_version":"v1.3.1"`) {
 		t.Fatalf("unexpected patch info response: %d %s", patchInfoRecorder.Code, patchInfoRecorder.Body.String())
 	}
 
