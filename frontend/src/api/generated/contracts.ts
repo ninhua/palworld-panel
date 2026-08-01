@@ -914,10 +914,22 @@ export interface components {
       "revision": string;
     };
     "ModConfigurationAdapter": {
-      "actions"?: Array<{ "id"?: string; "available"?: boolean; "restart_required"?: boolean }>;
+      "actions"?: Array<{
+        "available"?: boolean;
+        "id"?: string;
+        "restart_required"?: boolean;
+      }>;
       "available": boolean;
       "configured"?: boolean;
-      "dependencies"?: Array<{ "id"?: string; "name"?: string; "workshop_id"?: string; "mod_id"?: string; "installed"?: boolean; "enabled"?: boolean; "required"?: boolean }>;
+      "dependencies"?: Array<{
+        "enabled"?: boolean;
+        "id"?: string;
+        "installed"?: boolean;
+        "mod_id"?: string;
+        "name"?: string;
+        "required"?: boolean;
+        "workshop_id"?: string;
+      }>;
       "description": string;
       "enabled"?: boolean;
       "files": Array<components["schemas"]["ModConfigFile"]>;
@@ -1906,3 +1918,4 @@ export interface components {
     };
   };
 }
+
