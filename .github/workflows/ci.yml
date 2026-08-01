@@ -23,6 +23,7 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
@@ -40,10 +41,11 @@ jobs:
           sudo apt-get install -y shellcheck
           GOBIN="$RUNNER_TEMP/bin" go install github.com/zricethezav/gitleaks/v8@v8.27.2
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-      - name: Go tests
+      - name: Native tests
         run: |
           (cd backend && go test -p=1 ./...)
           (cd sav-cli && CGO_ENABLED=1 go test -p=1 ./...)
+          (cd tools/palworld-uid-remap && cargo test --locked)
           (cd backend && go test -p=1 -race ./...)
       - name: Frontend checks
         run: |
@@ -113,6 +115,7 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
@@ -192,5 +195,4 @@ jobs:
           GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@latest
           (cd backend && "$RUNNER_TEMP/bin/govulncheck" ./...)
           (cd sav-cli && "$RUNNER_TEMP/bin/govulncheck" ./...)
-          cd frontend
-          npm audit --audit-level=high
+          (cd frontend && npm run audit:ci)

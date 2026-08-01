@@ -4,6 +4,8 @@ import {
   Archive,
   ArrowDown,
   ArrowUp,
+  BellRing,
+  CalendarClock,
   CheckCircle2,
   CircleAlert,
   Clock3,
@@ -29,6 +31,10 @@ import {
   type BossReward,
   type BossRewardInput,
   type BossRewardItem,
+  type BossRunDueResult,
+  type BossSchedule,
+  type BossScheduleEvent,
+  type BossScheduleInput,
   type BossSummon,
   type BossSummonEvent,
   type BossSummonStatus,
@@ -45,7 +51,7 @@ interface Notice {
   text: string;
 }
 
-type BossTab = 'templates' | 'rewards' | 'summons';
+type BossTab = 'templates' | 'rewards' | 'schedules' | 'summons';
 type BossWaveActionStatus = Exclude<BossWaveStatus, 'pending'>;
 
 const number = new Intl.NumberFormat('zh-CN');
@@ -88,12 +94,37 @@ const waveStatusClass: Record<BossWaveStatus, string> = {
   skipped: 'bg-slate-100 text-slate-600',
 };
 
+const scheduleEventTypeLabel: Record<BossScheduleEvent['event_type'], string> = {
+  warning: '提前预警',
+  summon: '创建召唤',
+};
+
+const scheduleEventStatusLabel: Record<BossScheduleEvent['status'], string> = {
+  success: '成功',
+  failed: '失败',
+  skipped: '已跳过',
+};
+
 const emptyRewardInput = (): BossRewardInput => ({
   name: '',
   description: '',
   points: 0,
   items: [],
   pal_templates: [],
+  enabled: true,
+  metadata: {},
+});
+
+const emptyScheduleInput = (): BossScheduleInput => ({
+  name: '',
+  template_id: '',
+  mode: 'daily',
+  daily_time: '20:00',
+  cron: '0 20 * * 6',
+  timezone: 'Asia/Shanghai',
+  warning_minutes: 30,
+  warning_title: 'Boss活动即将开始',
+  warning_message: '{{boss}}将在{{minutes}}分钟后开始，请提前前往活动区域。',
   enabled: true,
   metadata: {},
 });
@@ -183,6 +214,9 @@ export const BossOperations: React.FC = () => {
   const [waveDraft, setWaveDraft] = useState<BossWaveInput[]>([]);
   const [waveLoading, setWaveLoading] = useState(false);
   const [wavePalSearch, setWavePalSearch] = useState('');
+  const [scheduleEditingID, setScheduleEditingID] = useState('');
+  const [scheduleDraft, setScheduleDraft] = useState<BossScheduleInput>(emptyScheduleInput());
+  const [selectedScheduleID, setSelectedScheduleID] = useState('');
 
   const summaryQuery = useQuery({ queryKey: ['boss', 'summary'], queryFn: bossApi.summary });
   const rewardsQuery = useQuery({
@@ -196,6 +230,14 @@ export const BossOperations: React.FC = () => {
   const summonsQuery = useQuery({
     queryKey: ['boss', 'summons', summonStatus],
     queryFn: () => bossApi.summons(summonStatus),
+  });
+  const schedulesQuery = useQuery({
+    queryKey: ['boss', 'schedules', includeArchived],
+    queryFn: () => bossApi.schedules(includeArchived),
+  });
+  const scheduleEventsQuery = useQuery({
+    queryKey: ['boss', 'schedule-events', selectedScheduleID],
+    queryFn: () => bossApi.scheduleEvents(selectedScheduleID),
   });
   const summonEventsQuery = useQuery({
     queryKey: ['boss', 'summon-events', selectedSummonID],
@@ -271,6 +313,49 @@ export const BossOperations: React.FC = () => {
     onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
   });
 
+  const saveScheduleMutation = useMutation({
+    mutationFn: () => scheduleEditingID
+      ? bossApi.updateSchedule(scheduleEditingID, scheduleDraft)
+      : bossApi.createSchedule(scheduleDraft),
+    onSuccess: async (schedule) => {
+      setNotice({ type: 'success', text: `定时计划“${schedule.name}”已${scheduleEditingID ? '更新' : '创建'}。` });
+      setScheduleEditingID('');
+      setScheduleDraft(emptyScheduleInput());
+      await refresh();
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const archiveScheduleMutation = useMutation({
+    mutationFn: (schedule: BossSchedule) => bossApi.archiveSchedule(schedule.id),
+    onSuccess: async (schedule) => {
+      setNotice({ type: 'success', text: `定时计划“${schedule.name}”已归档。` });
+      if (selectedScheduleID === schedule.id) setSelectedScheduleID('');
+      await refresh();
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const runScheduleMutation = useMutation({
+    mutationFn: (schedule: BossSchedule) => bossApi.runScheduleNow(schedule.id),
+    onSuccess: async (result) => {
+      setNotice({ type: 'success', text: `已从计划“${result.summon.template_name}”创建立即召唤记录。` });
+      await refresh();
+      await scheduleEventsQuery.refetch();
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const runDueMutation = useMutation<BossRunDueResult>({
+    mutationFn: bossApi.runDueSchedules,
+    onSuccess: async (result) => {
+      setNotice({ type: result.failed > 0 ? 'error' : 'success', text: `定时扫描完成：检查 ${result.checked}，预警 ${result.warnings}，召唤 ${result.summons}，失败 ${result.failed}。` });
+      await refresh();
+      await scheduleEventsQuery.refetch();
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
   const saveWavesMutation = useMutation({
     mutationFn: () => {
       if (!waveEditorTemplate) throw new Error('未选择Boss模板');
@@ -336,6 +421,8 @@ export const BossOperations: React.FC = () => {
   const rewards = rewardsQuery.data?.items || [];
   const templates = templatesQuery.data?.items || [];
   const summons = summonsQuery.data?.items || [];
+  const schedules = schedulesQuery.data?.items || [];
+  const scheduleEvents = scheduleEventsQuery.data?.items || [];
   const summary = summaryQuery.data;
 
   const rewardByID = useMemo(() => new Map(rewards.map((reward) => [reward.id, reward])), [rewards]);
@@ -483,6 +570,33 @@ export const BossOperations: React.FC = () => {
     });
   };
 
+  const openScheduleCreate = () => {
+    setScheduleEditingID('');
+    setScheduleDraft(emptyScheduleInput());
+  };
+
+  const openScheduleEdit = (schedule: BossSchedule) => {
+    setScheduleEditingID(schedule.id);
+    setScheduleDraft({
+      name: schedule.name,
+      template_id: schedule.template_id,
+      mode: schedule.mode,
+      daily_time: schedule.daily_time || '20:00',
+      cron: schedule.cron || '0 20 * * 6',
+      timezone: schedule.timezone,
+      warning_minutes: schedule.warning_minutes,
+      warning_title: schedule.warning_title || '',
+      warning_message: schedule.warning_message || '',
+      ...(schedule.location_override ? { location_override: schedule.location_override } : {}),
+      enabled: schedule.enabled,
+      metadata: schedule.metadata || {},
+    });
+  };
+
+  const scheduleRule = (schedule: BossSchedule) => schedule.mode === 'daily'
+    ? `每天 ${schedule.daily_time} · ${schedule.timezone}`
+    : `${schedule.cron} · ${schedule.timezone}`;
+
   const possibleWaveTransitions = (wave: BossSummonWave): BossWaveActionStatus[] => {
     if (wave.status === 'pending') return ['active', 'failed', 'skipped'];
     if (wave.status === 'active') return ['completed', 'failed', 'skipped'];
@@ -512,7 +626,7 @@ export const BossOperations: React.FC = () => {
           <div>
             <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-rose-600"><Crown size={15} />Boss活动</div>
             <h1 className="text-2xl font-black tracking-tight text-slate-900">Boss管理</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">配置Boss模板、奖励方案、波次编排和手动召唤记录。当前仍为“仅记录”模式，不会自动调用PalDefender生成Boss。</p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">配置Boss模板、奖励方案、波次编排、定时计划和召唤记录。定时器会自动创建“仅记录”召唤，仍不会调用PalDefender实际生成Boss。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-500">
@@ -524,10 +638,11 @@ export const BossOperations: React.FC = () => {
         {notice && <div className={`mt-4 rounded-xl border px-4 py-3 text-sm font-semibold ${notice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>{notice.text}</div>}
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
         <Metric label="奖励方案" value={summary?.rewards || 0} icon={<Gift size={18} />} />
         <Metric label="Boss模板" value={summary?.templates || 0} icon={<Skull size={18} />} />
         <Metric label="已配置波次" value={summary?.template_waves || 0} icon={<Layers3 size={18} />} />
+        <Metric label="启用计划" value={summary?.enabled_schedules || 0} icon={<CalendarClock size={18} />} />
         <Metric label="等待处理" value={summary?.pending_summons || 0} icon={<Clock3 size={18} />} />
         <Metric label="进行中" value={summary?.active_summons || 0} icon={<Sword size={18} />} />
         <Metric label="已完成" value={summary?.completed_summons || 0} icon={<CheckCircle2 size={18} />} />
@@ -537,6 +652,7 @@ export const BossOperations: React.FC = () => {
         <div className="flex flex-wrap gap-1 rounded-xl bg-slate-50 p-1">
           {tabButton('templates', `Boss模板 (${templates.length})`, <Skull size={14} />)}
           {tabButton('rewards', `奖励方案 (${rewards.length})`, <Gift size={14} />)}
+          {tabButton('schedules', `定时计划 (${schedules.length})`, <CalendarClock size={14} />)}
           {tabButton('summons', `召唤记录 (${summons.length})`, <Sword size={14} />)}
         </div>
       </section>
@@ -608,6 +724,38 @@ export const BossOperations: React.FC = () => {
             </div>
           </article>)}
           {!rewardsQuery.isLoading && rewards.length === 0 && <Empty text="暂无奖励方案。" />}
+        </div>
+      </section>}
+
+      {activeTab === 'schedules' && <section className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3"><div><h2 className="font-black text-slate-900">{scheduleEditingID ? '编辑定时计划' : '新建定时计划'}</h2><p className="mt-1 text-xs text-slate-400">后台每30秒检查一次。到点后创建record_only召唤记录；预警先写入审计，不会自动发送游戏广播。</p></div>{scheduleEditingID && <button type="button" onClick={openScheduleCreate} className="pp-button">新建</button>}</div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="sm:col-span-2"><FieldLabel>计划名称</FieldLabel><input value={scheduleDraft.name} onChange={(event) => setScheduleDraft((current) => ({ ...current, name: event.target.value }))} className="pp-input w-full" placeholder="例如：周六晚间Boss" /></label>
+            <label className="sm:col-span-2"><FieldLabel>Boss模板</FieldLabel><select value={scheduleDraft.template_id} onChange={(event) => setScheduleDraft((current) => ({ ...current, template_id: event.target.value }))} className="pp-input w-full"><option value="">请选择模板</option>{activeTemplates.map((template) => <option key={template.id} value={template.id}>{template.name} · {template.pal_id}</option>)}</select></label>
+            <label><FieldLabel>计划类型</FieldLabel><select value={scheduleDraft.mode} onChange={(event) => setScheduleDraft((current) => ({ ...current, mode: event.target.value as BossScheduleInput['mode'] }))} className="pp-input w-full"><option value="daily">每天固定时间</option><option value="cron">Cron表达式</option></select></label>
+            <label><FieldLabel>时区</FieldLabel><input value={scheduleDraft.timezone} onChange={(event) => setScheduleDraft((current) => ({ ...current, timezone: event.target.value }))} className="pp-input w-full" placeholder="Asia/Shanghai" /></label>
+            {scheduleDraft.mode === 'daily' ? <label className="sm:col-span-2"><FieldLabel>每天执行时间</FieldLabel><input type="time" value={scheduleDraft.daily_time} onChange={(event) => setScheduleDraft((current) => ({ ...current, daily_time: event.target.value }))} className="pp-input w-full" /></label> : <label className="sm:col-span-2"><FieldLabel>Cron（分 时 日 月 周）</FieldLabel><input value={scheduleDraft.cron} onChange={(event) => setScheduleDraft((current) => ({ ...current, cron: event.target.value }))} className="pp-input w-full font-mono" placeholder="0 20 * * 6" /><span className="mt-1 block text-[11px] text-slate-400">支持 *、逗号、范围和步长，例如 */15 * * * *。</span></label>}
+            <label><FieldLabel>提前预警（分钟）</FieldLabel><input type="number" min={0} max={10080} value={scheduleDraft.warning_minutes} onChange={(event) => setScheduleDraft((current) => ({ ...current, warning_minutes: Math.max(0, Math.trunc(Number(event.target.value) || 0)) }))} className="pp-input w-full" /></label>
+            <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={scheduleDraft.enabled} onChange={(event) => setScheduleDraft((current) => ({ ...current, enabled: event.target.checked }))} className="h-4 w-4 rounded border-slate-300" /><span className="text-sm font-black text-slate-800">启用计划</span></label>
+            <label className="sm:col-span-2"><FieldLabel>预警标题</FieldLabel><input value={scheduleDraft.warning_title} onChange={(event) => setScheduleDraft((current) => ({ ...current, warning_title: event.target.value }))} className="pp-input w-full" /></label>
+            <label className="sm:col-span-2"><FieldLabel>预警消息</FieldLabel><textarea value={scheduleDraft.warning_message} onChange={(event) => setScheduleDraft((current) => ({ ...current, warning_message: event.target.value }))} rows={3} className="pp-input w-full" /><span className="mt-1 block text-[11px] text-slate-400">变量：{'{{minutes}}'}、{'{{schedule}}'}、{'{{boss}}'}。当前仅写入预警审计。</span></label>
+            <label className="sm:col-span-2 flex items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={Boolean(scheduleDraft.location_override)} onChange={(event) => setScheduleDraft((current) => event.target.checked ? ({ ...current, location_override: { x: 0, y: 0, z: 0, label: '' } }) : ({ ...current, location_override: undefined }))} className="h-4 w-4 rounded border-slate-300" /><span><span className="block text-sm font-black text-slate-800">覆盖模板坐标</span><span className="mt-1 block text-xs text-slate-400">每次自动创建召唤记录时使用该坐标。</span></span></label>
+            {scheduleDraft.location_override && <div className="sm:col-span-2 grid grid-cols-3 gap-2"><Coordinate label="X" value={scheduleDraft.location_override.x} onChange={(value) => setScheduleDraft((current) => ({ ...current, location_override: { ...(current.location_override || { x: 0, y: 0, z: 0 }), x: value } }))} /><Coordinate label="Y" value={scheduleDraft.location_override.y} onChange={(value) => setScheduleDraft((current) => ({ ...current, location_override: { ...(current.location_override || { x: 0, y: 0, z: 0 }), y: value } }))} /><Coordinate label="Z" value={scheduleDraft.location_override.z} onChange={(value) => setScheduleDraft((current) => ({ ...current, location_override: { ...(current.location_override || { x: 0, y: 0, z: 0 }), z: value } }))} /></div>}
+          </div>
+          <button type="button" disabled={saveScheduleMutation.isPending || !scheduleDraft.name.trim() || !scheduleDraft.template_id} onClick={() => saveScheduleMutation.mutate()} className="pp-btn pp-btn--primary mt-4 w-full">{saveScheduleMutation.isPending ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}{scheduleEditingID ? '保存计划' : '创建计划'}</button>
+        </div>
+        <div className="space-y-5">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-black text-slate-900">定时计划</h2><p className="mt-1 text-xs text-slate-400">计划到点后自动创建召唤及波次快照。实际Boss生成仍需后续执行器。</p></div><button type="button" disabled={runDueMutation.isPending} onClick={() => runDueMutation.mutate()} className="pp-button">{runDueMutation.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <RefreshCw size={14} />}立即扫描到期计划</button></div>
+            {schedulesQuery.error && <ErrorBox error={schedulesQuery.error} />}
+            <div className="space-y-3">{schedules.map((schedule) => <article key={schedule.id} className={`rounded-xl border p-4 ${selectedScheduleID === schedule.id ? 'border-rose-300 bg-rose-50/30' : 'border-slate-200'}`}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-black text-slate-800">{schedule.name}</h3><EnabledBadge enabled={schedule.enabled} archived={schedule.archived_at} /></div><p className="mt-1 text-xs text-slate-500">{schedule.template_name || schedule.template_id}</p></div><div className="flex flex-wrap gap-1.5"><IconButton title="查看计划审计" icon={<BellRing size={14} />} onClick={() => setSelectedScheduleID(selectedScheduleID === schedule.id ? '' : schedule.id)} />{!schedule.archived_at && <IconButton title="立即创建召唤记录" icon={<Play size={14} />} onClick={() => runScheduleMutation.mutate(schedule)} />}{!schedule.archived_at && <IconButton title="编辑计划" icon={<Pencil size={14} />} onClick={() => openScheduleEdit(schedule)} />}{!schedule.archived_at && <IconButton danger title="归档计划" icon={<Archive size={14} />} onClick={() => { if (window.confirm(`归档定时计划“${schedule.name}”？`)) archiveScheduleMutation.mutate(schedule); }} />}</div></div>
+              <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3"><Data label="规则" value={scheduleRule(schedule)} /><Data label="下次运行" value={formatDate(schedule.next_run_at)} /><Data label="提前预警" value={schedule.warning_minutes > 0 ? `${schedule.warning_minutes}分钟` : '关闭'} /></div>
+              {schedule.last_run_at && <div className="mt-2 text-[11px] text-slate-400">上次计划时间：{formatDate(schedule.last_run_at)}</div>}
+            </article>)}{!schedulesQuery.isLoading && schedules.length === 0 && <Empty text="暂无Boss定时计划。" />}</div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-3"><h2 className="font-black text-slate-900">计划审计</h2><p className="mt-1 text-xs text-slate-400">{selectedScheduleID ? '当前仅显示所选计划。' : '显示全部计划最近事件。'}</p></div>{scheduleEventsQuery.error && <ErrorBox error={scheduleEventsQuery.error} />}<div className="space-y-2">{scheduleEvents.map((event) => <div key={event.id} className="rounded-xl bg-slate-50 p-3 text-xs"><div className="flex flex-wrap items-center gap-2"><span className="font-black text-slate-700">{scheduleEventTypeLabel[event.event_type]}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${event.status === 'success' ? 'bg-emerald-50 text-emerald-700' : event.status === 'failed' ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>{scheduleEventStatusLabel[event.status]}</span><span className="text-slate-400">计划时间 {formatDate(event.planned_for)}</span></div><div className="mt-1 text-slate-600">{event.message || '—'}</div><div className="mt-1 text-[10px] text-slate-400">{event.actor || '系统'} · {formatDate(event.created_at)}{event.summon_id ? ` · 召唤 ${event.summon_id}` : ''}</div></div>)}{!scheduleEventsQuery.isLoading && scheduleEvents.length === 0 && <Empty text="暂无计划审计事件。" />}</div></div>
         </div>
       </section>}
 
@@ -761,7 +909,7 @@ const NumberField: React.FC<{ label: string; value: number; min: number; max: nu
 
 const RewardItemEditor: React.FC<{ item: BossRewardItem; onCount: (count: number) => void; onRemove: () => void }> = ({ item, onCount, onRemove }) => <div className="flex items-center gap-2 rounded-lg border border-slate-200 p-2"><code className="min-w-0 flex-1 truncate text-[11px] font-bold text-slate-600">{item.item_id}</code><input type="number" min={1} value={item.count} onChange={(event) => onCount(Number(event.target.value))} className="pp-input w-28" /><button type="button" onClick={onRemove} className="rounded-lg p-2 text-rose-500 hover:bg-rose-50"><X size={14} /></button></div>;
 
-const CatalogSection: React.FC<React.PropsWithChildren<{ title: string; description: string; search: string; onSearch: (value: string) => void; loading: boolean; error: unknown }>> = ({ title, description, search, onSearch, loading, error, children }) => <section className="mt-5 rounded-xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-slate-800">{title}</h3><p className="mt-1 text-xs text-slate-400">{description}</p></div>{loading && <LoaderCircle className="animate-spin text-slate-400" size={16} />}</div><label className="relative mt-3 block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} /><input value={search} onChange={(event) => onSearch(event.target.value)} className="pp-input w-full pl-9" placeholder="搜索" /></label>{error != null ? <div className="mt-2 text-xs font-semibold text-rose-600">{getErrorMessage(error)}</div> : null}<div className="mt-3">{children}</div></section>;
+const CatalogSection: React.FC<React.PropsWithChildren<{ title: string; description: string; search: string; onSearch: (value: string) => void; loading: boolean; error: unknown }>> = ({ title, description, search, onSearch, loading, error, children }) => <section className="mt-5 rounded-xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-slate-800">{title}</h3><p className="mt-1 text-xs text-slate-400">{description}</p></div>{loading && <LoaderCircle className="animate-spin text-slate-400" size={16} />}</div><label className="relative mt-3 block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} /><input value={search} onChange={(event) => onSearch(event.target.value)} className="pp-input w-full pl-9" placeholder="搜索" /></label>{error && <div className="mt-2 text-xs font-semibold text-rose-600">{getErrorMessage(error)}</div>}<div className="mt-3">{children}</div></section>;
 
 const Modal: React.FC<React.PropsWithChildren<{ title: string; subtitle: string; onClose: () => void; footer: React.ReactNode }>> = ({ title, subtitle, onClose, footer, children }) => <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl"><div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4"><div><h2 className="font-black text-slate-900">{title}</h2><p className="mt-1 font-mono text-[11px] text-slate-400">{subtitle}</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={18} /></button></div><div className="p-5">{children}</div><div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">{footer}</div></div></div>;
 
@@ -776,7 +924,7 @@ const SummonWaveList: React.FC<{
   <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
     <div className="mb-2 flex items-center gap-2 text-xs font-black text-slate-700"><Layers3 size={14} />波次快照</div>
     {loading && <div className="py-4 text-center text-xs text-slate-400"><LoaderCircle className="mr-2 inline animate-spin" size={13} />加载中</div>}
-    {error != null ? <div className="text-xs font-semibold text-rose-600">{getErrorMessage(error)}</div> : null}
+    {error && <div className="text-xs font-semibold text-rose-600">{getErrorMessage(error)}</div>}
     <div className="space-y-2">
       {waves.map((wave) => <div key={wave.id} className="rounded-lg bg-white p-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -795,7 +943,7 @@ const SummonWaveList: React.FC<{
   </div>
 );
 
-const SummonEvents: React.FC<{ loading: boolean; error: unknown; events: BossSummonEvent[] }> = ({ loading, error, events }) => <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="mb-2 text-xs font-black text-slate-700">状态审计</div>{loading && <div className="py-4 text-center text-xs text-slate-400"><LoaderCircle className="mr-2 inline animate-spin" size={13} />加载中</div>}{error != null ? <div className="text-xs font-semibold text-rose-600">{getErrorMessage(error)}</div> : null}<div className="space-y-2">{events.map((event) => <div key={event.id} className="flex items-start gap-3 rounded-lg bg-white p-3 text-xs"><span className={`mt-0.5 rounded-full px-2 py-0.5 font-bold ${summonStatusClass[event.to_status]}`}>{summonStatusLabel[event.to_status]}</span><div className="min-w-0 flex-1"><div className="text-slate-600">{event.message || `${event.from_status ? `${summonStatusLabel[event.from_status as BossSummonStatus] || event.from_status} → ` : ''}${summonStatusLabel[event.to_status]}`}</div><div className="mt-1 text-[10px] text-slate-400">{event.actor || '系统'} · {formatDate(event.created_at)}</div></div></div>)}{!loading && events.length === 0 && <div className="py-3 text-center text-xs text-slate-400">暂无审计事件</div>}</div></div>;
+const SummonEvents: React.FC<{ loading: boolean; error: unknown; events: BossSummonEvent[] }> = ({ loading, error, events }) => <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="mb-2 text-xs font-black text-slate-700">状态审计</div>{loading && <div className="py-4 text-center text-xs text-slate-400"><LoaderCircle className="mr-2 inline animate-spin" size={13} />加载中</div>}{error && <div className="text-xs font-semibold text-rose-600">{getErrorMessage(error)}</div>}<div className="space-y-2">{events.map((event) => <div key={event.id} className="flex items-start gap-3 rounded-lg bg-white p-3 text-xs"><span className={`mt-0.5 rounded-full px-2 py-0.5 font-bold ${summonStatusClass[event.to_status]}`}>{summonStatusLabel[event.to_status]}</span><div className="min-w-0 flex-1"><div className="text-slate-600">{event.message || `${event.from_status ? `${summonStatusLabel[event.from_status as BossSummonStatus] || event.from_status} → ` : ''}${summonStatusLabel[event.to_status]}`}</div><div className="mt-1 text-[10px] text-slate-400">{event.actor || '系统'} · {formatDate(event.created_at)}</div></div></div>)}{!loading && events.length === 0 && <div className="py-3 text-center text-xs text-slate-400">暂无审计事件</div>}</div></div>;
 
 const formatDuration = (seconds: number) => {
   if (seconds <= 0) return '无';

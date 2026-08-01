@@ -4,6 +4,7 @@ import { ArchiveRestore, ArrowRightLeft, CheckCircle2, Database, FileArchive, Pe
 import { getErrorMessage, isTemporaryBackendError } from '../api/client';
 import { saveSourcesApi, waitForSaveSourcesBackend, type SaveImportInspection } from '../api/saveSources';
 import { tasksApi } from '../api/tasks';
+import { MigrationWizardButton, SaveMigrationWizard } from '../components/save/SaveMigrationWizard';
 import type { SaveSource } from '../types';
 
 export const SaveSources: React.FC = () => {
@@ -16,6 +17,7 @@ export const SaveSources: React.FC = () => {
   const [renamingID, setRenamingID] = useState('');
   const [renameValue, setRenameValue] = useState('');
   const [migrationID, setMigrationID] = useState('');
+  const [showMigration, setShowMigration] = useState(false);
   const sources = useQuery({ queryKey: ['save-sources'], queryFn: saveSourcesApi.list });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['save-sources'] });
   const importMutation = useMutation({
@@ -135,7 +137,10 @@ export const SaveSources: React.FC = () => {
     <div className="page-shell">
       <div className="page-titlebar">
         <div><p className="eyebrow">Save workspace</p><h1>存档中心</h1><p>分别显示服务器实际运行世界和 PalPanel 当前分析源；“用于分析”不会切换服务器存档。</p></div>
-        <button type="button" className="pp-button" onClick={() => void sources.refetch()}><RefreshCw size={15} />刷新</button>
+        <div className="flex flex-wrap gap-2">
+          <MigrationWizardButton onClick={() => setShowMigration(true)} />
+          <button type="button" className="pp-button" onClick={() => void sources.refetch()}><RefreshCw size={15} />刷新</button>
+        </div>
       </div>
 
       <div className="content-grid two-column">
@@ -161,6 +166,7 @@ export const SaveSources: React.FC = () => {
 
       {analysisDiffersFromRuntime && <div className="pp-notice">服务器实际运行的是 <strong>{runtime?.world_id}</strong>，面板当前分析的是 <strong>{active?.name}</strong>。两者不同是允许的，但“用于分析”不会部署或切换运行世界。</div>}
       {notice && <div className="pp-notice">{notice}</div>}
+      {showMigration && <SaveMigrationWizard sources={sources.data?.items || []} activeSourceID={active?.id} onClose={() => setShowMigration(false)} />}
 
       <div className="content-grid two-column">
         <section className="pp-card">

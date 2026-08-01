@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -22,6 +23,9 @@ func init() {
 		"boss-manual-summon-ledger",
 		"boss-summon-state-machine",
 		"boss-summon-audit",
+		"boss-schedule-config",
+		"boss-schedule-worker",
+		"boss-schedule-warning-ledger",
 	)
 }
 
@@ -44,6 +48,13 @@ func (s Server) registerBossRoutes(api *gin.RouterGroup) {
 	group.GET("/summons/:id/waves", Require(PermRead), s.bossSummonWaves)
 	group.POST("/summons/:id/waves/:position/transition", Require(PermServerControl), s.transitionBossSummonWave)
 	group.GET("/summons/:id/events", Require(PermRead), s.bossSummonEvents)
+	group.GET("/schedules", Require(PermRead), s.bossSchedules)
+	group.POST("/schedules", Require(PermConfigWrite), s.createBossSchedule)
+	group.PUT("/schedules/:id", Require(PermConfigWrite), s.updateBossSchedule)
+	group.DELETE("/schedules/:id", Require(PermConfigWrite), s.archiveBossSchedule)
+	group.POST("/schedules/:id/run-now", Require(PermServerControl), s.runBossScheduleNow)
+	group.GET("/schedule-events", Require(PermRead), s.bossScheduleEvents)
+	group.POST("/maintenance/run-due", Require(PermServerControl), s.runDueBossSchedules)
 }
 
 func (s Server) bossService() (*boss.Service, error) {
@@ -342,6 +353,120 @@ func (s Server) bossSummonEvents(c *gin.Context) {
 	ok(c, gin.H{"items": items, "count": len(items)})
 }
 
+func (s Server) bossSchedules(c *gin.Context) {
+	service, err := s.bossService()
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	items, err := service.ListSchedules(c.Request.Context(), boss.ScheduleFilter{
+		Enabled: c.Query("enabled"), IncludeArchived: bossQueryBool(c, "include_archived"),
+		Limit: bossQueryInt(c, "limit", 100), Offset: bossQueryInt(c, "offset", 0),
+	})
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	ok(c, gin.H{"items": items, "count": len(items)})
+}
+
+func (s Server) createBossSchedule(c *gin.Context) {
+	var input boss.ScheduleInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	service, err := s.bossService()
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	result, err := service.CreateSchedule(c.Request.Context(), input)
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	created(c, result)
+}
+
+func (s Server) updateBossSchedule(c *gin.Context) {
+	var input boss.ScheduleInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	service, err := s.bossService()
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	result, err := service.UpdateSchedule(c.Request.Context(), c.Param("id"), input)
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	ok(c, result)
+}
+
+func (s Server) archiveBossSchedule(c *gin.Context) {
+	service, err := s.bossService()
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	result, err := service.ArchiveSchedule(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	ok(c, result)
+}
+
+func (s Server) runBossScheduleNow(c *gin.Context) {
+	service, err := s.bossService()
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	result, err := service.RunScheduleNow(c.Request.Context(), c.Param("id"), CurrentPrincipal(c).Name)
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	created(c, result)
+}
+
+func (s Server) bossScheduleEvents(c *gin.Context) {
+	service, err := s.bossService()
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	items, err := service.ListScheduleEvents(c.Request.Context(), boss.ScheduleEventFilter{
+		ScheduleID: c.Query("schedule_id"), EventType: c.Query("event_type"), Status: c.Query("status"),
+		Limit: bossQueryInt(c, "limit", 100), Offset: bossQueryInt(c, "offset", 0),
+	})
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	ok(c, gin.H{"items": items, "count": len(items)})
+}
+
+func (s Server) runDueBossSchedules(c *gin.Context) {
+	service, err := s.bossService()
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	result, err := service.RunDueSchedules(c.Request.Context(), time.Now(), CurrentPrincipal(c).Name)
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	ok(c, result)
+}
+
 func bossQueryBool(c *gin.Context, key string) bool {
 	value, err := strconv.ParseBool(strings.TrimSpace(c.Query(key)))
 	return err == nil && value
@@ -357,11 +482,11 @@ func bossQueryInt(c *gin.Context, key string, fallback int) int {
 
 func bossFailure(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, boss.ErrInvalidReward), errors.Is(err, boss.ErrInvalidTemplate), errors.Is(err, boss.ErrInvalidWave), errors.Is(err, boss.ErrInvalidSummon):
+	case errors.Is(err, boss.ErrInvalidReward), errors.Is(err, boss.ErrInvalidTemplate), errors.Is(err, boss.ErrInvalidWave), errors.Is(err, boss.ErrInvalidSummon), errors.Is(err, boss.ErrInvalidSchedule):
 		fail(c, http.StatusBadRequest, "boss_request_invalid", err.Error())
-	case errors.Is(err, boss.ErrRewardNotFound), errors.Is(err, boss.ErrTemplateNotFound), errors.Is(err, boss.ErrWaveNotFound), errors.Is(err, boss.ErrSummonNotFound), errors.Is(err, sql.ErrNoRows):
+	case errors.Is(err, boss.ErrRewardNotFound), errors.Is(err, boss.ErrTemplateNotFound), errors.Is(err, boss.ErrWaveNotFound), errors.Is(err, boss.ErrSummonNotFound), errors.Is(err, boss.ErrScheduleNotFound), errors.Is(err, sql.ErrNoRows):
 		fail(c, http.StatusNotFound, "boss_resource_not_found", err.Error())
-	case errors.Is(err, boss.ErrTemplateDisabled), errors.Is(err, boss.ErrInvalidTransition), errors.Is(err, boss.ErrInvalidWaveTransition):
+	case errors.Is(err, boss.ErrTemplateDisabled), errors.Is(err, boss.ErrInvalidTransition), errors.Is(err, boss.ErrInvalidWaveTransition), errors.Is(err, boss.ErrScheduleDisabled), errors.Is(err, boss.ErrScheduleRunConflict):
 		fail(c, http.StatusConflict, "boss_state_conflict", err.Error())
 	default:
 		fail(c, http.StatusInternalServerError, "boss_operation_failed", err.Error())

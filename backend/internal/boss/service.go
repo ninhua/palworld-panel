@@ -62,8 +62,11 @@ const (
 )
 
 type Service struct {
-	db  *sql.DB
-	now func() time.Time
+	db           *sql.DB
+	now          func() time.Time
+	scheduleStop chan struct{}
+	scheduleDone chan struct{}
+	closeOnce    sync.Once
 }
 
 type Location struct {
@@ -291,6 +294,8 @@ type Summary struct {
 	CompletedWaves   int64 `json:"completed_waves"`
 	FailedWaves      int64 `json:"failed_waves"`
 	SkippedWaves     int64 `json:"skipped_waves"`
+	Schedules        int64 `json:"schedules"`
+	EnabledSchedules int64 `json:"enabled_schedules"`
 }
 
 func ForPath(path string) (*Service, error) {
@@ -328,6 +333,11 @@ func Open(path string) (*Service, error) {
 		_ = database.Close()
 		return nil, err
 	}
+	if err := service.ensureScheduleSchema(context.Background()); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	service.startScheduleWorker()
 	return service, nil
 }
 
@@ -335,7 +345,20 @@ func (s *Service) Close() error {
 	if s == nil || s.db == nil {
 		return nil
 	}
-	return s.db.Close()
+	var closeErr error
+	s.closeOnce.Do(func() {
+		if s.scheduleStop != nil {
+			close(s.scheduleStop)
+			if s.scheduleDone != nil {
+				select {
+				case <-s.scheduleDone:
+				case <-time.After(2 * time.Second):
+				}
+			}
+		}
+		closeErr = s.db.Close()
+	})
+	return closeErr
 }
 
 func (s *Service) configure(ctx context.Context) error {
@@ -513,6 +536,8 @@ func (s *Service) Summary(ctx context.Context) (Summary, error) {
 		{&result.CompletedWaves, `SELECT COUNT(*) FROM boss_summon_waves WHERE status='completed'`},
 		{&result.FailedWaves, `SELECT COUNT(*) FROM boss_summon_waves WHERE status='failed'`},
 		{&result.SkippedWaves, `SELECT COUNT(*) FROM boss_summon_waves WHERE status='skipped'`},
+		{&result.Schedules, `SELECT COUNT(*) FROM boss_schedules WHERE archived_at=''`},
+		{&result.EnabledSchedules, `SELECT COUNT(*) FROM boss_schedules WHERE archived_at='' AND enabled=1`},
 	}
 	for _, item := range queries {
 		if err := s.db.QueryRowContext(ctx, item.query).Scan(item.destination); err != nil {

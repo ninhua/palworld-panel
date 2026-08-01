@@ -19,6 +19,7 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
@@ -82,6 +83,7 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod

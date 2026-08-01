@@ -20,6 +20,11 @@ export type BossSummonResult = components['schemas']['BossSummonResult'];
 export type BossSummonEvent = components['schemas']['BossSummonEvent'];
 export type BossSummary = components['schemas']['BossSummary'];
 export type BossSummonStatus = BossSummon['status'];
+export type BossScheduleInput = components['schemas']['BossScheduleInput'];
+export type BossSchedule = components['schemas']['BossSchedule'];
+export type BossScheduleEvent = components['schemas']['BossScheduleEvent'];
+export type BossRunDueResult = components['schemas']['BossRunDueResult'];
+export type BossScheduleMode = BossSchedule['mode'];
 
 interface BossListResult<T> {
   items: T[];
@@ -104,6 +109,26 @@ const emptySummary: BossSummary = {
   completed_waves: 0,
   failed_waves: 0,
   skipped_waves: 0,
+  schedules: 0,
+  enabled_schedules: 0,
+};
+
+const emptySchedule: BossSchedule = {
+  id: '',
+  name: '',
+  template_id: '',
+  template_name: '',
+  mode: 'daily',
+  daily_time: '20:00',
+  cron: '',
+  timezone: 'Asia/Shanghai',
+  warning_minutes: 30,
+  warning_title: '',
+  warning_message: '',
+  enabled: true,
+  metadata: {},
+  created_at: '',
+  updated_at: '',
 };
 
 export const bossApi = {
@@ -229,6 +254,53 @@ export const bossApi = {
   summonEvents: (id: string) => handleRequest<unknown, BossListResult<BossSummonEvent>>(
     () => apiClient.get(`/boss/summons/${encodeURIComponent(id)}/events`, { params: { limit: 500 } }),
     { items: [], count: 0 },
+    { fallbackOnError: false },
+  ),
+
+  schedules: (includeArchived = false, enabled: boolean | undefined = undefined) => handleRequest<unknown, BossListResult<BossSchedule>>(
+    () => apiClient.get('/boss/schedules', { params: { include_archived: includeArchived, enabled, limit: 500 } }),
+    { items: [], count: 0 },
+    { fallbackOnError: false },
+  ),
+
+  createSchedule: (input: BossScheduleInput) => handleRequest<unknown, BossSchedule>(
+    () => apiClient.post('/boss/schedules', input),
+    emptySchedule,
+    { fallbackOnError: false },
+  ),
+
+  updateSchedule: (id: string, input: BossScheduleInput) => handleRequest<unknown, BossSchedule>(
+    () => apiClient.put(`/boss/schedules/${encodeURIComponent(id)}`, input),
+    { ...emptySchedule, id },
+    { fallbackOnError: false },
+  ),
+
+  archiveSchedule: (id: string) => handleRequest<unknown, BossSchedule>(
+    () => apiClient.delete(`/boss/schedules/${encodeURIComponent(id)}`),
+    { ...emptySchedule, id, enabled: false },
+    { fallbackOnError: false },
+  ),
+
+  runScheduleNow: (id: string) => handleRequest<unknown, BossSummonResult>(
+    () => apiClient.post(`/boss/schedules/${encodeURIComponent(id)}/run-now`),
+    { summon: emptySummon, duplicate: false },
+    { fallbackOnError: false },
+  ),
+
+  scheduleEvents: (scheduleID = '', eventType = '', status = '') => handleRequest<unknown, BossListResult<BossScheduleEvent>>(
+    () => apiClient.get('/boss/schedule-events', { params: {
+      schedule_id: scheduleID || undefined,
+      event_type: eventType || undefined,
+      status: status || undefined,
+      limit: 500,
+    } }),
+    { items: [], count: 0 },
+    { fallbackOnError: false },
+  ),
+
+  runDueSchedules: () => handleRequest<unknown, BossRunDueResult>(
+    () => apiClient.post('/boss/maintenance/run-due'),
+    { checked: 0, warnings: 0, summons: 0, failed: 0, skipped: 0 },
     { fallbackOnError: false },
   ),
 };
