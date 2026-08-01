@@ -43,6 +43,7 @@ const sidebarGroups: Array<{ id: string; titleKey: TranslationKey; entries: Side
     entries: [
       { id: 'players-world', labelKey: 'nav.playersWorld', routeIDs: ['player-center', 'starter-gift', 'world-archive'] },
       { id: 'economy', label: '积分系统', routeIDs: ['economy', 'operations-tasks', 'economy-shop'] },
+      { id: 'boss-events', label: 'Boss 活动', routeIDs: ['boss-operations'] },
       { id: 'saves-breeding', labelKey: 'nav.saveTools', routeIDs: ['save-sources', 'save-history', 'global-inventory', 'pal-inventory', 'breeding', 'live-map'] },
       { id: 'mods', labelKey: 'nav.mods', routeIDs: ['mods'] },
     ],

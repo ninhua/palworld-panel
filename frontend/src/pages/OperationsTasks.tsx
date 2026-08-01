@@ -120,7 +120,7 @@ interface TaskEventOption {
 }
 
 const eventOptions: TaskEventOption[] = [
-  { value: 'PAL_CAPTURED', label: '捕获帕鲁', help: '捕获事件；可用 pal_id 等Payload字段筛选。', amountField: 'count' },
+  { value: 'PAL_CAPTURED', label: '捕获帕鲁', help: '捕获事件；可用 pal_id 等事件内容字段筛选。', amountField: 'count' },
   { value: 'PAL_KILLED', label: '击杀帕鲁或敌对目标', help: '击杀事件；可用 pal_id、target_id 等字段筛选。', amountField: 'count' },
   { value: 'PLAYER_ONLINE', label: '累计在线时长', help: '在线采样事件；通常读取 minutes 字段。', amountField: 'minutes' },
   { value: 'CHECKIN_COMPLETED', label: '完成签到', help: '签到成功事件；每个事件通常增加1。', amountField: 'count' },
@@ -130,6 +130,17 @@ const eventOptions: TaskEventOption[] = [
   { value: 'ITEM_CRAFTED', label: '制作物品', help: '制作事件；可用 item_id 筛选并读取 count。', amountField: 'count' },
 ];
 const number = new Intl.NumberFormat('zh-CN');
+
+const eventLabel = (eventType: string) => eventOptions.find((option) => option.value === eventType)?.label || '自定义事件';
+
+const amountFieldLabel = (field?: string) => {
+  const normalized = (field || '').trim();
+  if (!normalized) return '每个事件计 1';
+  if (normalized === 'count') return '数量';
+  if (normalized === 'minutes') return '分钟';
+  if (normalized === 'seconds') return '秒数';
+  return `事件字段：${normalized}`;
+};
 
 const cycleLabel: Record<OperationsTaskCycle, string> = {
   once: '永久一次',
@@ -142,7 +153,7 @@ const parseFilters = (value: string): Record<string, unknown> => {
   if (!trimmed) return {};
   const parsed = JSON.parse(trimmed) as unknown;
   if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-    throw new Error('Payload过滤条件必须是JSON对象。');
+    throw new Error('事件内容过滤条件必须是JSON对象。');
   }
   return parsed as Record<string, unknown>;
 };
@@ -292,7 +303,7 @@ export const OperationsTasks: React.FC = () => {
           <div>
             <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-violet-600"><Target size={15} />运营任务</div>
             <h1 className="text-2xl font-black tracking-tight text-slate-900">任务系统</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">配置每日、每周和永久一次任务。游戏事件按事件类型、数量字段和Payload过滤条件推进进度，完成后通过统一积分账本发放奖励。</p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">配置每日、每周和永久一次任务。游戏事件按事件类型、数量字段和事件内容过滤条件推进进度，完成后通过统一积分账本发放奖励。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => void refresh()} className="pp-button"><RefreshCw size={14} />刷新</button>
@@ -327,7 +338,7 @@ export const OperationsTasks: React.FC = () => {
             <button key={preset.name} type="button" onClick={() => openCreate(preset.input)} className="rounded-xl border border-slate-200 p-4 text-left transition hover:border-violet-300 hover:bg-violet-50/40">
               <div className="font-black text-slate-800">{preset.name}</div>
               <div className="mt-1 text-xs leading-5 text-slate-500">{preset.description}</div>
-              <div className="mt-3 font-mono text-[11px] font-bold text-violet-600">{preset.input.event_type}</div>
+              <div className="mt-3 text-[11px] font-bold text-violet-600">{eventLabel(preset.input.event_type)}</div>
             </button>
           ))}
         </div>
@@ -351,7 +362,7 @@ export const OperationsTasks: React.FC = () => {
               {definitions.map((definition) => (
                 <tr key={definition.id} className={definition.archived_at ? 'bg-slate-50/70 text-slate-400' : 'hover:bg-slate-50/50'}>
                   <td className="px-4 py-3"><div className="font-bold text-slate-800">{definition.name}</div><div className="mt-1 max-w-md text-xs leading-5 text-slate-400">{definition.description || definition.id}</div></td>
-                  <td className="px-4 py-3"><code className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{definition.event_type}</code><div className="mt-1 text-[11px] text-slate-400">字段：{definition.amount_field || '默认1'}</div></td>
+                  <td className="px-4 py-3"><span className="inline-flex rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700">{eventLabel(definition.event_type)}</span><div className="mt-1 text-[11px] text-slate-400">{amountFieldLabel(definition.amount_field)}</div><div className="mt-1 font-mono text-[10px] text-slate-300" title="内部事件代码">{definition.event_type}</div></td>
                   <td className="px-4 py-3 text-xs font-bold text-slate-600">{cycleLabel[definition.cycle]}</td>
                   <td className="px-4 py-3 text-right font-black text-slate-800">{number.format(definition.target_amount)}</td>
                   <td className="px-4 py-3 text-right font-black text-violet-600">{number.format(definition.reward_points)}</td>
@@ -415,15 +426,15 @@ export const OperationsTasks: React.FC = () => {
                 }}
                 className="pp-input w-full"
               >
-                {eventOptions.map((option) => <option key={option.value} value={option.value}>{option.label} · {option.value}</option>)}
+                {eventOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
-              <span className="mt-1.5 block text-xs leading-5 text-slate-400">{eventOptions.find((option) => option.value === draft.event_type)?.help}</span>
+              <span className="mt-1.5 block text-xs leading-5 text-slate-400">{eventOptions.find((option) => option.value === draft.event_type)?.help}</span><span className="mt-1 block font-mono text-[10px] text-slate-300">内部事件代码：{draft.event_type}</span>
             </label>
             <label className="block"><FieldLabel>周期</FieldLabel><select value={draft.cycle} onChange={(event) => setDraft((current) => ({ ...current, cycle: event.target.value as OperationsTaskCycle }))} className="pp-input w-full"><option value="daily">每日</option><option value="weekly">每周</option><option value="once">永久一次</option></select></label>
             <label className="block"><FieldLabel>目标数量</FieldLabel><input type="number" min={1} max={1000000000000} value={draft.target_amount} onChange={(event) => setDraft((current) => ({ ...current, target_amount: Number(event.target.value) }))} className="pp-input w-full" /></label>
             <label className="block"><FieldLabel>奖励积分</FieldLabel><input type="number" min={0} max={1000000000000} value={draft.reward_points} onChange={(event) => setDraft((current) => ({ ...current, reward_points: Number(event.target.value) }))} className="pp-input w-full" /></label>
-            <label className="block sm:col-span-2"><FieldLabel>数量字段</FieldLabel><input value={draft.amount_field || ''} onChange={(event) => setDraft((current) => ({ ...current, amount_field: event.target.value }))} className="pp-input w-full font-mono" placeholder="count、minutes；留空时每个事件增加1" /><span className="mt-1.5 block text-xs leading-5 text-slate-400">支持Payload中的字段路径。字段不存在、不是正数或超过单事件上限时，事件不会推进该任务。</span></label>
-            <label className="block sm:col-span-2"><FieldLabel>Payload过滤条件（JSON对象）</FieldLabel><textarea value={filtersText} onChange={(event) => setFiltersText(event.target.value)} rows={6} spellCheck={false} className="pp-input w-full resize-y font-mono text-xs" placeholder={'{\n  "pal_id": "SheepBall"\n}'} /><span className="mt-1.5 block text-xs leading-5 text-slate-400">所有字段都必须匹配。空对象表示接受该事件类型的所有事件。</span></label>
+            <label className="block sm:col-span-2"><FieldLabel>数量字段</FieldLabel><input value={draft.amount_field || ''} onChange={(event) => setDraft((current) => ({ ...current, amount_field: event.target.value }))} className="pp-input w-full font-mono" placeholder="count、minutes；留空时每个事件增加1" /><span className="mt-1.5 block text-xs leading-5 text-slate-400">支持事件内容中的字段路径。字段不存在、不是正数或超过单事件上限时，事件不会推进该任务。</span></label>
+            <label className="block sm:col-span-2"><FieldLabel>事件内容过滤条件（JSON对象）</FieldLabel><textarea value={filtersText} onChange={(event) => setFiltersText(event.target.value)} rows={6} spellCheck={false} className="pp-input w-full resize-y font-mono text-xs" placeholder={'{\n  "pal_id": "SheepBall"\n}'} /><span className="mt-1.5 block text-xs leading-5 text-slate-400">所有字段都必须匹配。空对象表示接受该事件类型的所有事件。</span></label>
             <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-4 sm:col-span-2"><input type="checkbox" checked={draft.enabled} onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} className="h-4 w-4 rounded border-slate-300" /><span><span className="block text-sm font-black text-slate-800">立即启用</span><span className="mt-1 block text-xs text-slate-400">关闭时任务定义仍保留，但新事件不会推进进度。</span></span></label>
           </div>
           <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4"><button type="button" onClick={closeEditor} className="pp-button">取消</button><button type="button" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()} className="pp-btn pp-btn--primary">{saveMutation.isPending ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}{editingID ? '保存修改' : '创建任务'}</button></div>

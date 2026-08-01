@@ -1,0 +1,577 @@
+import React, { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Archive,
+  CheckCircle2,
+  CircleAlert,
+  Clock3,
+  Crown,
+  Gift,
+  LoaderCircle,
+  MapPin,
+  Pencil,
+  Play,
+  Plus,
+  RefreshCw,
+  Save,
+  Search,
+  ShieldAlert,
+  Skull,
+  Sword,
+  X,
+} from 'lucide-react';
+import { getErrorMessage } from '../api/client';
+import {
+  bossApi,
+  type BossReward,
+  type BossRewardInput,
+  type BossRewardItem,
+  type BossSummon,
+  type BossSummonEvent,
+  type BossSummonStatus,
+  type BossTemplate,
+  type BossTemplateInput,
+} from '../api/boss';
+import { palDefenderGMApi } from '../api/paldefenderGM';
+
+interface Notice {
+  type: 'success' | 'error';
+  text: string;
+}
+
+type BossTab = 'templates' | 'rewards' | 'summons';
+
+const number = new Intl.NumberFormat('zh-CN');
+
+const summonStatusLabel: Record<BossSummonStatus, string> = {
+  pending: '等待处理',
+  active: '进行中',
+  completed: '已完成',
+  failed: '失败',
+  cancelled: '已取消',
+};
+
+const summonStatusClass: Record<BossSummonStatus, string> = {
+  pending: 'bg-amber-50 text-amber-700',
+  active: 'bg-sky-50 text-sky-700',
+  completed: 'bg-emerald-50 text-emerald-700',
+  failed: 'bg-rose-50 text-rose-700',
+  cancelled: 'bg-slate-100 text-slate-600',
+};
+
+const emptyRewardInput = (): BossRewardInput => ({
+  name: '',
+  description: '',
+  points: 0,
+  items: [],
+  pal_templates: [],
+  enabled: true,
+  metadata: {},
+});
+
+const emptyTemplateInput = (): BossTemplateInput => ({
+  name: '',
+  description: '',
+  pal_id: '',
+  level: 50,
+  count: 1,
+  hp_multiplier: 1,
+  attack_multiplier: 1,
+  defense_multiplier: 1,
+  spawn_radius: 500,
+  capturable: false,
+  cooldown_seconds: 3600,
+  reward_id: '',
+  location: { x: 0, y: 0, z: 0, label: '' },
+  enabled: true,
+  metadata: {},
+});
+
+const newRequestKey = () => {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  return uuid ? `boss-${uuid}` : `boss-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+};
+
+const FieldLabel: React.FC<React.PropsWithChildren> = ({ children }) => (
+  <span className="mb-1.5 block text-xs font-bold text-slate-500">{children}</span>
+);
+
+const Metric: React.FC<{ label: string; value: number; icon: React.ReactNode; suffix?: string }> = ({ label, value, icon, suffix }) => (
+  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="mb-4 flex items-center justify-between text-slate-400">
+      <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
+      <span className="rounded-lg bg-rose-50 p-2 text-rose-500">{icon}</span>
+    </div>
+    <div className="text-2xl font-black tracking-tight text-slate-900">
+      {number.format(value)}{suffix && <span className="ml-1 text-sm text-slate-400">{suffix}</span>}
+    </div>
+  </div>
+);
+
+const EnabledBadge: React.FC<{ enabled: boolean; archived?: string }> = ({ enabled, archived }) => {
+  if (archived) return <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500">已归档</span>;
+  return enabled
+    ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">已启用</span>
+    : <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">已停用</span>;
+};
+
+export const BossOperations: React.FC = () => {
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<BossTab>('templates');
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [rewardEditorOpen, setRewardEditorOpen] = useState(false);
+  const [rewardEditingID, setRewardEditingID] = useState('');
+  const [rewardDraft, setRewardDraft] = useState<BossRewardInput>(emptyRewardInput());
+  const [templateEditorOpen, setTemplateEditorOpen] = useState(false);
+  const [templateEditingID, setTemplateEditingID] = useState('');
+  const [templateDraft, setTemplateDraft] = useState<BossTemplateInput>(emptyTemplateInput());
+  const [summonTemplateID, setSummonTemplateID] = useState('');
+  const [summonNotes, setSummonNotes] = useState('');
+  const [overrideLocation, setOverrideLocation] = useState(false);
+  const [summonLocation, setSummonLocation] = useState({ x: 0, y: 0, z: 0, label: '' });
+  const [summonStatus, setSummonStatus] = useState<BossSummonStatus | ''>('');
+  const [selectedSummonID, setSelectedSummonID] = useState('');
+  const [itemSearch, setItemSearch] = useState('');
+  const [palSearch, setPalSearch] = useState('');
+  const [templateSearch, setTemplateSearch] = useState('');
+
+  const summaryQuery = useQuery({ queryKey: ['boss', 'summary'], queryFn: bossApi.summary });
+  const rewardsQuery = useQuery({
+    queryKey: ['boss', 'rewards', includeArchived],
+    queryFn: () => bossApi.rewards(includeArchived),
+  });
+  const templatesQuery = useQuery({
+    queryKey: ['boss', 'templates', includeArchived],
+    queryFn: () => bossApi.templates(includeArchived),
+  });
+  const summonsQuery = useQuery({
+    queryKey: ['boss', 'summons', summonStatus],
+    queryFn: () => bossApi.summons(summonStatus),
+  });
+  const summonEventsQuery = useQuery({
+    queryKey: ['boss', 'summon-events', selectedSummonID],
+    queryFn: () => bossApi.summonEvents(selectedSummonID),
+    enabled: Boolean(selectedSummonID),
+  });
+
+  const itemCatalogQuery = useQuery({
+    queryKey: ['boss', 'catalog', 'items'],
+    queryFn: () => palDefenderGMApi.items('', 5000),
+    staleTime: 30 * 60 * 1000,
+  });
+  const palCatalogQuery = useQuery({
+    queryKey: ['boss', 'catalog', 'pals'],
+    queryFn: () => palDefenderGMApi.palCatalog('', 5000),
+    staleTime: 30 * 60 * 1000,
+  });
+  const palTemplatesQuery = useQuery({
+    queryKey: ['boss', 'catalog', 'pal-templates'],
+    queryFn: palDefenderGMApi.templates,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const refresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['boss'] });
+  };
+
+  const saveRewardMutation = useMutation({
+    mutationFn: () => rewardEditingID ? bossApi.updateReward(rewardEditingID, rewardDraft) : bossApi.createReward(rewardDraft),
+    onSuccess: async (reward) => {
+      setNotice({ type: 'success', text: `奖励“${reward.name}”已${rewardEditingID ? '更新' : '创建'}。` });
+      setRewardEditorOpen(false);
+      setRewardEditingID('');
+      setRewardDraft(emptyRewardInput());
+      await refresh();
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const archiveRewardMutation = useMutation({
+    mutationFn: (reward: BossReward) => bossApi.archiveReward(reward.id),
+    onSuccess: async (reward) => {
+      setNotice({ type: 'success', text: `奖励“${reward.name}”已归档。` });
+      await refresh();
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const saveTemplateMutation = useMutation({
+    mutationFn: () => templateEditingID ? bossApi.updateTemplate(templateEditingID, templateDraft) : bossApi.createTemplate(templateDraft),
+    onSuccess: async (template) => {
+      setNotice({ type: 'success', text: `Boss模板“${template.name}”已${templateEditingID ? '更新' : '创建'}。` });
+      setTemplateEditorOpen(false);
+      setTemplateEditingID('');
+      setTemplateDraft(emptyTemplateInput());
+      await refresh();
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const archiveTemplateMutation = useMutation({
+    mutationFn: (template: BossTemplate) => bossApi.archiveTemplate(template.id),
+    onSuccess: async (template) => {
+      setNotice({ type: 'success', text: `Boss模板“${template.name}”已归档。` });
+      await refresh();
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const createSummonMutation = useMutation({
+    mutationFn: () => bossApi.createSummon({
+      template_id: summonTemplateID,
+      request_key: newRequestKey(),
+      notes: summonNotes.trim(),
+      metadata: {},
+      ...(overrideLocation ? { location_override: summonLocation } : {}),
+    }),
+    onSuccess: async (result) => {
+      setNotice({
+        type: 'success',
+        text: result.duplicate ? `检测到重复请求，已返回原召唤记录。` : `已创建“${result.summon.template_name}”手动召唤记录。`,
+      });
+      setSummonNotes('');
+      setOverrideLocation(false);
+      await refresh();
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const transitionMutation = useMutation({
+    mutationFn: ({ summon, status }: { summon: BossSummon; status: BossSummonStatus }) => bossApi.transitionSummon(summon.id, {
+      status,
+      message: `面板手动更新为：${summonStatusLabel[status]}`,
+      result: {},
+    }),
+    onSuccess: async (summon) => {
+      setNotice({ type: 'success', text: `召唤记录已更新为“${summonStatusLabel[summon.status]}”。` });
+      await refresh();
+      if (selectedSummonID === summon.id) await summonEventsQuery.refetch();
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const rewards = rewardsQuery.data?.items || [];
+  const templates = templatesQuery.data?.items || [];
+  const summons = summonsQuery.data?.items || [];
+  const summary = summaryQuery.data;
+
+  const rewardByID = useMemo(() => new Map(rewards.map((reward) => [reward.id, reward])), [rewards]);
+  const activeTemplates = useMemo(() => templates.filter((template) => template.enabled && !template.archived_at), [templates]);
+
+  const filteredItems = useMemo(() => {
+    const needle = itemSearch.trim().toLowerCase();
+    return (itemCatalogQuery.data?.items || []).filter((item) => !needle || `${item.name} ${item.id}`.toLowerCase().includes(needle)).slice(0, 80);
+  }, [itemCatalogQuery.data, itemSearch]);
+
+  const filteredPals = useMemo(() => {
+    const needle = palSearch.trim().toLowerCase();
+    return (palCatalogQuery.data?.items || []).filter((pal) => !needle || `${pal.name} ${pal.id}`.toLowerCase().includes(needle)).slice(0, 100);
+  }, [palCatalogQuery.data, palSearch]);
+
+  const filteredPalTemplates = useMemo(() => {
+    const needle = templateSearch.trim().toLowerCase();
+    return (palTemplatesQuery.data?.templates || []).filter((template) => !needle || template.name.toLowerCase().includes(needle)).slice(0, 100);
+  }, [palTemplatesQuery.data, templateSearch]);
+
+  const openRewardCreate = () => {
+    setRewardEditingID('');
+    setRewardDraft(emptyRewardInput());
+    setRewardEditorOpen(true);
+  };
+
+  const openRewardEdit = (reward: BossReward) => {
+    setRewardEditingID(reward.id);
+    setRewardDraft({
+      name: reward.name,
+      description: reward.description || '',
+      points: reward.points,
+      items: reward.items || [],
+      pal_templates: reward.pal_templates || [],
+      enabled: reward.enabled,
+      metadata: reward.metadata || {},
+    });
+    setRewardEditorOpen(true);
+  };
+
+  const openTemplateCreate = () => {
+    setTemplateEditingID('');
+    setTemplateDraft(emptyTemplateInput());
+    setTemplateEditorOpen(true);
+  };
+
+  const openTemplateEdit = (template: BossTemplate) => {
+    setTemplateEditingID(template.id);
+    setTemplateDraft({
+      name: template.name,
+      description: template.description || '',
+      pal_id: template.pal_id,
+      level: template.level,
+      count: template.count,
+      hp_multiplier: template.hp_multiplier,
+      attack_multiplier: template.attack_multiplier,
+      defense_multiplier: template.defense_multiplier,
+      spawn_radius: template.spawn_radius,
+      capturable: template.capturable,
+      cooldown_seconds: template.cooldown_seconds,
+      reward_id: template.reward_id || '',
+      location: template.location,
+      enabled: template.enabled,
+      metadata: template.metadata || {},
+    });
+    setTemplateEditorOpen(true);
+  };
+
+  const addRewardItem = (itemID: string) => {
+    setRewardDraft((current) => {
+      const items = [...current.items];
+      const existing = items.find((item) => item.item_id === itemID);
+      if (existing) existing.count += 1;
+      else items.push({ item_id: itemID, count: 1 });
+      return { ...current, items };
+    });
+  };
+
+  const setRewardItemCount = (itemID: string, count: number) => {
+    setRewardDraft((current) => ({
+      ...current,
+      items: current.items.map((item) => item.item_id === itemID ? { ...item, count: Math.max(1, Math.trunc(count || 1)) } : item),
+    }));
+  };
+
+  const removeRewardItem = (itemID: string) => {
+    setRewardDraft((current) => ({ ...current, items: current.items.filter((item) => item.item_id !== itemID) }));
+  };
+
+  const addRewardPalTemplate = (name: string) => {
+    setRewardDraft((current) => current.pal_templates.includes(name) ? current : { ...current, pal_templates: [...current.pal_templates, name] });
+  };
+
+  const possibleTransitions = (summon: BossSummon): BossSummonStatus[] => {
+    if (summon.status === 'pending') return ['active', 'failed', 'cancelled'];
+    if (summon.status === 'active') return ['completed', 'failed', 'cancelled'];
+    return [];
+  };
+
+  const tabButton = (id: BossTab, label: string, icon: React.ReactNode) => (
+    <button
+      type="button"
+      onClick={() => setActiveTab(id)}
+      className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition ${activeTab === id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}
+    >
+      {icon}{label}
+    </button>
+  );
+
+  return (
+    <div className="mx-auto flex w-full max-w-[1550px] flex-col gap-5 p-4 sm:p-6 lg:p-8">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-rose-600"><Crown size={15} />Boss活动</div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-900">Boss管理</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">配置Boss模板、奖励方案和手动召唤记录。当前召唤执行模式为“仅记录”，不会自动调用PalDefender生成Boss。</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-500">
+              <input type="checkbox" checked={includeArchived} onChange={(event) => setIncludeArchived(event.target.checked)} className="h-4 w-4 rounded border-slate-300" />显示归档
+            </label>
+            <button type="button" onClick={() => void refresh()} className="pp-button"><RefreshCw size={14} />刷新</button>
+          </div>
+        </div>
+        {notice && <div className={`mt-4 rounded-xl border px-4 py-3 text-sm font-semibold ${notice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>{notice.text}</div>}
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <Metric label="奖励方案" value={summary?.rewards || 0} icon={<Gift size={18} />} />
+        <Metric label="Boss模板" value={summary?.templates || 0} icon={<Skull size={18} />} />
+        <Metric label="等待处理" value={summary?.pending_summons || 0} icon={<Clock3 size={18} />} />
+        <Metric label="进行中" value={summary?.active_summons || 0} icon={<Sword size={18} />} />
+        <Metric label="已完成" value={summary?.completed_summons || 0} icon={<CheckCircle2 size={18} />} />
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap gap-1 rounded-xl bg-slate-50 p-1">
+          {tabButton('templates', `Boss模板 (${templates.length})`, <Skull size={14} />)}
+          {tabButton('rewards', `奖励方案 (${rewards.length})`, <Gift size={14} />)}
+          {tabButton('summons', `召唤记录 (${summons.length})`, <Sword size={14} />)}
+        </div>
+      </section>
+
+      {activeTab === 'templates' && <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div><h2 className="font-black text-slate-900">Boss模板</h2><p className="mt-1 text-xs text-slate-400">模板保存帕鲁、等级、倍率、坐标和关联奖励。召唤记录创建时会保存快照。</p></div>
+          <button type="button" onClick={openTemplateCreate} className="pp-btn pp-btn--primary"><Plus size={14} />新建模板</button>
+        </div>
+        {templatesQuery.error && <ErrorBox error={templatesQuery.error} />}
+        <div className="grid gap-3 lg:grid-cols-2">
+          {templates.map((template) => <article key={template.id} className="rounded-xl border border-slate-200 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div><h3 className="font-black text-slate-800">{template.name}</h3><p className="mt-1 text-xs text-slate-400">{template.description || template.id}</p></div>
+              <EnabledBadge enabled={template.enabled} archived={template.archived_at} />
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+              <Data label="帕鲁" value={template.pal_id} mono />
+              <Data label="等级 / 数量" value={`${template.level} / ${template.count}`} />
+              <Data label="生命倍率" value={`${template.hp_multiplier}×`} />
+              <Data label="攻击 / 防御" value={`${template.attack_multiplier}× / ${template.defense_multiplier}×`} />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-bold text-slate-500">
+              <span className="rounded-full bg-slate-100 px-2.5 py-1">{template.capturable ? '允许捕获' : '禁止捕获'}</span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1">半径 {number.format(template.spawn_radius)}</span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1">冷却 {formatDuration(template.cooldown_seconds)}</span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1">奖励 {rewardByID.get(template.reward_id || '')?.name || '无'}</span>
+            </div>
+            <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+              <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-slate-400"><MapPin size={13} />{template.location.label || `${template.location.x}, ${template.location.y}, ${template.location.z}`}</span>
+              <div className="flex gap-1.5">
+                {!template.archived_at && <IconButton title="编辑模板" icon={<Pencil size={14} />} onClick={() => openTemplateEdit(template)} />}
+                {!template.archived_at && <IconButton danger title="归档模板" icon={<Archive size={14} />} onClick={() => {
+                  if (window.confirm(`归档Boss模板“${template.name}”？历史召唤记录不会删除。`)) archiveTemplateMutation.mutate(template);
+                }} />}
+              </div>
+            </div>
+          </article>)}
+          {!templatesQuery.isLoading && templates.length === 0 && <Empty text="暂无Boss模板。先创建奖励方案，再建立Boss模板。" />}
+        </div>
+      </section>}
+
+      {activeTab === 'rewards' && <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div><h2 className="font-black text-slate-900">奖励方案</h2><p className="mt-1 text-xs text-slate-400">奖励可组合积分、PalDefender物品和帕鲁模板；本版只负责配置，尚未自动结算参与者奖励。</p></div>
+          <button type="button" onClick={openRewardCreate} className="pp-btn pp-btn--primary"><Plus size={14} />新建奖励</button>
+        </div>
+        {rewardsQuery.error && <ErrorBox error={rewardsQuery.error} />}
+        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+          {rewards.map((reward) => <article key={reward.id} className="rounded-xl border border-slate-200 p-4">
+            <div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-slate-800">{reward.name}</h3><p className="mt-1 text-xs leading-5 text-slate-400">{reward.description || reward.id}</p></div><EnabledBadge enabled={reward.enabled} archived={reward.archived_at} /></div>
+            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+              <Data label="积分" value={number.format(reward.points)} />
+              <Data label="物品种类" value={number.format(reward.items.length)} />
+              <Data label="帕鲁模板" value={number.format(reward.pal_templates.length)} />
+            </div>
+            {(reward.items.length > 0 || reward.pal_templates.length > 0) && <div className="mt-3 rounded-lg bg-slate-50 p-3 text-[11px] leading-5 text-slate-500">
+              {reward.items.slice(0, 4).map((item) => <div key={item.item_id}>{item.item_id} × {number.format(item.count)}</div>)}
+              {reward.items.length > 4 && <div>另有 {reward.items.length - 4} 种物品</div>}
+              {reward.pal_templates.slice(0, 3).map((name) => <div key={name}>模板：{name}</div>)}
+              {reward.pal_templates.length > 3 && <div>另有 {reward.pal_templates.length - 3} 个模板</div>}
+            </div>}
+            <div className="mt-4 flex justify-end gap-1.5 border-t border-slate-100 pt-3">
+              {!reward.archived_at && <IconButton title="编辑奖励" icon={<Pencil size={14} />} onClick={() => openRewardEdit(reward)} />}
+              {!reward.archived_at && <IconButton danger title="归档奖励" icon={<Archive size={14} />} onClick={() => {
+                if (window.confirm(`归档奖励方案“${reward.name}”？已关联模板仍保留奖励ID。`)) archiveRewardMutation.mutate(reward);
+              }} />}
+            </div>
+          </article>)}
+          {!rewardsQuery.isLoading && rewards.length === 0 && <Empty text="暂无奖励方案。" />}
+        </div>
+      </section>}
+
+      {activeTab === 'summons' && <section className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2 text-sm font-black text-slate-900"><Play size={16} />创建手动召唤记录</div>
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800"><ShieldAlert className="mr-1 inline" size={14} />当前仅创建审计记录，不会在游戏内生成Boss。完成实际操作后再更新记录状态。</div>
+          <label className="mt-4 block"><FieldLabel>Boss模板</FieldLabel><select value={summonTemplateID} onChange={(event) => setSummonTemplateID(event.target.value)} className="pp-input w-full"><option value="">请选择模板</option>{activeTemplates.map((template) => <option key={template.id} value={template.id}>{template.name} · Lv.{template.level} · {template.pal_id}</option>)}</select></label>
+          <label className="mt-4 block"><FieldLabel>操作备注</FieldLabel><textarea value={summonNotes} onChange={(event) => setSummonNotes(event.target.value)} rows={3} maxLength={4096} className="pp-input w-full resize-y" placeholder="例如：周末活动场次、人工RCON命令记录" /></label>
+          <label className="mt-4 flex items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={overrideLocation} onChange={(event) => setOverrideLocation(event.target.checked)} className="h-4 w-4 rounded border-slate-300" /><span><span className="block text-sm font-black text-slate-800">覆盖模板坐标</span><span className="mt-1 block text-xs text-slate-400">仅影响本次记录快照。</span></span></label>
+          {overrideLocation && <div className="mt-3 grid grid-cols-3 gap-2"><Coordinate label="X" value={summonLocation.x} onChange={(value) => setSummonLocation((current) => ({ ...current, x: value }))} /><Coordinate label="Y" value={summonLocation.y} onChange={(value) => setSummonLocation((current) => ({ ...current, y: value }))} /><Coordinate label="Z" value={summonLocation.z} onChange={(value) => setSummonLocation((current) => ({ ...current, z: value }))} /><label className="col-span-3"><FieldLabel>地点名称</FieldLabel><input value={summonLocation.label} onChange={(event) => setSummonLocation((current) => ({ ...current, label: event.target.value }))} className="pp-input w-full" /></label></div>}
+          <button type="button" disabled={!summonTemplateID || createSummonMutation.isPending} onClick={() => createSummonMutation.mutate()} className="pp-btn pp-btn--primary mt-4 w-full justify-center">{createSummonMutation.isPending ? <LoaderCircle className="animate-spin" size={15} /> : <Plus size={15} />}创建召唤记录</button>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><h2 className="font-black text-slate-900">召唤记录</h2><p className="mt-1 text-xs text-slate-400">状态和事件名称均以中文显示，内部仍保存稳定状态代码。</p></div>
+            <select value={summonStatus} onChange={(event) => setSummonStatus(event.target.value as BossSummonStatus | '')} className="pp-input min-w-40"><option value="">全部状态</option>{Object.entries(summonStatusLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+          </div>
+          {summonsQuery.error && <ErrorBox error={summonsQuery.error} />}
+          <div className="space-y-3">
+            {summons.map((summon) => <article key={summon.id} className="rounded-xl border border-slate-200 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-black text-slate-800">{summon.template_name}</h3><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${summonStatusClass[summon.status]}`}>{summonStatusLabel[summon.status]}</span><span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700">仅记录模式</span></div><div className="mt-1 font-mono text-[11px] text-slate-400">{summon.id}</div></div>
+                <div className="flex flex-wrap gap-1.5">
+                  <button type="button" onClick={() => setSelectedSummonID(selectedSummonID === summon.id ? '' : summon.id)} className="pp-button">审计记录</button>
+                  {possibleTransitions(summon).map((status) => <button key={status} type="button" disabled={transitionMutation.isPending} onClick={() => transitionMutation.mutate({ summon, status })} className="pp-button">{summonStatusLabel[status]}</button>)}
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-5"><Data label="帕鲁" value={summon.pal_id} mono /><Data label="等级 / 数量" value={`${summon.level} / ${summon.count}`} /><Data label="生命倍率" value={`${summon.hp_multiplier}×`} /><Data label="坐标" value={`${summon.location.x}, ${summon.location.y}, ${summon.location.z}`} /><Data label="申请时间" value={formatDate(summon.requested_at)} /></div>
+              {summon.notes && <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">{summon.notes}</div>}
+              {summon.failure && <div className="mt-3 flex gap-2 rounded-lg bg-rose-50 p-3 text-xs text-rose-700"><CircleAlert className="shrink-0" size={14} />{summon.failure}</div>}
+              {selectedSummonID === summon.id && <SummonEvents loading={summonEventsQuery.isLoading} error={summonEventsQuery.error} events={summonEventsQuery.data?.items || []} />}
+            </article>)}
+            {!summonsQuery.isLoading && summons.length === 0 && <Empty text="暂无召唤记录。" />}
+          </div>
+        </div>
+      </section>}
+
+      {rewardEditorOpen && <Modal title={rewardEditingID ? '编辑奖励方案' : '新建奖励方案'} subtitle={rewardEditingID || '保存后生成奖励ID'} onClose={() => setRewardEditorOpen(false)} footer={<><button type="button" onClick={() => setRewardEditorOpen(false)} className="pp-button">取消</button><button type="button" disabled={saveRewardMutation.isPending || !rewardDraft.name.trim()} onClick={() => saveRewardMutation.mutate()} className="pp-btn pp-btn--primary">{saveRewardMutation.isPending ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}保存奖励</button></>}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="sm:col-span-2"><FieldLabel>奖励名称</FieldLabel><input value={rewardDraft.name} onChange={(event) => setRewardDraft((current) => ({ ...current, name: event.target.value }))} maxLength={128} className="pp-input w-full" /></label>
+          <label className="sm:col-span-2"><FieldLabel>说明</FieldLabel><textarea value={rewardDraft.description || ''} onChange={(event) => setRewardDraft((current) => ({ ...current, description: event.target.value }))} rows={2} className="pp-input w-full resize-y" /></label>
+          <label><FieldLabel>积分奖励</FieldLabel><input type="number" min={0} value={rewardDraft.points} onChange={(event) => setRewardDraft((current) => ({ ...current, points: Math.max(0, Math.trunc(Number(event.target.value) || 0)) }))} className="pp-input w-full" /></label>
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={rewardDraft.enabled} onChange={(event) => setRewardDraft((current) => ({ ...current, enabled: event.target.checked }))} className="h-4 w-4 rounded border-slate-300" /><span className="text-sm font-black text-slate-800">启用奖励方案</span></label>
+        </div>
+        <CatalogSection title="PalDefender物品" description="搜索中文名称或内部物品ID，点击后加入奖励列表。" search={itemSearch} onSearch={setItemSearch} loading={itemCatalogQuery.isLoading} error={itemCatalogQuery.error}>
+          <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200"><div className="divide-y divide-slate-100">{filteredItems.map((item) => <button key={item.id} type="button" onClick={() => addRewardItem(item.id)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs hover:bg-slate-50"><span className="font-bold text-slate-700">{item.name}</span><code className="text-[10px] text-slate-400">{item.id}</code></button>)}</div></div>
+          <div className="mt-3 space-y-2">{rewardDraft.items.map((item) => <RewardItemEditor key={item.item_id} item={item} onCount={(count) => setRewardItemCount(item.item_id, count)} onRemove={() => removeRewardItem(item.item_id)} />)}{rewardDraft.items.length === 0 && <div className="rounded-lg bg-slate-50 py-4 text-center text-xs text-slate-400">未选择物品</div>}</div>
+        </CatalogSection>
+        <CatalogSection title="帕鲁模板" description="从PalDefender已保存模板中选择。" search={templateSearch} onSearch={setTemplateSearch} loading={palTemplatesQuery.isLoading} error={palTemplatesQuery.error}>
+          <div className="max-h-36 overflow-y-auto rounded-xl border border-slate-200"><div className="divide-y divide-slate-100">{filteredPalTemplates.map((template) => <button key={template.name} type="button" onClick={() => addRewardPalTemplate(template.name)} className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-slate-50"><span className="font-bold text-slate-700">{template.name}</span><span className="text-slate-400">{number.format(template.size)} B</span></button>)}</div></div>
+          <div className="mt-3 flex flex-wrap gap-2">{rewardDraft.pal_templates.map((name) => <span key={name} className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700">{name}<button type="button" onClick={() => setRewardDraft((current) => ({ ...current, pal_templates: current.pal_templates.filter((item) => item !== name) }))}><X size={12} /></button></span>)}{rewardDraft.pal_templates.length === 0 && <span className="text-xs text-slate-400">未选择帕鲁模板</span>}</div>
+        </CatalogSection>
+      </Modal>}
+
+      {templateEditorOpen && <Modal title={templateEditingID ? '编辑Boss模板' : '新建Boss模板'} subtitle={templateEditingID || '保存后生成模板ID'} onClose={() => setTemplateEditorOpen(false)} footer={<><button type="button" onClick={() => setTemplateEditorOpen(false)} className="pp-button">取消</button><button type="button" disabled={saveTemplateMutation.isPending || !templateDraft.name.trim() || !templateDraft.pal_id} onClick={() => saveTemplateMutation.mutate()} className="pp-btn pp-btn--primary">{saveTemplateMutation.isPending ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}保存模板</button></>}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="sm:col-span-2"><FieldLabel>模板名称</FieldLabel><input value={templateDraft.name} onChange={(event) => setTemplateDraft((current) => ({ ...current, name: event.target.value }))} maxLength={128} className="pp-input w-full" /></label>
+          <label className="sm:col-span-2"><FieldLabel>说明</FieldLabel><textarea value={templateDraft.description || ''} onChange={(event) => setTemplateDraft((current) => ({ ...current, description: event.target.value }))} rows={2} className="pp-input w-full resize-y" /></label>
+          <label className="sm:col-span-2"><FieldLabel>选择帕鲁</FieldLabel><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} /><input value={palSearch} onChange={(event) => setPalSearch(event.target.value)} className="pp-input w-full pl-9" placeholder="搜索中文名或Pal ID" /></div><div className="mt-2 max-h-40 overflow-y-auto rounded-xl border border-slate-200"><div className="divide-y divide-slate-100">{filteredPals.map((pal) => <button key={pal.id} type="button" onClick={() => { setTemplateDraft((current) => ({ ...current, pal_id: pal.id })); setPalSearch(`${pal.name} · ${pal.id}`); }} className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-slate-50 ${templateDraft.pal_id === pal.id ? 'bg-rose-50' : ''}`}><span className="font-bold text-slate-700">{pal.name}</span><code className="text-[10px] text-slate-400">{pal.id}</code></button>)}</div></div><span className="mt-1.5 block text-xs text-slate-400">已选择：{templateDraft.pal_id || '无'}</span></label>
+          <NumberField label="等级" min={1} max={100} value={templateDraft.level} onChange={(value) => setTemplateDraft((current) => ({ ...current, level: value }))} />
+          <NumberField label="生成数量" min={1} max={100} value={templateDraft.count} onChange={(value) => setTemplateDraft((current) => ({ ...current, count: value }))} />
+          <NumberField label="生命倍率" min={0.1} max={100} step={0.1} value={templateDraft.hp_multiplier} onChange={(value) => setTemplateDraft((current) => ({ ...current, hp_multiplier: value }))} />
+          <NumberField label="攻击倍率" min={0.1} max={100} step={0.1} value={templateDraft.attack_multiplier} onChange={(value) => setTemplateDraft((current) => ({ ...current, attack_multiplier: value }))} />
+          <NumberField label="防御倍率" min={0.1} max={100} step={0.1} value={templateDraft.defense_multiplier} onChange={(value) => setTemplateDraft((current) => ({ ...current, defense_multiplier: value }))} />
+          <NumberField label="生成半径" min={0} max={100000} value={templateDraft.spawn_radius} onChange={(value) => setTemplateDraft((current) => ({ ...current, spawn_radius: value }))} />
+          <NumberField label="冷却秒数" min={0} max={604800} value={templateDraft.cooldown_seconds} onChange={(value) => setTemplateDraft((current) => ({ ...current, cooldown_seconds: Math.trunc(value) }))} />
+          <label><FieldLabel>关联奖励</FieldLabel><select value={templateDraft.reward_id || ''} onChange={(event) => setTemplateDraft((current) => ({ ...current, reward_id: event.target.value }))} className="pp-input w-full"><option value="">无奖励</option>{rewards.filter((reward) => !reward.archived_at).map((reward) => <option key={reward.id} value={reward.id}>{reward.name}</option>)}</select></label>
+          <div className="sm:col-span-2"><FieldLabel>默认生成坐标</FieldLabel><div className="grid grid-cols-3 gap-2"><Coordinate label="X" value={templateDraft.location.x} onChange={(value) => setTemplateDraft((current) => ({ ...current, location: { ...current.location, x: value } }))} /><Coordinate label="Y" value={templateDraft.location.y} onChange={(value) => setTemplateDraft((current) => ({ ...current, location: { ...current.location, y: value } }))} /><Coordinate label="Z" value={templateDraft.location.z} onChange={(value) => setTemplateDraft((current) => ({ ...current, location: { ...current.location, z: value } }))} /></div><input value={templateDraft.location.label || ''} onChange={(event) => setTemplateDraft((current) => ({ ...current, location: { ...current.location, label: event.target.value } }))} className="pp-input mt-2 w-full" placeholder="地点名称，例如：火山竞技场" /></div>
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={templateDraft.capturable} onChange={(event) => setTemplateDraft((current) => ({ ...current, capturable: event.target.checked }))} className="h-4 w-4 rounded border-slate-300" /><span className="text-sm font-black text-slate-800">允许捕获</span></label>
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={templateDraft.enabled} onChange={(event) => setTemplateDraft((current) => ({ ...current, enabled: event.target.checked }))} className="h-4 w-4 rounded border-slate-300" /><span className="text-sm font-black text-slate-800">启用模板</span></label>
+        </div>
+      </Modal>}
+    </div>
+  );
+};
+
+const Data: React.FC<{ label: string; value: React.ReactNode; mono?: boolean }> = ({ label, value, mono = false }) => (
+  <div className="min-w-0 rounded-lg bg-slate-50 px-3 py-2"><div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</div><div className={`mt-1 truncate font-bold text-slate-700 ${mono ? 'font-mono text-[11px]' : 'text-xs'}`}>{value}</div></div>
+);
+
+const IconButton: React.FC<{ title: string; icon: React.ReactNode; onClick: () => void; danger?: boolean }> = ({ title, icon, onClick, danger = false }) => (
+  <button type="button" title={title} aria-label={title} onClick={onClick} className={`rounded-lg border p-2 transition ${danger ? 'border-rose-100 text-rose-500 hover:bg-rose-50' : 'border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>{icon}</button>
+);
+
+const ErrorBox: React.FC<{ error: unknown }> = ({ error }) => <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{getErrorMessage(error)}</div>;
+
+const Empty: React.FC<{ text: string }> = ({ text }) => <div className="col-span-full rounded-xl bg-slate-50 py-12 text-center text-sm text-slate-400">{text}</div>;
+
+const Coordinate: React.FC<{ label: string; value: number; onChange: (value: number) => void }> = ({ label, value, onChange }) => <label><FieldLabel>{label}</FieldLabel><input type="number" value={value} onChange={(event) => onChange(Number(event.target.value) || 0)} className="pp-input w-full" /></label>;
+
+const NumberField: React.FC<{ label: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void }> = ({ label, value, min, max, step = 1, onChange }) => <label><FieldLabel>{label}</FieldLabel><input type="number" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value) || min)} className="pp-input w-full" /></label>;
+
+const RewardItemEditor: React.FC<{ item: BossRewardItem; onCount: (count: number) => void; onRemove: () => void }> = ({ item, onCount, onRemove }) => <div className="flex items-center gap-2 rounded-lg border border-slate-200 p-2"><code className="min-w-0 flex-1 truncate text-[11px] font-bold text-slate-600">{item.item_id}</code><input type="number" min={1} value={item.count} onChange={(event) => onCount(Number(event.target.value))} className="pp-input w-28" /><button type="button" onClick={onRemove} className="rounded-lg p-2 text-rose-500 hover:bg-rose-50"><X size={14} /></button></div>;
+
+const CatalogSection: React.FC<React.PropsWithChildren<{ title: string; description: string; search: string; onSearch: (value: string) => void; loading: boolean; error: unknown }>> = ({ title, description, search, onSearch, loading, error, children }) => <section className="mt-5 rounded-xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-slate-800">{title}</h3><p className="mt-1 text-xs text-slate-400">{description}</p></div>{loading && <LoaderCircle className="animate-spin text-slate-400" size={16} />}</div><label className="relative mt-3 block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} /><input value={search} onChange={(event) => onSearch(event.target.value)} className="pp-input w-full pl-9" placeholder="搜索" /></label>{error && <div className="mt-2 text-xs font-semibold text-rose-600">{getErrorMessage(error)}</div>}<div className="mt-3">{children}</div></section>;
+
+const Modal: React.FC<React.PropsWithChildren<{ title: string; subtitle: string; onClose: () => void; footer: React.ReactNode }>> = ({ title, subtitle, onClose, footer, children }) => <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl"><div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4"><div><h2 className="font-black text-slate-900">{title}</h2><p className="mt-1 font-mono text-[11px] text-slate-400">{subtitle}</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={18} /></button></div><div className="p-5">{children}</div><div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">{footer}</div></div></div>;
+
+const SummonEvents: React.FC<{ loading: boolean; error: unknown; events: BossSummonEvent[] }> = ({ loading, error, events }) => <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="mb-2 text-xs font-black text-slate-700">状态审计</div>{loading && <div className="py-4 text-center text-xs text-slate-400"><LoaderCircle className="mr-2 inline animate-spin" size={13} />加载中</div>}{error && <div className="text-xs font-semibold text-rose-600">{getErrorMessage(error)}</div>}<div className="space-y-2">{events.map((event) => <div key={event.id} className="flex items-start gap-3 rounded-lg bg-white p-3 text-xs"><span className={`mt-0.5 rounded-full px-2 py-0.5 font-bold ${summonStatusClass[event.to_status]}`}>{summonStatusLabel[event.to_status]}</span><div className="min-w-0 flex-1"><div className="text-slate-600">{event.message || `${event.from_status ? `${summonStatusLabel[event.from_status as BossSummonStatus] || event.from_status} → ` : ''}${summonStatusLabel[event.to_status]}`}</div><div className="mt-1 text-[10px] text-slate-400">{event.actor || '系统'} · {formatDate(event.created_at)}</div></div></div>)}{!loading && events.length === 0 && <div className="py-3 text-center text-xs text-slate-400">暂无审计事件</div>}</div></div>;
+
+const formatDuration = (seconds: number) => {
+  if (seconds <= 0) return '无';
+  if (seconds % 86400 === 0) return `${seconds / 86400}天`;
+  if (seconds % 3600 === 0) return `${seconds / 3600}小时`;
+  if (seconds % 60 === 0) return `${seconds / 60}分钟`;
+  return `${seconds}秒`;
+};
+
+const formatDate = (value?: string) => value ? new Date(value).toLocaleString('zh-CN') : '—';
