@@ -914,37 +914,40 @@ export interface components {
       "revision": string;
     };
     "ModConfigurationAdapter": {
+      "actions"?: Array<{ "id"?: string; "available"?: boolean; "restart_required"?: boolean }>;
       "available": boolean;
+      "configured"?: boolean;
+      "dependencies"?: Array<{ "id"?: string; "name"?: string; "workshop_id"?: string; "mod_id"?: string; "installed"?: boolean; "enabled"?: boolean; "required"?: boolean }>;
       "description": string;
+      "enabled"?: boolean;
       "files": Array<components["schemas"]["ModConfigFile"]>;
       "id": string;
-      "name": string;
-      "reload_behavior": "online_reload" | "restart_required";
-      "workshop_id"?: string;
       "installed"?: boolean;
-      "configured"?: boolean;
-      "enabled"?: boolean;
+      "name": string;
+      "reference_urls"?: Record<string, string>;
+      "reload_behavior": "online_reload" | "restart_required";
       "status"?: "not_installed" | "dependency_missing" | "not_configured" | "disabled" | "restart_required" | "ready";
       "status_detail"?: string;
-      "dependencies"?: Array<{ "id"?: string; "name"?: string; "workshop_id"?: string; "mod_id"?: string; "installed"?: boolean; "enabled"?: boolean; "required"?: boolean }>;
-      "actions"?: Array<{ "id"?: string; "available"?: boolean; "restart_required"?: boolean }>;
-      "reference_urls"?: Record<string, string>;
+      "workshop_id"?: string;
     };
     "ModConfigurationAdapterListEnvelope": {
       "data": Array<components["schemas"]["ModConfigurationAdapter"]>;
       "ok": true;
     };
     "ModConfigurationField": {
+      "description"?: string;
+      "group"?: string;
       "label": string;
       "max"?: number;
       "min"?: number;
+      "options"?: Array<{
+        "label"?: string;
+        "value"?: unknown;
+      }>;
       "path": string;
       "type": "boolean" | "integer" | "number" | "string";
-      "value": unknown;
-      "description"?: string;
-      "group"?: string;
-      "options"?: Array<{ "value"?: unknown; "label"?: string }>;
       "unit"?: string;
+      "value": unknown;
     };
     "ModImportInspectRequest": {
       "source": string;
