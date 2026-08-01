@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Activity,
   AlertTriangle,
+  CheckCircle2,
+  CircleAlert,
   Coins,
   Database,
   FileSearch,
@@ -22,7 +25,16 @@ export const Economy: React.FC = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [prefix, setPrefix] = useState('!');
+  const [allowBareCommands, setAllowBareCommands] = useState(true);
   const [dailyPoints, setDailyPoints] = useState(10);
+  const [streakEnabled, setStreakEnabled] = useState(true);
+  const [streakBonusPerDay, setStreakBonusPerDay] = useState(2);
+  const [streakMaxDays, setStreakMaxDays] = useState(7);
+  const [cycleDays, setCycleDays] = useState(7);
+  const [cycleBonus, setCycleBonus] = useState(10);
+  const [checkinAliases, setCheckinAliases] = useState('签到, qd, checkin');
+  const [pointsAliases, setPointsAliases] = useState('积分, jf, points');
+  const [helpAliases, setHelpAliases] = useState('帮助, 菜单, help');
   const [selected, setSelected] = useState<EconomyAccount | null>(null);
   const [delta, setDelta] = useState(0);
   const [reason, setReason] = useState('管理员调整');
@@ -32,24 +44,66 @@ export const Economy: React.FC = () => {
 
   const configQuery = useQuery({ queryKey: ['economy', 'config'], queryFn: economyApi.config });
   const summaryQuery = useQuery({ queryKey: ['economy', 'summary'], queryFn: economyApi.summary });
+  const bridgeQuery = useQuery({ queryKey: ['economy', 'game-event-bridge'], queryFn: economyApi.bridgeStatus, refetchInterval: 5000 });
+  const bridgeObservationsQuery = useQuery({ queryKey: ['economy', 'game-event-bridge', 'observations'], queryFn: economyApi.bridgeObservations, refetchInterval: 5000 });
   const accountsQuery = useQuery({ queryKey: ['economy', 'accounts', search], queryFn: () => economyApi.accounts(search) });
   const ledgerQuery = useQuery({
     queryKey: ['economy', 'ledger', selected?.player_uid],
     queryFn: () => economyApi.ledger(selected?.player_uid || ''),
     enabled: Boolean(selected?.player_uid),
   });
+  const checkinsQuery = useQuery({
+    queryKey: ['economy', 'checkins', selected?.player_uid],
+    queryFn: () => economyApi.checkins(selected?.player_uid || ''),
+    enabled: Boolean(selected?.player_uid),
+  });
 
   useEffect(() => {
     if (!configQuery.data) return;
     setPrefix(configQuery.data.command_prefix);
+    setAllowBareCommands(configQuery.data.allow_bare_commands);
     setDailyPoints(configQuery.data.daily_checkin_points);
+    setStreakEnabled(configQuery.data.checkin_streak_enabled);
+    setStreakBonusPerDay(configQuery.data.checkin_streak_bonus_per_day);
+    setStreakMaxDays(configQuery.data.checkin_streak_max_days);
+    setCycleDays(configQuery.data.checkin_cycle_days);
+    setCycleBonus(configQuery.data.checkin_cycle_bonus);
+    setCheckinAliases(configQuery.data.checkin_aliases.join(', '));
+    setPointsAliases(configQuery.data.points_aliases.join(', '));
+    setHelpAliases(configQuery.data.help_aliases.join(', '));
   }, [configQuery.data]);
 
+  const parseAliases = (value: string) => value.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean);
+
   const saveConfig = useMutation({
-    mutationFn: () => economyApi.updateConfig({ command_prefix: prefix, daily_checkin_points: dailyPoints }),
+    mutationFn: () => economyApi.updateConfig({
+      command_prefix: prefix,
+      allow_bare_commands: allowBareCommands,
+      daily_checkin_points: dailyPoints,
+      checkin_streak_enabled: streakEnabled,
+      checkin_streak_bonus_per_day: streakBonusPerDay,
+      checkin_streak_max_days: streakMaxDays,
+      checkin_cycle_days: cycleDays,
+      checkin_cycle_bonus: cycleBonus,
+      checkin_aliases: parseAliases(checkinAliases),
+      points_aliases: parseAliases(pointsAliases),
+      help_aliases: parseAliases(helpAliases),
+    }),
     onSuccess: async () => {
       setNotice({ type: 'success', text: prefix === '' ? '已启用无前缀命令模式。' : `命令前缀已更新为“${prefix}”。` });
       await queryClient.invalidateQueries({ queryKey: ['economy', 'config'] });
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const repairBridge = useMutation({
+    mutationFn: economyApi.repairBridge,
+    onSuccess: async (result) => {
+      setNotice({ type: result.reload_required ? 'error' : 'success', text: result.reload_required ? `日志开关已写入，但热重载失败：${result.reload_error || '请重启服务端'}` : '已启用聊天、PlayerUID、捕捉、死亡、登录和制作日志，事件桥接将在数秒内生效。' });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['economy', 'game-event-bridge'] }),
+        queryClient.invalidateQueries({ queryKey: ['economy', 'game-event-bridge', 'observations'] }),
+      ]);
     },
     onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
   });
@@ -112,7 +166,21 @@ export const Economy: React.FC = () => {
   const summary = summaryQuery.data;
   const accounts = accountsQuery.data?.items || [];
   const loading = configQuery.isLoading || summaryQuery.isLoading || accountsQuery.isLoading;
-  const commandExamples = useMemo(() => ['签到', '积分', '帮助'].map((command) => `${prefix}${command}`), [prefix]);
+  const commandExamples = useMemo(() => [
+    parseAliases(checkinAliases)[0] || '签到',
+    parseAliases(pointsAliases)[0] || '积分',
+    parseAliases(helpAliases)[0] || '帮助',
+  ].flatMap((command) => {
+    const values = [`${prefix}${command}`];
+    if (prefix && allowBareCommands) values.push(command);
+    return values;
+  }), [allowBareCommands, checkinAliases, helpAliases, pointsAliases, prefix]);
+  const streakPreview = useMemo(() => Array.from({ length: Math.min(Math.max(streakMaxDays, 1), 14) }, (_, index) => {
+    const day = index + 1;
+    const streakBonus = streakEnabled ? Math.min(day - 1, Math.max(streakMaxDays - 1, 0)) * streakBonusPerDay : 0;
+    const dayCycleBonus = streakEnabled && cycleDays > 0 && day % cycleDays === 0 ? cycleBonus : 0;
+    return { day, points: dailyPoints + streakBonus + dayCycleBonus };
+  }), [cycleBonus, cycleDays, dailyPoints, streakBonusPerDay, streakEnabled, streakMaxDays]);
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ['economy'] });
@@ -148,10 +216,31 @@ export const Economy: React.FC = () => {
               <input value={prefix} onChange={(event) => setPrefix(event.target.value)} maxLength={16} className="pp-input w-full" placeholder="留空表示无前缀" />
               <span className="mt-1.5 block text-xs leading-5 text-slate-400">允许留空；不能包含空格、换行或控制字符，最多16个字符。</span>
             </label>
+            <label className="flex items-start gap-3 rounded-xl border border-sky-100 bg-sky-50 p-3 text-sm text-slate-700">
+              <input type="checkbox" className="mt-0.5 size-4" checked={allowBareCommands} onChange={(event) => setAllowBareCommands(event.target.checked)} />
+              <span><strong className="block">同时允许无前缀命令</strong><span className="mt-1 block text-xs text-slate-500">启用后，配置了 <code className="font-mono">!</code> 前缀时，玩家发送“签到”或“!签到”都能触发。</span></span>
+            </label>
             <label className="block">
               <span className="mb-1.5 block text-xs font-bold text-slate-500">每日签到积分</span>
               <input type="number" min={0} max={1000000} value={dailyPoints} onChange={(event) => setDailyPoints(Number(event.target.value))} className="pp-input w-full" />
             </label>
+            <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <input type="checkbox" className="mt-0.5 size-4" checked={streakEnabled} onChange={(event) => setStreakEnabled(event.target.checked)} />
+              <span><strong className="block">启用连续签到奖励</strong><span className="mt-1 block text-xs text-slate-500">漏签后从第1天重新计算；同一天重复发送不会重复加分。</span></span>
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block"><span className="mb-1.5 block text-xs font-bold text-slate-500">每日递增奖励</span><input type="number" min={0} max={1000000} value={streakBonusPerDay} onChange={(event) => setStreakBonusPerDay(Number(event.target.value))} className="pp-input w-full" disabled={!streakEnabled} /></label>
+              <label className="block"><span className="mb-1.5 block text-xs font-bold text-slate-500">递增封顶天数</span><input type="number" min={1} max={365} value={streakMaxDays} onChange={(event) => setStreakMaxDays(Number(event.target.value))} className="pp-input w-full" disabled={!streakEnabled} /></label>
+              <label className="block"><span className="mb-1.5 block text-xs font-bold text-slate-500">周期奖励间隔</span><input type="number" min={0} max={365} value={cycleDays} onChange={(event) => setCycleDays(Number(event.target.value))} className="pp-input w-full" disabled={!streakEnabled} /><span className="mt-1 block text-[11px] text-slate-400">填0关闭周期奖励。</span></label>
+              <label className="block"><span className="mb-1.5 block text-xs font-bold text-slate-500">周期额外奖励</span><input type="number" min={0} max={1000000} value={cycleBonus} onChange={(event) => setCycleBonus(Number(event.target.value))} className="pp-input w-full" disabled={!streakEnabled || cycleDays === 0} /></label>
+            </div>
+            <div className="rounded-xl border border-sky-100 bg-sky-50 p-3">
+              <div className="mb-2 text-xs font-bold text-sky-700">连续签到积分预览</div>
+              <div className="flex flex-wrap gap-2">{streakPreview.map((item) => <span key={item.day} className="rounded-lg bg-white px-2 py-1 text-xs font-bold text-slate-700 shadow-sm">第{item.day}天 {number.format(item.points)}</span>)}</div>
+            </div>
+            <label className="block"><span className="mb-1.5 block text-xs font-bold text-slate-500">签到命令别名</span><input value={checkinAliases} onChange={(event) => setCheckinAliases(event.target.value)} className="pp-input w-full" placeholder="签到, qd, checkin" /><span className="mt-1 block text-[11px] text-slate-400">使用逗号分隔，游戏中任一别名都可触发。</span></label>
+            <label className="block"><span className="mb-1.5 block text-xs font-bold text-slate-500">积分查询别名</span><input value={pointsAliases} onChange={(event) => setPointsAliases(event.target.value)} className="pp-input w-full" placeholder="积分, jf, points" /></label>
+            <label className="block"><span className="mb-1.5 block text-xs font-bold text-slate-500">帮助命令别名</span><input value={helpAliases} onChange={(event) => setHelpAliases(event.target.value)} className="pp-input w-full" placeholder="帮助, 菜单, help" /></label>
             <div className="rounded-xl bg-slate-50 p-3 text-xs leading-6 text-slate-500">
               当前示例：{commandExamples.map((example) => <code key={example} className="mr-2 rounded bg-white px-2 py-1 font-bold text-slate-700 shadow-sm">{example}</code>)}
               {prefix === '' && <p className="mt-2 text-amber-700">无前缀模式只识别完整的已知命令，普通聊天不会触发。</p>}
@@ -176,6 +265,34 @@ export const Economy: React.FC = () => {
               </tbody>
             </table>
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2"><Activity size={18} className="text-emerald-500" /><h2 className="font-black text-slate-900">游戏事件桥接</h2></div>
+            <p className="max-w-3xl text-sm leading-6 text-slate-500">直接读取 PalDefender 日志，将聊天命令、捕捉、击杀、登录和制作事件送入积分与任务系统。无需额外部署外部转发器。</p>
+          </div>
+          <button type="button" className="pp-btn pp-btn--primary shrink-0" disabled={repairBridge.isPending} onClick={() => repairBridge.mutate()}>{repairBridge.isPending ? <LoaderCircle className="animate-spin" size={15} /> : <Settings2 size={15} />}一键修复日志开关</button>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <BridgeMetric label="桥接进程" ok={Boolean(bridgeQuery.data?.bridge.running)} text={bridgeQuery.data?.bridge.running ? '运行中' : '未运行'} />
+          <BridgeMetric label="已处理事件" ok={(bridgeQuery.data?.bridge.processed_events || 0) > 0} text={number.format(bridgeQuery.data?.bridge.processed_events || 0)} />
+          <BridgeMetric label="玩家未匹配" ok={(bridgeQuery.data?.bridge.unmatched_players || 0) === 0} text={number.format(bridgeQuery.data?.bridge.unmatched_players || 0)} />
+          <BridgeMetric label="处理失败" ok={(bridgeQuery.data?.bridge.failed_events || 0) === 0} text={number.format(bridgeQuery.data?.bridge.failed_events || 0)} />
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {Object.entries(bridgeQuery.data?.bridge.configuration || {}).map(([key, enabled]) => <div key={key} className={`flex items-center justify-between rounded-xl border px-3 py-2 text-xs font-bold ${enabled ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}><span>{key}</span><span>{enabled ? '已启用' : '未启用'}</span></div>)}
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <div className="rounded-xl border border-sky-100 bg-sky-50 p-3 text-xs leading-5 text-sky-800"><strong className="block">捕捉任务</strong><code className="font-mono">PAL_CAPTURED</code>，数量字段填 <code className="font-mono">count</code>。限定某种帕鲁时，过滤条件使用内部 ID，例如 <code className="font-mono">{`{"pal_id":"SheepBall"}`}</code>。</div>
+          <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800"><strong className="block">签到任务</strong>玩家当天首次签到成功后会额外生成 <code className="font-mono">CHECKIN_COMPLETED</code>，数量字段填 <code className="font-mono">count</code>；重复签到不会推进任务。</div>
+          <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs leading-5 text-amber-800"><strong className="block">击杀任务</strong><code className="font-mono">PAL_KILLED</code> 依赖 PalDefender 死亡日志。不同版本日志可能只提供目标名称；先查看下方日志样本，再选择 <code className="font-mono">target_name</code> 或 <code className="font-mono">pal_id</code> 过滤。</div>
+        </div>
+        {bridgeQuery.data?.bridge.last_error && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{bridgeQuery.data.bridge.last_error}</div>}
+        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-100">
+          <table className="min-w-full text-left text-xs"><thead className="bg-slate-50 font-bold text-slate-500"><tr><th className="px-3 py-2">时间</th><th className="px-3 py-2">事件</th><th className="px-3 py-2">玩家</th><th className="px-3 py-2">状态</th><th className="px-3 py-2">日志样本</th></tr></thead><tbody className="divide-y divide-slate-100">{(bridgeObservationsQuery.data?.items || []).map((item) => <tr key={item.id}><td className="whitespace-nowrap px-3 py-2 text-slate-400">{new Date(item.created_at).toLocaleString()}</td><td className="px-3 py-2 font-mono font-bold text-slate-700">{item.event_type || '-'}</td><td className="px-3 py-2 text-slate-600">{item.nickname || item.player_uid || '-'}</td><td className="px-3 py-2"><span className={`rounded-full px-2 py-1 font-bold ${item.status === 'processed' ? 'bg-emerald-50 text-emerald-700' : item.status === 'unmatched_player' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>{item.status === 'processed' ? '已处理' : item.status === 'unmatched_player' ? '玩家未匹配' : '失败'}</span>{item.reason && <div className="mt-1 max-w-72 text-[11px] text-rose-500">{item.reason}</div>}</td><td className="max-w-xl truncate px-3 py-2 font-mono text-[11px] text-slate-400" title={item.sample}>{item.sample || '-'}</td></tr>)}{!bridgeObservationsQuery.isLoading && (bridgeObservationsQuery.data?.items.length || 0) === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">等待新的游戏聊天、捕捉或击杀日志。更新后首次启动只从日志末尾开始，不会回放旧事件。</td></tr>}</tbody></table>
         </div>
       </section>
 
@@ -238,6 +355,10 @@ export const Economy: React.FC = () => {
             {!ledgerQuery.isLoading && (ledgerQuery.data?.items.length || 0) === 0 && <div className="py-10 text-center text-sm text-slate-400">暂无流水。</div>}
           </div>
         </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2">
+          <h2 className="mb-4 font-black text-slate-900">签到记录</h2>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{(checkinsQuery.data?.items || []).map((item) => <div key={item.local_date} className="rounded-xl border border-slate-100 p-3"><div className="flex items-center justify-between"><span className="text-sm font-bold text-slate-700">{item.local_date}</span><span className="text-sm font-black text-emerald-600">+{number.format(item.points)}</span></div><div className="mt-2 text-[11px] leading-5 text-slate-400">连续第 {item.streak_day} 天 · 基础 {item.base_points} · 连续 {item.streak_bonus} · 周期 {item.cycle_bonus}</div></div>)}{!checkinsQuery.isLoading && (checkinsQuery.data?.items.length || 0) === 0 && <div className="py-8 text-sm text-slate-400">暂无签到记录。</div>}</div>
+        </div>
       </section>}
     </div>
   );
@@ -245,6 +366,13 @@ export const Economy: React.FC = () => {
 
 const Metric: React.FC<{ label: string; value: number; suffix?: string; icon: React.ReactNode }> = ({ label, value, suffix, icon }) => (
   <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-center justify-between text-slate-400"><span className="text-xs font-bold uppercase tracking-wider">{label}</span><span className="rounded-lg bg-sky-50 p-2 text-sky-500">{icon}</span></div><div className="text-2xl font-black tracking-tight text-slate-900">{number.format(value)}{suffix && <span className="ml-1 text-sm text-slate-400">{suffix}</span>}</div></div>
+);
+
+const BridgeMetric: React.FC<{ label: string; ok: boolean; text: string }> = ({ label, ok, text }) => (
+  <div className={`rounded-xl border p-3 ${ok ? 'border-emerald-100 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+    <div className="flex items-center gap-2 text-xs font-bold text-slate-500">{ok ? <CheckCircle2 size={14} className="text-emerald-600" /> : <CircleAlert size={14} className="text-amber-600" />}{label}</div>
+    <div className={`mt-2 text-lg font-black ${ok ? 'text-emerald-700' : 'text-amber-700'}`}>{text}</div>
+  </div>
 );
 
 const MigrationMetric: React.FC<{ label: string; value: number; suffix?: string; emphasis?: boolean; warning?: boolean }> = ({ label, value, suffix, emphasis, warning }) => (

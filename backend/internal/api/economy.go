@@ -24,6 +24,8 @@ func init() {
 		"economy-game-command-api",
 		"astrbot-economy-api",
 		"configurable-game-command-prefix",
+		"configurable-checkin-streaks",
+		"configurable-command-aliases",
 		"astrbot-economy-sqlite-import",
 	)
 }
@@ -36,6 +38,7 @@ func (s Server) registerEconomyRoutes(api *gin.RouterGroup) {
 	group.GET("/accounts", Require(PermRead), s.economyAccounts)
 	group.GET("/accounts/:player_uid", Require(PermRead), s.economyAccount)
 	group.GET("/accounts/:player_uid/ledger", Require(PermRead), s.economyLedger)
+	group.GET("/accounts/:player_uid/checkins", Require(PermRead), s.economyCheckinHistory)
 	group.POST("/accounts/:player_uid/adjust", Require(PermPlayersWrite), s.economyAdjust)
 	group.POST("/accounts/:player_uid/checkin", Require(PermPlayersWrite), s.economyCheckin)
 	group.POST("/reservations", Require(PermPlayersWrite), s.economyReserve)
@@ -140,7 +143,7 @@ func (s Server) economyConfig(c *gin.Context) {
 		economyFailure(c, err)
 		return
 	}
-	config, err := service.Config(c.Request.Context())
+	config, err := service.DetailedConfig(c.Request.Context())
 	if err != nil {
 		economyFailure(c, err)
 		return
@@ -150,8 +153,17 @@ func (s Server) economyConfig(c *gin.Context) {
 
 func (s Server) putEconomyConfig(c *gin.Context) {
 	var request struct {
-		CommandPrefix      *string `json:"command_prefix"`
-		DailyCheckinPoints *int64  `json:"daily_checkin_points"`
+		CommandPrefix            *string   `json:"command_prefix"`
+		AllowBareCommands        *bool     `json:"allow_bare_commands"`
+		DailyCheckinPoints       *int64    `json:"daily_checkin_points"`
+		CheckinStreakEnabled     *bool     `json:"checkin_streak_enabled"`
+		CheckinStreakBonusPerDay *int64    `json:"checkin_streak_bonus_per_day"`
+		CheckinStreakMaxDays     *int      `json:"checkin_streak_max_days"`
+		CheckinCycleDays         *int      `json:"checkin_cycle_days"`
+		CheckinCycleBonus        *int64    `json:"checkin_cycle_bonus"`
+		CheckinAliases           *[]string `json:"checkin_aliases"`
+		PointsAliases            *[]string `json:"points_aliases"`
+		HelpAliases              *[]string `json:"help_aliases"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
@@ -162,7 +174,7 @@ func (s Server) putEconomyConfig(c *gin.Context) {
 		economyFailure(c, err)
 		return
 	}
-	current, err := service.Config(c.Request.Context())
+	current, err := service.DetailedConfig(c.Request.Context())
 	if err != nil {
 		economyFailure(c, err)
 		return
@@ -170,10 +182,37 @@ func (s Server) putEconomyConfig(c *gin.Context) {
 	if request.CommandPrefix != nil {
 		current.CommandPrefix = *request.CommandPrefix
 	}
+	if request.AllowBareCommands != nil {
+		current.AllowBareCommands = *request.AllowBareCommands
+	}
 	if request.DailyCheckinPoints != nil {
 		current.DailyCheckinPoints = *request.DailyCheckinPoints
 	}
-	updated, err := service.UpdateConfig(c.Request.Context(), current.CommandPrefix, current.DailyCheckinPoints)
+	if request.CheckinStreakEnabled != nil {
+		current.CheckinStreakEnabled = *request.CheckinStreakEnabled
+	}
+	if request.CheckinStreakBonusPerDay != nil {
+		current.CheckinStreakBonusPerDay = *request.CheckinStreakBonusPerDay
+	}
+	if request.CheckinStreakMaxDays != nil {
+		current.CheckinStreakMaxDays = *request.CheckinStreakMaxDays
+	}
+	if request.CheckinCycleDays != nil {
+		current.CheckinCycleDays = *request.CheckinCycleDays
+	}
+	if request.CheckinCycleBonus != nil {
+		current.CheckinCycleBonus = *request.CheckinCycleBonus
+	}
+	if request.CheckinAliases != nil {
+		current.CheckinAliases = *request.CheckinAliases
+	}
+	if request.PointsAliases != nil {
+		current.PointsAliases = *request.PointsAliases
+	}
+	if request.HelpAliases != nil {
+		current.HelpAliases = *request.HelpAliases
+	}
+	updated, err := service.UpdateDetailedConfig(c.Request.Context(), current)
 	if err != nil {
 		economyFailure(c, err)
 		return
@@ -293,7 +332,7 @@ func (s Server) economyCheckin(c *gin.Context) {
 		Nickname  string `json:"nickname"`
 		SteamID   string `json:"steam_id"`
 		LocalDate string `json:"local_date"`
-		Points    int64  `json:"points"`
+		Points    *int64 `json:"points"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
@@ -304,28 +343,29 @@ func (s Server) economyCheckin(c *gin.Context) {
 		economyFailure(c, err)
 		return
 	}
-	if request.Points == 0 {
-		config, configErr := service.Config(c.Request.Context())
-		if configErr != nil {
-			economyFailure(c, configErr)
-			return
-		}
-		request.Points = config.DailyCheckinPoints
-	}
-	result, err := service.Checkin(
-		c.Request.Context(),
-		c.Param("player_uid"),
-		request.Nickname,
-		request.SteamID,
-		request.LocalDate,
-		request.Points,
-		CurrentPrincipal(c).Name,
+	result, err := service.CheckinWithPolicy(
+		c.Request.Context(), c.Param("player_uid"), request.Nickname, request.SteamID,
+		request.LocalDate, request.Points, CurrentPrincipal(c).Name,
 	)
 	if err != nil {
 		economyFailure(c, err)
 		return
 	}
 	ok(c, result)
+}
+
+func (s Server) economyCheckinHistory(c *gin.Context) {
+	service, err := s.economyService()
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	items, err := service.CheckinHistory(c.Request.Context(), c.Param("player_uid"), economyQueryInt(c, "limit", 30))
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	ok(c, gin.H{"items": items, "count": len(items)})
 }
 
 func (s Server) economyReserve(c *gin.Context) {
@@ -397,7 +437,7 @@ func (s Server) economyExecuteCommand(c *gin.Context) {
 		economyFailure(c, err)
 		return
 	}
-	result, err := service.ExecuteCommand(c.Request.Context(), request)
+	result, err := service.ExecuteCommandDetailed(c.Request.Context(), request)
 	if err != nil {
 		economyFailure(c, err)
 		return
@@ -425,7 +465,7 @@ func (s Server) astrBotEconomyCheckin(c *gin.Context) {
 		Nickname  string `json:"nickname"`
 		SteamID   string `json:"steam_id"`
 		LocalDate string `json:"local_date"`
-		Points    int64  `json:"points"`
+		Points    *int64 `json:"points"`
 		QQID      string `json:"qq_id"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -437,15 +477,7 @@ func (s Server) astrBotEconomyCheckin(c *gin.Context) {
 		economyFailure(c, err)
 		return
 	}
-	if request.Points == 0 {
-		config, configErr := service.Config(c.Request.Context())
-		if configErr != nil {
-			economyFailure(c, configErr)
-			return
-		}
-		request.Points = config.DailyCheckinPoints
-	}
-	result, err := service.Checkin(
+	result, err := service.CheckinWithPolicy(
 		c.Request.Context(), request.PlayerUID, request.Nickname, request.SteamID,
 		request.LocalDate, request.Points, "astrbot:"+strings.TrimSpace(request.QQID),
 	)

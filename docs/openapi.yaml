@@ -1956,6 +1956,16 @@ paths:
       - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500}}
       - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0}}
       responses: *readResponses
+  /economy/accounts/{player_uid}/checkins:
+    parameters:
+    - {name: player_uid, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
+    get:
+      operationId: listEconomyCheckins
+      tags: [economy]
+      x-palpanel-permission: read
+      parameters:
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 365, default: 30}}
+      responses: *readResponses
   /economy/accounts/{player_uid}/adjust:
     parameters:
     - {name: player_uid, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
@@ -2120,6 +2130,29 @@ paths:
       - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500}}
       - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0}}
       responses: *readResponses
+  /game-events/bridge/status:
+    get:
+      operationId: getGameEventBridgeStatus
+      tags: [events]
+      x-palpanel-permission: read
+      responses: *readResponses
+  /game-events/bridge/observations:
+    get:
+      operationId: listGameEventBridgeObservations
+      tags: [events]
+      x-palpanel-permission: read
+      parameters:
+      - {name: status, in: query, required: false, schema: {type: string, enum: [processed, unmatched_player, error]}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 50}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      responses: *readResponses
+  /game-events/bridge/repair:
+    post:
+      operationId: repairGameEventBridge
+      description: Enables the PalDefender chat, player identity, capture, death, login, and crafting log switches, then attempts to reload the PalDefender configuration.
+      tags: [events]
+      x-palpanel-permission: 'security:write'
+      responses: *writeResponses
   /game-events/{id}:
     parameters: [*idParameter]
     get:
@@ -4860,7 +4893,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.71}
+            version: {type: string, const: 0.8.72}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array
