@@ -62,6 +62,7 @@ func (s Server) listSaveSources(c *gin.Context) {
 		runtimeSave.Available = true
 		runtimeSave.WorldID = scope.WorldID
 	}
+	runtimeSave.SourceName = reconcileRuntimeSaveSourceName(c.Request.Context(), s.store, items, runtimeSave.WorldID)
 	if serverStatus, statusErr := s.server.Status(c.Request.Context()); statusErr == nil {
 		runtimeSave.State = strings.ToLower(strings.TrimSpace(serverStatus.Container.Status))
 		if runtimeSave.State == "" && !serverStatus.Container.Exists {
