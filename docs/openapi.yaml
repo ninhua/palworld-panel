@@ -2090,6 +2090,20 @@ paths:
       tags: [operations, tasks]
       x-palpanel-permission: read
       responses: *readResponses
+  /tasks/diagnostics/evaluate:
+    post:
+      operationId: evaluateOperationsTaskEvent
+      tags: [operations, tasks]
+      x-palpanel-permission: read
+      requestBody: *jsonRequest
+      responses: *writeResponses
+  /tasks/diagnostics/replay:
+    post:
+      operationId: replayOperationsTaskEvent
+      tags: [operations, tasks]
+      x-palpanel-permission: 'players:write'
+      requestBody: *jsonRequest
+      responses: *writeResponses
   /tasks/maintenance/retry-rewards:
     post:
       operationId: retryTaskRewards
@@ -4893,7 +4907,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.75}
+            version: {type: string, const: 0.8.76}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

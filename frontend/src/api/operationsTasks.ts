@@ -47,6 +47,65 @@ export interface OperationsTaskRetrySummary {
   failed: number;
 }
 
+export interface OperationsTaskEvent {
+  event_id?: string;
+  type: string;
+  player_uid: string;
+  nickname?: string;
+  steam_id?: string;
+  occurred_at?: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface OperationsTaskDiagnosticMatch {
+  task_id: string;
+  task_name: string;
+  task_event_type: string;
+  enabled: boolean;
+  archived: boolean;
+  cycle: OperationsTaskCycle;
+  cycle_key?: string;
+  amount_field?: string;
+  filters?: Record<string, unknown>;
+  target_amount: number;
+  current_progress: number;
+  event_amount: number;
+  would_add: number;
+  would_progress: number;
+  status: string;
+  reason: string;
+  field?: string;
+  expected?: unknown;
+  actual?: unknown;
+}
+
+export interface OperationsTaskDiagnosticReport {
+  event: OperationsTaskEvent;
+  matched: number;
+  would_apply: number;
+  results: OperationsTaskDiagnosticMatch[];
+}
+
+export interface OperationsTaskReplayResult {
+  event: OperationsTaskEvent;
+  diagnostic: OperationsTaskDiagnosticReport;
+  updates: Array<{
+    task_id: string;
+    task_name: string;
+    cycle_key: string;
+    added: number;
+    progress: number;
+    target_amount: number;
+    completed: boolean;
+    just_completed: boolean;
+    reward_points: number;
+    reward_status: string;
+    reward_granted: boolean;
+    duplicate: boolean;
+  }>;
+  count: number;
+}
+
 interface DefinitionList {
   items: OperationsTaskDefinition[];
   count: number;
@@ -96,6 +155,16 @@ export const operationsTasksApi = {
   progress: (playerUID: string) => handleRequest<unknown, ProgressList>(
     () => apiClient.get(`/tasks/progress/${encodeURIComponent(playerUID)}`),
     { items: [], count: 0 },
+    { fallbackOnError: false },
+  ),
+  evaluateEvent: (event: OperationsTaskEvent) => handleRequest<unknown, OperationsTaskDiagnosticReport>(
+    () => apiClient.post('/tasks/diagnostics/evaluate', event),
+    { event, matched: 0, would_apply: 0, results: [] },
+    { fallbackOnError: false },
+  ),
+  replayEvent: (event: OperationsTaskEvent) => handleRequest<unknown, OperationsTaskReplayResult>(
+    () => apiClient.post('/tasks/diagnostics/replay', event),
+    { event, diagnostic: { event, matched: 0, would_apply: 0, results: [] }, updates: [], count: 0 },
     { fallbackOnError: false },
   ),
   retryRewards: (limit = 100) => handleRequest<unknown, OperationsTaskRetrySummary>(

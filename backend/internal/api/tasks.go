@@ -27,6 +27,8 @@ func (s Server) registerTaskRoutes(api *gin.RouterGroup) {
 	group.GET("", Require(PermRead), s.listTasks)
 	group.POST("", Require(PermConfigWrite), s.createTask)
 	group.GET("/progress/:player_uid", Require(PermRead), s.playerTaskProgress)
+	group.POST("/diagnostics/evaluate", Require(PermRead), s.evaluateTaskEvent)
+	group.POST("/diagnostics/replay", Require(PermPlayersWrite), s.replayTaskEvent)
 	group.POST("/maintenance/retry-rewards", Require(PermPlayersWrite), s.retryTaskRewards)
 	group.PUT("/:id", Require(PermConfigWrite), s.updateTask)
 	group.DELETE("/:id", Require(PermConfigWrite), s.archiveTask)
@@ -115,6 +117,58 @@ func (s Server) playerTaskProgress(c *gin.Context) {
 		return
 	}
 	ok(c, gin.H{"items": items, "count": len(items)})
+}
+
+func (s Server) evaluateTaskEvent(c *gin.Context) {
+	var event tasks.Event
+	if err := c.ShouldBindJSON(&event); err != nil {
+		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	service, err := s.taskService()
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	report, err := service.DiagnoseEvent(c.Request.Context(), event)
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	ok(c, report)
+}
+
+func (s Server) replayTaskEvent(c *gin.Context) {
+	var event tasks.Event
+	if err := c.ShouldBindJSON(&event); err != nil {
+		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	if strings.TrimSpace(event.EventID) == "" || strings.TrimSpace(event.Type) == "" || strings.TrimSpace(event.PlayerUID) == "" {
+		fail(c, http.StatusBadRequest, "task_event_invalid", "event_id, type, and player_uid are required for replay")
+		return
+	}
+	service, err := s.taskService()
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	before, err := service.DiagnoseEvent(c.Request.Context(), event)
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	pointService, err := s.economyService()
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	updates, err := service.ProcessEvent(c.Request.Context(), event, pointService)
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	ok(c, gin.H{"event": event, "diagnostic": before, "updates": updates, "count": len(updates)})
 }
 
 func (s Server) retryTaskRewards(c *gin.Context) {
