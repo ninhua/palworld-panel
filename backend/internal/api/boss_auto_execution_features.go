@@ -10,5 +10,9 @@ func init() {
 		"boss-auto-wave-database-lease",
 		"boss-auto-wave-multi-process-deduplication",
 		"boss-auto-wave-crash-lease-expiry",
+		"boss-auto-wave-pause-control",
+		"boss-auto-wave-resume-control",
+		"boss-auto-wave-skip-current-control",
+		"boss-auto-wave-control-audit",
 	)
 }
