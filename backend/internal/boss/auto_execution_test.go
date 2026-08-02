@@ -1,6 +1,8 @@
 package boss
 
 import (
+	"context"
+	"database/sql"
 	"testing"
 	"time"
 )
@@ -57,5 +59,64 @@ func TestMetadataBoolAcceptsExplicitRepresentations(t *testing.T) {
 	}
 	if metadataBool(map[string]any{"enabled": "yes"}, "enabled") {
 		t.Fatal("ambiguous value must not enable automatic execution")
+	}
+}
+
+func TestAutoExecutionLeaseTimestampIsFixedWidthUTC(t *testing.T) {
+	first := autoExecutionLeaseTimestamp(time.Date(2026, 8, 3, 0, 0, 0, 0, time.FixedZone("SGT", 8*60*60)))
+	second := autoExecutionLeaseTimestamp(time.Date(2026, 8, 3, 0, 0, 0, 1, time.FixedZone("SGT", 8*60*60)))
+	if len(first) != len(second) {
+		t.Fatalf("lease timestamps have different widths: %q %q", first, second)
+	}
+	if first >= second {
+		t.Fatalf("lease timestamps are not lexically ordered: %q >= %q", first, second)
+	}
+	if first != "2026-08-02T16:00:00.000000000Z" {
+		t.Fatalf("unexpected UTC timestamp: %q", first)
+	}
+}
+
+func TestAutoExecutionLeaseIsExclusiveAndExpires(t *testing.T) {
+	database, err := sql.Open("sqlite", "file:boss-auto-lease-test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	database.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = database.Close() })
+	service := &Service{db: database, now: time.Now}
+	ctx := context.Background()
+	now := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)
+
+	acquired, err := service.acquireAutoExecutionLease(ctx, "worker-a", now)
+	if err != nil || !acquired {
+		t.Fatalf("worker-a acquire = %v, %v", acquired, err)
+	}
+	acquired, err = service.acquireAutoExecutionLease(ctx, "worker-b", now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acquired {
+		t.Fatal("worker-b acquired an unexpired lease")
+	}
+	acquired, err = service.acquireAutoExecutionLease(ctx, "worker-b", now.Add(autoExecutionLeaseDuration+time.Nanosecond))
+	if err != nil || !acquired {
+		t.Fatalf("worker-b expiry acquire = %v, %v", acquired, err)
+	}
+	if err := service.releaseAutoExecutionLease(ctx, "worker-a"); err != nil {
+		t.Fatal(err)
+	}
+	acquired, err = service.acquireAutoExecutionLease(ctx, "worker-a", now.Add(autoExecutionLeaseDuration+time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acquired {
+		t.Fatal("stale holder release removed the current holder lease")
+	}
+	if err := service.releaseAutoExecutionLease(ctx, "worker-b"); err != nil {
+		t.Fatal(err)
+	}
+	acquired, err = service.acquireAutoExecutionLease(ctx, "worker-a", now.Add(autoExecutionLeaseDuration+2*time.Second))
+	if err != nil || !acquired {
+		t.Fatalf("worker-a reacquire = %v, %v", acquired, err)
 	}
 }

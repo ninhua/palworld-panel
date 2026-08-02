@@ -16,6 +16,9 @@ const (
 	autoExecutionDiscoveryDelay = 2 * time.Second
 	autoExecutionPollInterval   = 2 * time.Second
 	autoExecutionBatchSize      = 50
+	autoExecutionLeaseName      = "boss-auto-wave-execution"
+	autoExecutionLeaseDuration  = 30 * time.Second
+	autoExecutionLeaseLayout    = "2006-01-02T15:04:05.000000000Z"
 )
 
 type autoExecutionPolicy struct {
@@ -33,13 +36,15 @@ type autoExecutionCandidate struct {
 }
 
 type autoExecutionWorker struct {
-	stop chan struct{}
-	done chan struct{}
+	stop   chan struct{}
+	done   chan struct{}
+	holder string
 }
 
 var (
 	autoExecutionDiscoveryOnce sync.Once
 	autoExecutionWorkers       sync.Map
+	autoExecutionLeaseSchemas  sync.Map
 )
 
 func init() {
@@ -68,7 +73,11 @@ func ensureAutoExecutionWorker(service *Service) {
 	if service == nil || service.db == nil {
 		return
 	}
-	worker := &autoExecutionWorker{stop: make(chan struct{}), done: make(chan struct{})}
+	worker := &autoExecutionWorker{
+		stop:   make(chan struct{}),
+		done:   make(chan struct{}),
+		holder: newID("boss_auto_worker"),
+	}
 	actual, loaded := autoExecutionWorkers.LoadOrStore(service, worker)
 	if loaded {
 		_ = actual
@@ -80,6 +89,11 @@ func ensureAutoExecutionWorker(service *Service) {
 func (s *Service) runAutoExecutionWorker(worker *autoExecutionWorker) {
 	defer close(worker.done)
 	defer autoExecutionWorkers.Delete(s)
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.releaseAutoExecutionLease(ctx, worker.holder)
+	}()
 
 	ticker := time.NewTicker(autoExecutionPollInterval)
 	defer ticker.Stop()
@@ -92,10 +106,82 @@ func (s *Service) runAutoExecutionWorker(worker *autoExecutionWorker) {
 			return
 		case <-ticker.C:
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			_ = s.runAutoExecutionCycle(ctx)
+			acquired, err := s.acquireAutoExecutionLease(ctx, worker.holder, s.now())
+			if err == nil && acquired {
+				_ = s.runAutoExecutionCycle(ctx)
+			}
 			cancel()
 		}
 	}
+}
+
+func (s *Service) ensureAutoExecutionLeaseSchema(ctx context.Context) error {
+	if s == nil || s.db == nil {
+		return errors.New("boss auto execution database is unavailable")
+	}
+	if _, ok := autoExecutionLeaseSchemas.Load(s); ok {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS boss_runtime_leases (
+		name TEXT PRIMARY KEY,
+		holder TEXT NOT NULL,
+		expires_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	)`)
+	if err != nil {
+		return err
+	}
+	autoExecutionLeaseSchemas.Store(s, struct{}{})
+	return nil
+}
+
+func (s *Service) acquireAutoExecutionLease(ctx context.Context, holder string, now time.Time) (bool, error) {
+	holder = strings.TrimSpace(holder)
+	if holder == "" {
+		return false, errors.New("boss auto execution lease holder is empty")
+	}
+	if err := s.ensureAutoExecutionLeaseSchema(ctx); err != nil {
+		return false, err
+	}
+	updatedAt := autoExecutionLeaseTimestamp(now)
+	expiresAt := autoExecutionLeaseTimestamp(now.Add(autoExecutionLeaseDuration))
+	result, err := s.db.ExecContext(ctx, `INSERT INTO boss_runtime_leases(name,holder,expires_at,updated_at)
+		VALUES(?,?,?,?)
+		ON CONFLICT(name) DO UPDATE SET
+			holder=excluded.holder,
+			expires_at=excluded.expires_at,
+			updated_at=excluded.updated_at
+		WHERE boss_runtime_leases.holder=excluded.holder
+			OR boss_runtime_leases.expires_at<=excluded.updated_at`,
+		autoExecutionLeaseName, holder, expiresAt, updatedAt,
+	)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rows == 1, nil
+}
+
+func (s *Service) releaseAutoExecutionLease(ctx context.Context, holder string) error {
+	holder = strings.TrimSpace(holder)
+	if holder == "" || s == nil || s.db == nil {
+		return nil
+	}
+	if err := s.ensureAutoExecutionLeaseSchema(ctx); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM boss_runtime_leases WHERE name=? AND holder=?`,
+		autoExecutionLeaseName, holder,
+	)
+	return err
+}
+
+func autoExecutionLeaseTimestamp(value time.Time) string {
+	return value.UTC().Format(autoExecutionLeaseLayout)
 }
 
 func (s *Service) runAutoExecutionCycle(ctx context.Context) error {
