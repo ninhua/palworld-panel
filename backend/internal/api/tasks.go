@@ -27,6 +27,7 @@ func (s Server) registerTaskRoutes(api *gin.RouterGroup) {
 	group.GET("", Require(PermRead), s.listTasks)
 	group.POST("", Require(PermConfigWrite), s.createTask)
 	group.GET("/progress/:player_uid", Require(PermRead), s.playerTaskProgress)
+	group.GET("/online-tracking", Require(PermRead), s.onlineTaskTracking)
 	group.POST("/diagnostics/evaluate", Require(PermRead), s.evaluateTaskEvent)
 	group.POST("/diagnostics/replay", Require(PermPlayersWrite), s.replayTaskEvent)
 	group.POST("/maintenance/retry-rewards", Require(PermPlayersWrite), s.retryTaskRewards)
@@ -36,6 +37,50 @@ func (s Server) registerTaskRoutes(api *gin.RouterGroup) {
 
 func (s Server) taskService() (*tasks.Service, error) {
 	return tasks.ForPath(s.cfg.DBPath, strings.TrimSpace(os.Getenv("PALPANEL_OPERATIONS_TIMEZONE")))
+}
+
+type gameTaskQueryRequest struct {
+	PlayerUID string `json:"player_uid"`
+	Query     string `json:"query,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
+	Offset    int    `json:"offset,omitempty"`
+}
+
+func (s Server) gameTaskQuery(c *gin.Context) {
+	var request gameTaskQueryRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	if strings.TrimSpace(request.PlayerUID) == "" {
+		fail(c, http.StatusBadRequest, "task_player_uid_required", "player_uid is required")
+		return
+	}
+	service, err := s.taskService()
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	page, err := service.PlayerProgressPage(c.Request.Context(), request.PlayerUID, request.Query, request.Limit, request.Offset)
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	ok(c, page)
+}
+
+func (s Server) onlineTaskTracking(c *gin.Context) {
+	service, err := s.taskService()
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	items, err := service.OnlineTrackingRecords(c.Request.Context(), economyQueryInt(c, "limit", 100))
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	ok(c, gin.H{"items": items, "count": len(items)})
 }
 
 func (s Server) listTasks(c *gin.Context) {

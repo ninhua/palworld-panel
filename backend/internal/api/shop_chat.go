@@ -6,11 +6,13 @@ import (
 	"palpanel/internal/economy"
 	"palpanel/internal/gameevents"
 	"palpanel/internal/shop"
+	"palpanel/internal/tasks"
 )
 
 type gameChatCommandOutcome struct {
 	Economy   *economy.CommandResult
 	Shop      *shop.PlayerCommandResult
+	Tasks     *tasks.PlayerCommandResult
 	Handled   bool
 	Duplicate bool
 	Reply     string
@@ -53,8 +55,25 @@ func (s Server) executeGameChatCommand(ctx context.Context, record gameevents.Re
 		return gameChatCommandOutcome{}, err
 	}
 	outcome.Shop = &shopCommand
-	outcome.Handled = shopCommand.Handled
-	outcome.Duplicate = shopCommand.Duplicate
-	outcome.Reply = shopCommand.Reply
+	if shopCommand.Handled {
+		outcome.Handled = true
+		outcome.Duplicate = shopCommand.Duplicate
+		outcome.Reply = shopCommand.Reply
+		return outcome, nil
+	}
+
+	taskService, err := s.taskService()
+	if err != nil {
+		return gameChatCommandOutcome{}, err
+	}
+	taskCommand, err := taskService.ExecutePlayerCommand(ctx, tasks.PlayerCommandRequest{
+		PlayerUID: record.PlayerUID, Message: message, CommandPrefix: config.CommandPrefix, AllowBareCommand: config.AllowBareCommands,
+	})
+	if err != nil {
+		return gameChatCommandOutcome{}, err
+	}
+	outcome.Tasks = &taskCommand
+	outcome.Handled = taskCommand.Handled
+	outcome.Reply = taskCommand.Reply
 	return outcome, nil
 }

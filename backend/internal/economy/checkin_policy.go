@@ -559,10 +559,11 @@ func (s *Service) ExecuteCommandDetailed(ctx context.Context, request CommandReq
 			return CommandResult{}, err
 		}
 		result.Balance = account.Balance
-		result.Reply = fmt.Sprintf("可用命令：%s、%s、%s、%s、%s、%s。",
+		result.Reply = fmt.Sprintf("可用命令：%s、%s、%s、%s、%s、%s、%s。",
 			commandLabel(config.CommandPrefix, config.CheckinAliases[0]),
 			commandLabel(config.CommandPrefix, config.PointsAliases[0]),
 			commandLabel(config.CommandPrefix, config.HelpAliases[0]),
+			commandLabel(config.CommandPrefix, "任务"),
 			commandLabel(config.CommandPrefix, "商城"),
 			commandLabel(config.CommandPrefix, "兑换"),
 			commandLabel(config.CommandPrefix, "我的订单"),

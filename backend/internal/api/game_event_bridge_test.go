@@ -59,6 +59,22 @@ func TestParsePalDefenderShopChatCommands(t *testing.T) {
 	}
 }
 
+func TestParsePalDefenderTaskChatCommands(t *testing.T) {
+	cases := []struct {
+		line, message string
+	}{
+		{"[Info] Chat Alice: !任务", "!任务"},
+		{"[Info] Chat Alice: 我的任务", "我的任务"},
+		{"[Info] Chat Alice: 任务进度 2", "任务进度 2"},
+	}
+	for _, test := range cases {
+		event, ok := parsePalDefenderLogLine(test.line, bridgeTestConfig())
+		if !ok || event.Type != "PLAYER_CHAT" || event.Payload["message"] != test.message {
+			t.Fatalf("%q => %#v, %t", test.line, event, ok)
+		}
+	}
+}
+
 func TestConfiguredChatRejectsOrdinaryText(t *testing.T) {
 	if _, ok := parsePalDefenderLogLine("[Info] server startup completed", bridgeTestConfig()); ok {
 		t.Fatal("ordinary log line must not become an event")

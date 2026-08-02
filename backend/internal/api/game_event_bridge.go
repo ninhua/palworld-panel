@@ -29,35 +29,43 @@ import (
 )
 
 const (
-	gameEventBridgePollInterval = time.Second
-	gameEventBridgeReadLimit    = 2 << 20
+	gameEventBridgePollInterval  = time.Second
+	gameEventBridgeReadLimit     = 2 << 20
+	gameOnlineTaskSampleInterval = 30 * time.Second
 )
 
 type gameEventBridgeStatus struct {
-	Enabled            bool            `json:"enabled"`
-	Running            bool            `json:"running"`
-	LogDirectory       string          `json:"log_directory,omitempty"`
-	ActiveFile         string          `json:"active_file,omitempty"`
-	LastScanAt         string          `json:"last_scan_at,omitempty"`
-	LastLineAt         string          `json:"last_line_at,omitempty"`
-	LastEventAt        string          `json:"last_event_at,omitempty"`
-	LastError          string          `json:"last_error,omitempty"`
-	ParsedEvents       int64           `json:"parsed_events"`
-	ProcessedEvents    int64           `json:"processed_events"`
-	UnmatchedPlayers   int64           `json:"unmatched_players"`
-	FailedEvents       int64           `json:"failed_events"`
-	PendingDeadLetters int64           `json:"pending_dead_letters"`
-	RotationResets     int64           `json:"rotation_resets"`
-	CursorFiles        int             `json:"cursor_files"`
-	Configuration      map[string]bool `json:"configuration"`
+	Enabled              bool            `json:"enabled"`
+	Running              bool            `json:"running"`
+	LogDirectory         string          `json:"log_directory,omitempty"`
+	ActiveFile           string          `json:"active_file,omitempty"`
+	LastScanAt           string          `json:"last_scan_at,omitempty"`
+	LastLineAt           string          `json:"last_line_at,omitempty"`
+	LastEventAt          string          `json:"last_event_at,omitempty"`
+	LastError            string          `json:"last_error,omitempty"`
+	ParsedEvents         int64           `json:"parsed_events"`
+	ProcessedEvents      int64           `json:"processed_events"`
+	UnmatchedPlayers     int64           `json:"unmatched_players"`
+	FailedEvents         int64           `json:"failed_events"`
+	PendingDeadLetters   int64           `json:"pending_dead_letters"`
+	RotationResets       int64           `json:"rotation_resets"`
+	CursorFiles          int             `json:"cursor_files"`
+	OnlinePlayers        int             `json:"online_players"`
+	TrackedOnlinePlayers int             `json:"tracked_online_players"`
+	OnlineMinutesEmitted int64           `json:"online_minutes_emitted"`
+	LastOnlineSampleAt   string          `json:"last_online_sample_at,omitempty"`
+	LastOnlineError      string          `json:"last_online_error,omitempty"`
+	Configuration        map[string]bool `json:"configuration"`
 }
 
 type gameEventBridgeRuntime struct {
-	mu          sync.RWMutex
-	status      gameEventBridgeStatus
-	initialized bool
-	players     []paldefender.RESTPlayer
-	playersAt   time.Time
+	mu                sync.RWMutex
+	status            gameEventBridgeStatus
+	initialized       bool
+	players           []paldefender.RESTPlayer
+	playersAt         time.Time
+	onlineInitialized bool
+	lastOnlineSample  time.Time
 }
 
 var gameEventBridges sync.Map
@@ -76,6 +84,7 @@ var (
 	}
 	userIDPattern    = regexp.MustCompile(`(?i)\b(?:steam|gdk|ps5)_[A-Za-z0-9_-]+\b`)
 	playerUIDPattern = regexp.MustCompile(`(?i)PlayerUID\s*[:=]\s*([A-Za-z0-9_-]{4,128})`)
+	ipv4Pattern      = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
 )
 
 type parsedPalDefenderEvent struct {
@@ -138,6 +147,7 @@ func (s Server) scanGameEventBridge(ctx context.Context, runtime *gameEventBridg
 		item.LogDirectory = logDir
 		item.Configuration = configFlags
 	})
+	s.sampleOnlineTaskProgress(ctx, runtime)
 	entries, err := os.ReadDir(logDir)
 	if err != nil {
 		return fmt.Errorf("read PalDefender logs: %w", err)
@@ -194,6 +204,79 @@ func (s Server) scanGameEventBridge(ctx context.Context, runtime *gameEventBridg
 	runtime.initialized = true
 	runtime.mu.Unlock()
 	return nil
+}
+
+func (s Server) sampleOnlineTaskProgress(ctx context.Context, runtime *gameEventBridgeRuntime) {
+	now := time.Now()
+	runtime.mu.Lock()
+	if !runtime.lastOnlineSample.IsZero() && now.Sub(runtime.lastOnlineSample) < gameOnlineTaskSampleInterval {
+		runtime.mu.Unlock()
+		return
+	}
+	runtime.lastOnlineSample = now
+	firstSample := !runtime.onlineInitialized
+	runtime.mu.Unlock()
+
+	response, err := s.defender.RESTPlayers(ctx)
+	if err != nil {
+		runtime.update(func(item *gameEventBridgeStatus) {
+			item.LastOnlineSampleAt = now.UTC().Format(time.RFC3339Nano)
+			item.LastOnlineError = err.Error()
+		})
+		return
+	}
+	onlinePlayers := make([]tasks.OnlinePlayer, 0, response.Meta.OnlineCount)
+	for _, player := range response.Players {
+		if !strings.EqualFold(strings.TrimSpace(player.Status), "online") {
+			continue
+		}
+		playerUID := strings.TrimSpace(player.PlayerUID)
+		if playerUID == "" {
+			playerUID = strings.TrimSpace(player.UserID)
+		}
+		if playerUID == "" {
+			continue
+		}
+		onlinePlayers = append(onlinePlayers, tasks.OnlinePlayer{
+			PlayerUID: playerUID,
+			Nickname:  strings.TrimSpace(player.Name),
+			SteamID:   strings.TrimSpace(player.UserID),
+		})
+	}
+	taskService, err := s.taskService()
+	if err != nil {
+		runtime.update(func(item *gameEventBridgeStatus) {
+			item.LastOnlineSampleAt = now.UTC().Format(time.RFC3339Nano)
+			item.LastOnlineError = err.Error()
+		})
+		return
+	}
+	pointService, err := s.economyService()
+	if err != nil {
+		runtime.update(func(item *gameEventBridgeStatus) {
+			item.LastOnlineSampleAt = now.UTC().Format(time.RFC3339Nano)
+			item.LastOnlineError = err.Error()
+		})
+		return
+	}
+	result, err := taskService.SampleOnlinePlayers(ctx, onlinePlayers, firstSample, pointService)
+	if err != nil {
+		runtime.update(func(item *gameEventBridgeStatus) {
+			item.LastOnlineSampleAt = now.UTC().Format(time.RFC3339Nano)
+			item.LastOnlineError = err.Error()
+		})
+		return
+	}
+	runtime.mu.Lock()
+	runtime.onlineInitialized = true
+	runtime.players = append([]paldefender.RESTPlayer(nil), response.Players...)
+	runtime.playersAt = now
+	runtime.status.OnlinePlayers = result.OnlinePlayers
+	runtime.status.TrackedOnlinePlayers = result.TrackedPlayers
+	runtime.status.OnlineMinutesEmitted = result.TotalEmittedMinutes
+	runtime.status.LastOnlineSampleAt = result.SampledAt
+	runtime.status.LastOnlineError = ""
+	runtime.mu.Unlock()
 }
 
 func (s Server) tailGameEventLog(ctx context.Context, runtime *gameEventBridgeRuntime, service *gameevents.Service, path string, commandConfig economy.DetailedConfig) error {
@@ -379,6 +462,9 @@ func (s Server) processBridgeEvent(ctx context.Context, service *gameevents.Serv
 		}
 		if outcome.Shop != nil && outcome.Shop.Handled {
 			result["shop_command"] = outcome.Shop
+		}
+		if outcome.Tasks != nil && outcome.Tasks.Handled {
+			result["task_command"] = outcome.Tasks
 		}
 		if outcome.Handled && outcome.Reply != "" && !outcome.Duplicate {
 			delivery, deliveryErr := s.deliverGameEventReply(ctx, claim.Record, outcome.Reply)
@@ -568,7 +654,7 @@ func parsePalDefenderLogLine(line string, commandConfig economy.DetailedConfig) 
 func configuredCommandFromLogLine(line string, config economy.DetailedConfig) (string, string, bool) {
 	labels := make([]string, 0, len(config.CheckinAliases)+len(config.PointsAliases)+len(config.HelpAliases))
 	aliases := append(append(append([]string{}, config.CheckinAliases...), config.PointsAliases...), config.HelpAliases...)
-	aliases = append(aliases, "商城", "商店", "兑换", "购买", "我的订单", "订单")
+	aliases = append(aliases, "商城", "商店", "兑换", "购买", "我的订单", "订单", "任务", "我的任务", "任务进度")
 	for _, alias := range aliases {
 		alias = strings.TrimSpace(alias)
 		if alias == "" {
@@ -712,7 +798,7 @@ func looksLikeBridgeCandidate(line string, config economy.DetailedConfig) bool {
 		}
 	}
 	aliases := append(append(append([]string{}, config.CheckinAliases...), config.PointsAliases...), config.HelpAliases...)
-	aliases = append(aliases, "商城", "商店", "兑换", "购买", "我的订单", "订单")
+	aliases = append(aliases, "商城", "商店", "兑换", "购买", "我的订单", "订单", "任务", "我的任务", "任务进度")
 	for _, alias := range aliases {
 		alias = strings.ToLower(strings.TrimSpace(alias))
 		if alias != "" && strings.Contains(lower, alias) && strings.ContainsAny(line, ":：>]") {
@@ -785,6 +871,8 @@ func init() {
 		"paldefender-chat-command-bridge",
 		"paldefender-task-event-bridge",
 		"game-event-bridge-diagnostics",
+		"player-task-chat-command",
+		"online-task-minute-sampler",
 	)
 }
 
@@ -814,7 +902,17 @@ func (s Server) gameEventBridgeStatusHandler(c *gin.Context) {
 	}
 	status.PendingDeadLetters = pending
 	status.CursorFiles = len(offsets)
-	okResponse := gin.H{"bridge": status, "offsets": offsets, "required_configuration": []string{"logChat", "logPlayerUID", "logPlayerCaptures", "logPlayerDeaths", "logPlayerLogins", "logCraftings"}}
+	taskService, taskErr := s.taskService()
+	if taskErr != nil {
+		fail(c, http.StatusInternalServerError, "task_service_failed", taskErr.Error())
+		return
+	}
+	onlineTracking, trackingErr := taskService.OnlineTrackingRecords(c.Request.Context(), 100)
+	if trackingErr != nil {
+		fail(c, http.StatusInternalServerError, "online_task_tracking_failed", trackingErr.Error())
+		return
+	}
+	okResponse := gin.H{"bridge": status, "offsets": offsets, "online_tracking": onlineTracking, "required_configuration": []string{"logChat", "logPlayerUID", "logPlayerCaptures", "logPlayerDeaths", "logPlayerLogins", "logCraftings"}}
 	ok(c, okResponse)
 }
 

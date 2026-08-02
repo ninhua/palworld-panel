@@ -125,6 +125,9 @@ func (s Server) ingestGameEvent(c *gin.Context) {
 		if outcome.Shop != nil && outcome.Shop.Handled {
 			result["shop_command"] = outcome.Shop
 		}
+		if outcome.Tasks != nil && outcome.Tasks.Handled {
+			result["task_command"] = outcome.Tasks
+		}
 		if outcome.Handled && outcome.Reply != "" && !outcome.Duplicate {
 			delivery, deliveryErr := s.deliverGameEventReply(c.Request.Context(), claim.Record, outcome.Reply)
 			result["reply_delivery"] = delivery

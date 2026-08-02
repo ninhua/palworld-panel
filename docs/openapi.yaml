@@ -2077,6 +2077,14 @@ paths:
       tags: [operations, tasks]
       x-palpanel-permission: read
       responses: *readResponses
+  /tasks/online-tracking:
+    get:
+      operationId: listOnlineTaskTracking
+      tags: [operations, tasks]
+      x-palpanel-permission: read
+      parameters:
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 1000, default: 100}}
+      responses: *readResponses
   /tasks/diagnostics/evaluate:
     post:
       operationId: evaluateOperationsTaskEvent
@@ -2112,6 +2120,14 @@ paths:
       tags: [operations, tasks]
       x-palpanel-permission: 'config:write'
       responses: *writeResponses
+  /integrations/game/tasks/query:
+    post:
+      operationId: queryGamePlayerTasks
+      tags: [integrations, tasks]
+      security: []
+      x-palpanel-permission: hmac-integration
+      requestBody: *jsonRequest
+      responses: {'200': *success, '400': *error, '401': *error, '500': *error}
   /integrations/game/events:
     post:
       operationId: ingestGameEvent
@@ -4944,7 +4960,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.78}
+            version: {type: string, const: 0.8.79}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

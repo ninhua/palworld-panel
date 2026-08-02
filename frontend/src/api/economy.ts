@@ -77,7 +77,24 @@ export interface GameEventBridgeStatus {
   pending_dead_letters: number;
   rotation_resets: number;
   cursor_files: number;
+  online_players: number;
+  tracked_online_players: number;
+  online_minutes_emitted: number;
+  last_online_sample_at?: string;
+  last_online_error?: string;
   configuration: Record<string, boolean>;
+}
+
+export interface OnlineTaskTrackingRecord {
+  player_uid: string;
+  nickname?: string;
+  steam_id?: string;
+  active: boolean;
+  online_since?: string;
+  last_seen_at?: string;
+  pending_seconds: number;
+  total_emitted_minutes: number;
+  updated_at: string;
 }
 
 export interface GameEventBridgeOffset {
@@ -191,7 +208,7 @@ const summaryFallback: EconomySummary = {
 };
 
 const bridgeFallback: GameEventBridgeStatus = {
-  enabled: true, running: false, parsed_events: 0, processed_events: 0, unmatched_players: 0, failed_events: 0, pending_dead_letters: 0, rotation_resets: 0, cursor_files: 0, configuration: {},
+  enabled: true, running: false, parsed_events: 0, processed_events: 0, unmatched_players: 0, failed_events: 0, pending_dead_letters: 0, rotation_resets: 0, cursor_files: 0, online_players: 0, tracked_online_players: 0, online_minutes_emitted: 0, configuration: {},
 };
 
 export const economyApi = {
@@ -220,8 +237,8 @@ export const economyApi = {
     { account: { player_uid: playerUID, status: 'active', balance: 0, created_at: '', updated_at: '' } },
     { fallbackOnError: false },
   ),
-  bridgeStatus: () => handleRequest<unknown, { bridge: GameEventBridgeStatus; offsets: GameEventBridgeOffset[]; required_configuration: string[] }>(
-    () => apiClient.get('/game-events/bridge/status'), { bridge: bridgeFallback, offsets: [], required_configuration: [] }, { fallbackOnError: false },
+  bridgeStatus: () => handleRequest<unknown, { bridge: GameEventBridgeStatus; offsets: GameEventBridgeOffset[]; online_tracking: OnlineTaskTrackingRecord[]; required_configuration: string[] }>(
+    () => apiClient.get('/game-events/bridge/status'), { bridge: bridgeFallback, offsets: [], online_tracking: [], required_configuration: [] }, { fallbackOnError: false },
   ),
   repairBridge: () => handleRequest<unknown, { configuration: Record<string, boolean>; reload_required: boolean; reload_error?: string }>(
     () => apiClient.post('/game-events/bridge/repair'), { configuration: {}, reload_required: false }, { fallbackOnError: false },

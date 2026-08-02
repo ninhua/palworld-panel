@@ -53,6 +53,7 @@ func (s Server) registerRoutes(router *gin.Engine) {
 	gameIntegration.POST("/shop/catalog", s.gameShopCatalog)
 	gameIntegration.POST("/shop/orders", s.gameShopCreateOrder)
 	gameIntegration.POST("/shop/orders/query", s.gameShopOrders)
+	gameIntegration.POST("/tasks/query", s.gameTaskQuery)
 
 	api := router.Group("/api")
 	api.Use(Auth(s.cfg, s.auth), DetailedAuditMiddleware(s.store))

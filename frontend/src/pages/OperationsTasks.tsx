@@ -86,7 +86,7 @@ const presets: TaskPreset[] = [
   },
   {
     name: '在线时长',
-    description: '由在线事件中的 minutes 字段推进。',
+    description: '系统每30秒采样在线玩家，并按完整分钟自动推进。',
     input: {
       name: '每日在线 60 分钟',
       description: '每天累计在线 60 分钟。',
@@ -126,7 +126,7 @@ interface TaskEventOption {
 const eventOptions: TaskEventOption[] = [
   { value: 'PAL_CAPTURED', label: '捕获帕鲁', help: '捕获事件；可用 pal_id 等事件内容字段筛选。', amountField: 'count' },
   { value: 'PAL_KILLED', label: '击杀帕鲁或敌对目标', help: '击杀事件；可用 pal_id、target_id 等字段筛选。', amountField: 'count' },
-  { value: 'PLAYER_ONLINE', label: '累计在线时长', help: '在线采样事件；通常读取 minutes 字段。', amountField: 'minutes' },
+  { value: 'PLAYER_ONLINE', label: '累计在线时长', help: '系统每30秒采样PalDefender在线玩家；数量字段必须使用 minutes。', amountField: 'minutes' },
   { value: 'CHECKIN_COMPLETED', label: '完成签到', help: '签到成功事件；每个事件通常增加1。', amountField: 'count' },
   { value: 'BOSS_PARTICIPATION', label: '参与Boss活动', help: 'Boss参与事件；可用 boss_id 筛选指定Boss。', amountField: 'count' },
   { value: 'BOSS_KILLED', label: '击败Boss', help: 'Boss击杀事件；要求事件桥接器实际发送该类型。', amountField: 'count' },
@@ -406,6 +406,10 @@ export const OperationsTasks: React.FC = () => {
             <button type="button" onClick={() => openDiagnostic()} className="pp-button"><FlaskConical size={14} />任务诊断</button>
             <button type="button" onClick={() => openCreate()} className="pp-btn pp-btn--primary"><Plus size={15} />新建任务</button>
           </div>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs leading-5 text-sky-800"><strong className="block">玩家游戏内入口</strong>玩家可发送 <code className="font-mono">任务</code>、<code className="font-mono">我的任务</code> 或 <code className="font-mono">任务进度</code> 查询当前任务；支持页码和关键词，例如 <code className="font-mono">任务 2</code>、<code className="font-mono">任务 捕捉</code>。</div>
+          <div className="rounded-xl border border-violet-100 bg-violet-50 px-4 py-3 text-xs leading-5 text-violet-800"><strong className="block">在线时长自动结算</strong><code className="font-mono">PLAYER_ONLINE</code> 任务会按完整分钟自动推进。面板重启后的首轮采样不会把停机时间计入，掉线时会补结算最后一个采样区间。</div>
         </div>
         {notice && <div className={`mt-4 rounded-xl border px-4 py-3 text-sm font-semibold ${notice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>{notice.text}</div>}
       </section>

@@ -304,13 +304,16 @@ export const Economy: React.FC = () => {
           </div>
           <button type="button" className="pp-btn pp-btn--primary shrink-0" disabled={repairBridge.isPending} onClick={() => repairBridge.mutate()}>{repairBridge.isPending ? <LoaderCircle className="animate-spin" size={15} /> : <Settings2 size={15} />}一键修复日志开关</button>
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-9">
           <BridgeMetric label="桥接进程" ok={Boolean(bridgeQuery.data?.bridge.running)} text={bridgeQuery.data?.bridge.running ? '运行中' : '未运行'} />
           <BridgeMetric label="已处理事件" ok={(bridgeQuery.data?.bridge.processed_events || 0) > 0} text={number.format(bridgeQuery.data?.bridge.processed_events || 0)} />
           <BridgeMetric label="待处理死信" ok={(bridgeQuery.data?.bridge.pending_dead_letters || 0) === 0} text={number.format(bridgeQuery.data?.bridge.pending_dead_letters || 0)} />
           <BridgeMetric label="玩家未匹配" ok={(bridgeQuery.data?.bridge.unmatched_players || 0) === 0} text={number.format(bridgeQuery.data?.bridge.unmatched_players || 0)} />
           <BridgeMetric label="游标文件" ok={(bridgeQuery.data?.bridge.cursor_files || 0) > 0} text={number.format(bridgeQuery.data?.bridge.cursor_files || 0)} />
           <BridgeMetric label="轮转恢复" ok={(bridgeQuery.data?.bridge.rotation_resets || 0) === 0} text={number.format(bridgeQuery.data?.bridge.rotation_resets || 0)} />
+          <BridgeMetric label="当前在线" ok={!bridgeQuery.data?.bridge.last_online_error} text={number.format(bridgeQuery.data?.bridge.online_players || 0)} />
+          <BridgeMetric label="在线跟踪玩家" ok={!bridgeQuery.data?.bridge.last_online_error} text={number.format(bridgeQuery.data?.bridge.tracked_online_players || 0)} />
+          <BridgeMetric label="已结算在线分钟" ok={!bridgeQuery.data?.bridge.last_online_error} text={number.format(bridgeQuery.data?.bridge.online_minutes_emitted || 0)} />
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {Object.entries(bridgeQuery.data?.bridge.configuration || {}).map(([key, enabled]) => <div key={key} className={`flex items-center justify-between rounded-xl border px-3 py-2 text-xs font-bold ${enabled ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}><span>{key}</span><span>{enabled ? '已启用' : '未启用'}</span></div>)}
@@ -319,8 +322,11 @@ export const Economy: React.FC = () => {
           <div className="rounded-xl border border-sky-100 bg-sky-50 p-3 text-xs leading-5 text-sky-800"><strong className="block">捕捉任务</strong><code className="font-mono">PAL_CAPTURED</code>，数量字段填 <code className="font-mono">count</code>。限定某种帕鲁时，过滤条件使用内部 ID，例如 <code className="font-mono">{`{"pal_id":"SheepBall"}`}</code>。</div>
           <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800"><strong className="block">签到任务</strong>玩家当天首次签到成功后会额外生成 <code className="font-mono">CHECKIN_COMPLETED</code>，数量字段填 <code className="font-mono">count</code>；重复签到不会推进任务。</div>
           <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs leading-5 text-amber-800"><strong className="block">击杀任务</strong><code className="font-mono">PAL_KILLED</code> 依赖 PalDefender 死亡日志。不同版本日志可能只提供目标名称；先查看下方日志样本，再选择 <code className="font-mono">target_name</code> 或 <code className="font-mono">pal_id</code> 过滤。</div>
+          <div className="rounded-xl border border-violet-100 bg-violet-50 p-3 text-xs leading-5 text-violet-800"><strong className="block">在线时长任务</strong>事件类型选择 <code className="font-mono">PLAYER_ONLINE</code>，数量字段填写 <code className="font-mono">minutes</code>。系统每30秒采样一次在线玩家，下线时补结算最后一个采样区间。</div>
         </div>
         {bridgeQuery.data?.bridge.last_error && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{bridgeQuery.data.bridge.last_error}</div>}
+        {bridgeQuery.data?.bridge.last_online_error && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">在线时长采样失败：{bridgeQuery.data.bridge.last_online_error}</div>}
+        {(bridgeQuery.data?.online_tracking || []).length > 0 && <details className="mt-4 rounded-xl border border-violet-100 bg-violet-50/50 p-3 text-xs text-slate-600"><summary className="cursor-pointer font-bold text-violet-800">在线时长跟踪明细（{bridgeQuery.data?.online_tracking.length}）</summary><div className="mt-3 grid gap-2 lg:grid-cols-2">{(bridgeQuery.data?.online_tracking || []).map((item) => <div key={item.player_uid} className="rounded-lg border border-violet-100 bg-white p-2"><div className="flex items-center justify-between gap-2"><strong className="truncate text-slate-800">{item.nickname || item.player_uid}</strong><span className={`rounded-full px-2 py-0.5 font-bold ${item.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{item.active ? '在线' : '离线'}</span></div><div className="mt-1 font-mono text-[11px] text-slate-400">{item.player_uid}</div><div className="mt-1 text-[11px]">已提交 {number.format(item.total_emitted_minutes)} 分钟 · 待累计 {number.format(item.pending_seconds)} 秒</div></div>)}</div></details>}
         <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
