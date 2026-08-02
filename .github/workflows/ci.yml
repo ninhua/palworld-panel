@@ -3,7 +3,41 @@ name: CI
 on:
   push:
     branches: [main, dev, custom-stable]
+    paths:
+      - ".github/workflows/ci.yml"
+      - ".github/actions/**"
+      - ".gitattributes"
+      - ".gitleaks.toml"
+      - ".gitmodules"
+      - ".overlay/**"
+      - "backend/**"
+      - "frontend/**"
+      - "palcalc-bridge/**"
+      - "sav-cli/**"
+      - "scripts/**"
+      - "third_party/**"
+      - "tools/**"
+      - "!tools/palpanel-bridge/**"
+      - "install.sh"
+      - "THIRD_PARTY_LICENSES.txt"
   pull_request:
+    paths:
+      - ".github/workflows/ci.yml"
+      - ".github/actions/**"
+      - ".gitattributes"
+      - ".gitleaks.toml"
+      - ".gitmodules"
+      - ".overlay/**"
+      - "backend/**"
+      - "frontend/**"
+      - "palcalc-bridge/**"
+      - "sav-cli/**"
+      - "scripts/**"
+      - "third_party/**"
+      - "tools/**"
+      - "!tools/palpanel-bridge/**"
+      - "install.sh"
+      - "THIRD_PARTY_LICENSES.txt"
   workflow_dispatch:
 
 permissions:
