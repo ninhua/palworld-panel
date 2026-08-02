@@ -10,7 +10,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.17`
+- PalPanelBridge：`0.1.18`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -58,7 +58,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.17",
+  "bridge_version": "0.1.18",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -157,6 +157,10 @@ PlayerState 和 Pawn 上名称含背包、容器、装备、物品、槽位、�
 `0.1.17` 仅对已确认的 `PalItemSelectorComponent` 与 `BP_OtomoPalHolderComponent`
 返回最多 96 个未经过关键词过滤的内部属性；其他对象继续使用原过滤规则。该探针用于发现
 帕鲁队伍和装备数据的真实入口，仍不读取属性值、数组或容器内容。
+
+`0.1.18` 为数组和 Map 增加经过范围校验的 `collection_count`，并为上述两个关键对象
+增加最多 64 个关键词匹配的 `function_candidates`，包含函数名和参数缓冲区大小。
+插件不会调用这些函数，也不会读取集合元素。
 
 ## 响应与任务时间
 

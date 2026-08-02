@@ -21,7 +21,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.17-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.18-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -42,7 +42,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.17-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.18-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -90,6 +90,11 @@ Version `0.1.17` returns up to 96 unfiltered reflected properties for the two
 confirmed data-entry objects, `PalItemSelectorComponent` and
 `BP_OtomoPalHolderComponent`. Other objects keep the keyword filter so the JSON
 response remains bounded. Values and container contents are still not read.
+
+Version `0.1.18` reports validated element counts for reflected arrays and maps.
+It also lists up to 64 keyword-matched reflected functions on the two confirmed
+entry objects, including function names and parameter-buffer sizes. Functions
+are never invoked and collection elements are never read.
 
 ## Verified SFTP deployment
 
