@@ -1,6 +1,7 @@
 package api
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -33,6 +34,38 @@ func TestParsePalDefenderConfiguredChatCommands(t *testing.T) {
 		{"[2026-08-01 21:12:03] [Chat] Alice: !签到", "!签到"},
 		{"[2026-08-01 21:12:03] [GlobalChat] Alice：签到", "签到"},
 		{"[Info] Chat steam_76561198000000000 Alice > !积分", "!积分"},
+	}
+	for _, test := range cases {
+		event, ok := parsePalDefenderLogLine(test.line, bridgeTestConfig())
+		if !ok || event.Type != "PLAYER_CHAT" || event.Payload["message"] != test.message {
+			t.Fatalf("%q => %#v, %t", test.line, event, ok)
+		}
+	}
+}
+
+func TestParsePalDefenderShopChatCommands(t *testing.T) {
+	cases := []struct {
+		line, message string
+	}{
+		{"[Info] Chat Alice: !商城", "!商城"},
+		{"[Info] Chat Alice: 兑换 ABCD1234 2", "兑换 ABCD1234 2"},
+		{"[Info] Chat Alice: 我的订单", "我的订单"},
+	}
+	for _, test := range cases {
+		event, ok := parsePalDefenderLogLine(test.line, bridgeTestConfig())
+		if !ok || event.Type != "PLAYER_CHAT" || event.Payload["message"] != test.message {
+			t.Fatalf("%q => %#v, %t", test.line, event, ok)
+		}
+	}
+}
+
+func TestParsePalDefenderTaskChatCommands(t *testing.T) {
+	cases := []struct {
+		line, message string
+	}{
+		{"[Info] Chat Alice: !任务", "!任务"},
+		{"[Info] Chat Alice: 我的任务", "我的任务"},
+		{"[Info] Chat Alice: 任务进度 2", "任务进度 2"},
 	}
 	for _, test := range cases {
 		event, ok := parsePalDefenderLogLine(test.line, bridgeTestConfig())
@@ -80,5 +113,42 @@ func TestBridgeProcessingSummaryShowsTaskAndReplyOutcome(t *testing.T) {
 	})
 	if !strings.Contains(summary, "CHECKIN_COMPLETED") || !strings.Contains(summary, "匹配任务 1") || !strings.Contains(summary, "回复 sent") {
 		t.Fatalf("unexpected processing summary: %q", summary)
+	}
+}
+
+func TestLooksLikeBridgeCandidateCapturesUnparsedRelevantLine(t *testing.T) {
+	if !looksLikeBridgeCandidate("[Info] Alice captured something in an unsupported format", bridgeTestConfig()) {
+		t.Fatal("capture-like line should be retained for dead-letter diagnostics")
+	}
+	if looksLikeBridgeCandidate("[Info] autosave completed successfully", bridgeTestConfig()) {
+		t.Fatal("ordinary operational line must not be retained as a dead letter")
+	}
+}
+
+func TestBridgeFilePrefixHashIsStableAfterPrefixFilled(t *testing.T) {
+	path := t.TempDir() + "/PalDefender.log"
+	content := strings.Repeat("A", 256) + "first\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := bridgeFilePrefixHash(path)
+	if err != nil || first == "" {
+		t.Fatalf("first hash=%q err=%v", first, err)
+	}
+	if err := os.WriteFile(path, []byte(content+strings.Repeat("B", 1024)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := bridgeFilePrefixHash(path)
+	if err != nil || second != first {
+		t.Fatalf("prefix hash changed after append: first=%q second=%q err=%v", first, second, err)
+	}
+}
+
+func TestGameEventBridgeDelayDoesNotCatchUp(t *testing.T) {
+	if got := gameEventBridgeNextDelay(0); got != gameEventBridgeIdleInterval {
+		t.Fatalf("idle delay=%s", got)
+	}
+	if got := gameEventBridgeNextDelay(128); got != gameEventBridgeActiveInterval {
+		t.Fatalf("active delay=%s", got)
 	}
 }

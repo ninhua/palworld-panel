@@ -1,6 +1,6 @@
 # 事件任务系统 API
 
-版本：PalPanel patch `0.8.65`
+版本：PalPanel patch `0.8.79`
 
 ## 功能范围
 
@@ -13,12 +13,6 @@
 - `once`：每个玩家永久只完成一次。
 
 运营时区继续使用 `PALPANEL_OPERATIONS_TIMEZONE`，默认 `Asia/Shanghai`。
-
-## 事件类型和任务 Payload
-
-面板任务编辑器使用真正的下拉选择框提供常用事件类型：`PAL_CAPTURED`、`PAL_KILLED`、`PLAYER_ONLINE`、`CHECKIN_COMPLETED`、`BOSS_PARTICIPATION`、`BOSS_KILLED`、`PLAYER_LOGIN` 和 `ITEM_CRAFTED`。任务只有在事件桥接器上报相同 `type` 时才会推进。
-
-任务定义中的 `filters` 用于匹配游戏事件 `payload` 中的字段。例如 `{"pal_id":"SheepBall"}` 表示只统计指定帕鲁；空对象 `{}` 表示接受该事件类型的全部事件。`amount_field` 则指定从事件 Payload 的哪个字段读取增量，例如在线时长通常读取 `minutes`。
 
 ## 创建任务
 
@@ -120,3 +114,98 @@ Patch `0.8.59` 新增 `/operations-tasks` 页面，并在侧边栏“积分系�
 - 手动重试最多 100 条待发或失败奖励。
 
 原有 `/tasks` 页面仍为 PalPanel 后台作业与计划任务队列；运营任务页面使用独立路径，避免路由语义冲突。
+
+## 任务事件诊断与重放
+
+```text
+POST /api/tasks/diagnostics/evaluate
+POST /api/tasks/diagnostics/replay
+```
+
+两个接口都接收标准任务事件对象：
+
+```json
+{
+  "event_id": "task-test-001",
+  "type": "PAL_CAPTURED",
+  "player_uid": "00000000000000000000000000000000",
+  "payload": {
+    "pal_id": "SheepBall",
+    "count": 1
+  }
+}
+```
+
+`evaluate` 只读检查全部任务定义，不写入进度或奖励。每条结果包含状态、原因、相关字段、期望值、实际值和预计进度。
+
+`replay` 使用现有任务处理链路实际推进进度，需要 `players:write` 权限。必须提供 `event_id`、`type` 和 `player_uid`。相同事件ID对同一玩家、任务和周期仍只处理一次。
+
+## 玩家游戏内任务查询（0.8.79）
+
+游戏聊天支持：
+
+```text
+任务
+我的任务
+任务进度
+任务 2
+任务 捕捉
+```
+
+命令遵循积分系统配置的命令前缀和“允许无前缀命令”开关。每页最多显示 5 个任务，包含当前进度、周期和积分奖励状态。任务奖励仍为达标后自动发放，不需要玩家手动领取。
+
+签名集成也可以按玩家查询任务：
+
+```text
+POST /api/integrations/game/tasks/query
+```
+
+```json
+{
+  "player_uid": "00000000000000000000000000000000",
+  "query": "捕捉",
+  "limit": 5,
+  "offset": 0
+}
+```
+
+该接口复用游戏事件入口的 HMAC 请求头，且只返回请求中 `player_uid` 的任务进度。
+
+## 在线时长自动结算（0.8.79）
+
+PalPanel 复用实时监控每 15 秒取得的 Palworld REST 玩家快照，最多每 30 秒对在线玩家累计完整分钟，并生成：
+
+```json
+{
+  "type": "PLAYER_ONLINE",
+  "payload": {
+    "minutes": 1,
+    "seconds": 60,
+    "from_minute": 1,
+    "to_minute": 1
+  }
+}
+```
+
+在线任务应设置：
+
+```text
+事件类型：PLAYER_ONLINE
+数量字段：minutes
+```
+
+追踪状态持久化在 `operations_task_online_tracking`：
+
+- 面板重启后的首轮采样只恢复状态，不把停机时间计入。
+- 正常采样间隔最多计入 90 秒，避免 PalDefender 暂时不可用后过量累计。
+- 玩家下线时补结算最后一个采样区间。
+- 不足一分钟的秒数保留到玩家下次上线继续累计。
+- 每个分钟区间生成稳定事件 ID；进度写入成功但追踪状态更新前异常退出时，重试仍不会重复推进。
+
+管理接口：
+
+```text
+GET /api/tasks/online-tracking?limit=100
+```
+
+游戏事件桥接状态也会返回当前在线人数、跟踪玩家数、累计提交分钟、共享快照年龄、玩家采样耗时、日志扫描耗时和采样错误。

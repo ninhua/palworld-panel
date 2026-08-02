@@ -446,90 +446,127 @@ export const Diagnostics: React.FC = () => {
         )}
       </section>
 
-      <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h2 className="flex items-center gap-2 text-balance text-lg font-bold text-slate-800"><SquareTerminal size={20} className="text-sky-500" />诊断控制台</h2>
-            <p className="mt-2 max-w-3xl text-pretty text-sm leading-6 text-slate-500">从 PalPanel 后端测试回环或私网 HTTP 接口，并在显式启用后执行主机终端命令。所有执行均限制为 15 秒和 64 KiB 输出，并写入操作审计。</p>
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 bg-slate-50/80 px-4 py-4 sm:px-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-slate-900 text-white shadow-sm"><SquareTerminal size={18} /></span>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">诊断控制台</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">私网 HTTP 请求、终端诊断、模板与历史记录</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5"><Clock3 size={13} />{status ? `${status.timeout_ms / 1000} 秒超时` : '读取限制…'}</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5">平台：{status?.platform || '未知'}</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5"><History size={13} />历史 {historyEntries.length}/{maxDiagnosticHistoryEntries}</span>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5"><Clock3 size={13} /> {status ? `${status.timeout_ms / 1000} 秒超时` : '读取限制…'}</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5">平台：{status?.platform || '未知'}</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5"><History size={13} /> 历史 {historyEntries.length}/{maxDiagnosticHistoryEntries}</span>
-          </div>
-        </div>
-      </section>
 
-      <section className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
-        <div className="flex flex-wrap gap-2 border-b border-slate-100 p-3" role="group" aria-label="诊断类型">
-          <button type="button" aria-pressed={mode === 'http'} onClick={() => selectMode('http')} className={`pp-btn ${mode === 'http' ? 'pp-btn--primary' : ''}`}><Network size={15} /> 内网 HTTP</button>
-          <button type="button" aria-pressed={mode === 'shell'} onClick={() => selectMode('shell')} className={`pp-btn ${mode === 'shell' ? 'pp-btn--primary' : ''}`}><SquareTerminal size={15} /> 终端命令</button>
-        </div>
-
-        <div className="grid gap-4 border-b border-slate-100 bg-slate-50/70 p-4 xl:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-700"><BookOpen size={16} className="text-violet-500" />诊断模板</div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <select
-                className="pp-input min-w-0 flex-1"
-                value={selectedTemplateID}
-                onChange={(event) => {
-                  const template = templates.find((item) => item.id === event.target.value);
-                  if (template) applyTemplate(template);
-                }}
+          <div className="mt-4 grid gap-3 xl:grid-cols-[auto_minmax(0,1fr)]">
+            <div className="inline-flex w-fit rounded-xl border border-slate-200 bg-white p-1 shadow-sm" role="group" aria-label="诊断类型">
+              <button
+                type="button"
+                aria-pressed={mode === 'http'}
+                onClick={() => selectMode('http')}
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${mode === 'http' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}
               >
-                <option value="">选择常用模板…</option>
-                {templates.map((template) => <option key={template.id} value={template.id}>{template.custom ? '自定义' : template.mode === 'http' ? 'HTTP' : '终端'} · {template.label}</option>)}
-              </select>
-              {selectedTemplateID && <button type="button" className="pp-btn" onClick={() => {
-                const template = templates.find((item) => item.id === selectedTemplateID);
-                if (template) applyTemplate(template);
-              }}><RotateCcw size={14} />重新载入</button>}
-              <button type="button" className="pp-btn pp-btn--primary" onClick={saveCurrentTemplate}><Save size={14} />保存当前</button>
-              <button type="button" className="pp-btn pp-btn--danger" disabled={!customTemplates.some((item) => item.id === selectedTemplateID)} onClick={removeSelectedTemplate}><Trash2 size={14} />删除模板</button>
-            </div>
-            <p className="mt-2 text-xs leading-5 text-slate-500">{templates.find((item) => item.id === selectedTemplateID)?.description || '模板只填充请求，不会自动执行。可把当前请求完整保存为浏览器自定义模板，包含 Authorization 等字段。'}</p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2 text-sm font-bold text-slate-700"><History size={16} className="text-sky-500" />执行历史</span>
-              <span className="text-[11px] text-slate-400">当前浏览器 · 最近 {maxDiagnosticHistoryEntries} 条</span>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <select
-                className="pp-input min-w-0 flex-1"
-                value={selectedHistoryID}
-                onChange={(event) => {
-                  const entry = historyEntries.find((item) => item.id === event.target.value);
-                  if (entry) loadHistoryEntry(entry);
-                  else setSelectedHistoryID('');
-                }}
+                <Network size={14} />内网 HTTP
+              </button>
+              <button
+                type="button"
+                aria-pressed={mode === 'shell'}
+                onClick={() => selectMode('shell')}
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${mode === 'shell' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}
               >
-                <option value="">选择历史记录…</option>
-                {historyEntries.map((entry) => <option key={entry.id} value={entry.id}>{formatHistoryTime(entry.created_at)} · {entry.mode === 'http' ? 'HTTP' : '终端'} · {entry.title}</option>)}
-              </select>
-              <button type="button" className="pp-btn pp-btn--danger" disabled={!selectedHistory} onClick={removeSelectedHistory}><Trash2 size={14} />删除</button>
-              <button type="button" className="pp-btn" disabled={historyEntries.length === 0} onClick={clearHistory}><X size={14} />清空</button>
+                <SquareTerminal size={14} />终端命令
+              </button>
             </div>
-            <p className="mt-2 text-xs leading-5 text-slate-500">历史保存在本机浏览器的 <code className="font-mono">localStorage</code>，会保留 Authorization、Cookie、Token 和请求体原值。相同请求只保留最新一次响应，不重复新增。历史键：<code className="font-mono">{diagnosticHistoryStorageKey}</code>；模板键：<code className="font-mono">{diagnosticTemplateStorageKey}</code></p>
+
+            <div className="grid min-w-0 gap-2 lg:grid-cols-2">
+              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+                <BookOpen size={15} className="ml-1 shrink-0 text-violet-500" />
+                <select
+                  className="min-w-0 flex-1 border-0 bg-transparent px-1 py-1.5 text-xs font-medium text-slate-700 outline-none"
+                  value={selectedTemplateID}
+                  onChange={(event) => {
+                    const template = templates.find((item) => item.id === event.target.value);
+                    if (template) applyTemplate(template);
+                    else setSelectedTemplateID('');
+                  }}
+                  aria-label="诊断模板"
+                >
+                  <option value="">选择诊断模板…</option>
+                  {templates.map((template) => <option key={template.id} value={template.id}>{template.custom ? '自定义' : template.mode === 'http' ? 'HTTP' : '终端'} · {template.label}</option>)}
+                </select>
+                {selectedTemplateID && (
+                  <button type="button" className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="重新载入模板" onClick={() => {
+                    const template = templates.find((item) => item.id === selectedTemplateID);
+                    if (template) applyTemplate(template);
+                  }}><RotateCcw size={14} /></button>
+                )}
+                <button type="button" className="grid size-8 shrink-0 place-items-center rounded-lg text-sky-600 hover:bg-sky-50" title="保存当前为模板" onClick={saveCurrentTemplate}><Save size={14} /></button>
+                <button type="button" className="grid size-8 shrink-0 place-items-center rounded-lg text-rose-500 hover:bg-rose-50 disabled:opacity-30" title="删除自定义模板" disabled={!customTemplates.some((item) => item.id === selectedTemplateID)} onClick={removeSelectedTemplate}><Trash2 size={14} /></button>
+              </div>
+
+              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+                <History size={15} className="ml-1 shrink-0 text-sky-500" />
+                <select
+                  className="min-w-0 flex-1 border-0 bg-transparent px-1 py-1.5 text-xs font-medium text-slate-700 outline-none"
+                  value={selectedHistoryID}
+                  onChange={(event) => {
+                    const entry = historyEntries.find((item) => item.id === event.target.value);
+                    if (entry) loadHistoryEntry(entry);
+                    else setSelectedHistoryID('');
+                  }}
+                  aria-label="执行历史"
+                >
+                  <option value="">选择执行历史…</option>
+                  {historyEntries.map((entry) => <option key={entry.id} value={entry.id}>{formatHistoryTime(entry.created_at)} · {entry.mode === 'http' ? 'HTTP' : '终端'} · {entry.title}</option>)}
+                </select>
+                <button type="button" className="grid size-8 shrink-0 place-items-center rounded-lg text-rose-500 hover:bg-rose-50 disabled:opacity-30" title="删除当前历史" disabled={!selectedHistory} onClick={removeSelectedHistory}><Trash2 size={14} /></button>
+                <button type="button" className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-30" title="清空全部历史" disabled={historyEntries.length === 0} onClick={clearHistory}><X size={14} /></button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="grid min-h-0 gap-0 lg:grid-cols-2">
-          <div className="border-b border-slate-100 p-5 lg:border-b-0 lg:border-r">
+        <div className="grid min-h-0 xl:grid-cols-[minmax(0,1.08fr)_minmax(30rem,0.92fr)]">
+          <div className="min-w-0 border-b border-slate-200 bg-slate-50/40 p-4 sm:p-5 xl:border-b-0 xl:border-r">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">请求构建器</h3>
+                <p className="mt-1 text-xs text-slate-500">编辑请求后执行；模板和历史记录只填充表单，不会自动发送。</p>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-mono text-[11px] font-semibold text-slate-500">{mode === 'http' ? method : 'SHELL'}</span>
+            </div>
+
             {mode === 'http' ? (
               <div className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
-                  <label className="pp-field"><span className="pp-field__label">方法</span><select className="pp-input" value={method} onChange={(event) => { setMethod(event.target.value); setSelectedHistoryID(''); }}>{['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'].map((item) => <option key={item}>{item}</option>)}</select></label>
-                  <label className="pp-field"><span className="pp-field__label">私网接口 URL</span><input className="pp-input font-mono" value={url} onChange={(event) => { setURL(event.target.value); setSelectedHistoryID(''); }} placeholder="http://127.0.0.1:17993/" /></label>
+                <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <div className="grid gap-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
+                    <label className="pp-field">
+                      <span className="pp-field__label">方法</span>
+                      <select className="pp-input font-semibold" value={method} onChange={(event) => { setMethod(event.target.value); setSelectedHistoryID(''); }}>
+                        {['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'].map((item) => <option key={item}>{item}</option>)}
+                      </select>
+                    </label>
+                    <label className="pp-field">
+                      <span className="pp-field__label">私网接口 URL</span>
+                      <input className="pp-input font-mono text-xs" value={url} onChange={(event) => { setURL(event.target.value); setSelectedHistoryID(''); }} placeholder="http://127.0.0.1:17993/" />
+                    </label>
+                  </div>
                 </div>
+
                 <div>
-                  <div className="mb-2 flex items-center justify-between gap-3">
+                  <div className="mb-2 flex items-end justify-between gap-3">
                     <div>
-                      <p className="text-sm font-bold text-slate-700">请求头 JSON</p>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">左侧可直接编辑 JSON；右侧通过“＋/－”增删字段。两侧解析后同步，Authorization 会自动识别 Bearer、Basic 或自定义值。</p>
+                      <p className="text-sm font-bold text-slate-700">请求头</p>
+                      <p className="mt-1 text-xs text-slate-500">默认使用字段编辑；需要批量粘贴时切换到 JSON。</p>
                     </div>
+                    <span className="text-[11px] font-medium text-slate-400">{headerRows.length} 项</span>
                   </div>
                   <DiagnosticHeaderEditor
                     rows={headerRows}
@@ -537,76 +574,112 @@ export const Diagnostics: React.FC = () => {
                     onNotice={(message) => { setNotice(message); setError(''); }}
                   />
                 </div>
-                <label className="pp-field"><span className="pp-field__label">请求体</span><textarea className="pp-input min-h-36 resize-y font-mono text-xs" value={body} onChange={(event) => { setBody(event.target.value); setSelectedHistoryID(''); }} spellCheck={false} placeholder="GET/HEAD 可留空" /></label>
-                {unresolvedPlaceholder && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">模板中仍包含凭据占位符。请替换为实际值，或删除不需要的请求头。</div>}
-                <button type="button" onClick={() => void runHTTP()} disabled={busy || !url.trim() || unresolvedPlaceholder} className="pp-btn pp-btn--primary">{busy ? <LoaderCircle className="animate-spin" size={15} /> : <Play size={15} />} 执行请求</button>
+
+                <label className="pp-field rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <span className="pp-field__label">请求体</span>
+                  <textarea className="pp-input min-h-28 resize-y font-mono text-xs" value={body} onChange={(event) => { setBody(event.target.value); setSelectedHistoryID(''); }} spellCheck={false} placeholder="GET/HEAD 可留空；JSON 请求体可直接粘贴" />
+                </label>
+
+                {unresolvedPlaceholder && <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-800">模板中仍包含凭据占位符。请替换为实际值，或删除不需要的请求头。</div>}
+
+                <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-3 text-white sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 text-xs text-slate-400">
+                    <span className="font-semibold text-slate-200">{method}</span>
+                    <span className="mx-2 text-slate-600">·</span>
+                    <span className="break-all font-mono">{url.trim() || '未填写 URL'}</span>
+                  </div>
+                  <button type="button" onClick={() => void runHTTP()} disabled={busy || !url.trim() || unresolvedPlaceholder} className="pp-btn pp-btn--primary shrink-0">
+                    {busy ? <LoaderCircle className="animate-spin" size={15} /> : <Play size={15} />}执行请求
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
                 {!status?.shell_enabled && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"><p className="flex items-center gap-2 font-bold"><CircleAlert size={16} />终端命令默认关闭</p><p className="mt-2 text-pretty leading-6">设置 <code className="rounded bg-amber-100 px-1 font-mono">PALPANEL_DIAGNOSTIC_SHELL_ENABLED=true</code> 并重启后端后启用。</p></div>}
-                <label className="pp-field"><span className="pp-field__label">终端命令</span><textarea className="pp-input min-h-52 resize-y font-mono text-xs" value={command} onChange={(event) => { setCommand(event.target.value); setSelectedHistoryID(''); }} spellCheck={false} placeholder={status?.platform === 'windows' ? '例如：netstat -ano' : '例如：ss -lntp'} disabled={!status?.shell_enabled} /></label>
+                <label className="pp-field rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><span className="pp-field__label">终端命令</span><textarea className="pp-input min-h-64 resize-y font-mono text-xs" value={command} onChange={(event) => { setCommand(event.target.value); setSelectedHistoryID(''); }} spellCheck={false} placeholder={status?.platform === 'windows' ? '例如：netstat -ano' : '例如：ss -lntp'} disabled={!status?.shell_enabled} /></label>
                 <label className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><input type="checkbox" className="mt-0.5 size-4" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} disabled={!status?.shell_enabled} /><span className="text-pretty">我确认该命令会以 PalPanel 服务账号权限在主机执行，并可能修改或删除服务器文件。内置模板均为只读命令，但执行前仍应检查内容。</span></label>
-                <button type="button" onClick={() => void runShell()} disabled={busy || !status?.shell_enabled || !command.trim() || !confirmed} className="pp-btn pp-btn--danger">{busy ? <LoaderCircle className="animate-spin" size={15} /> : <Play size={15} />} 执行命令</button>
+                <div className="flex justify-end"><button type="button" onClick={() => void runShell()} disabled={busy || !status?.shell_enabled || !command.trim() || !confirmed} className="pp-btn pp-btn--danger">{busy ? <LoaderCircle className="animate-spin" size={15} /> : <Play size={15} />}执行命令</button></div>
               </div>
             )}
+
             {error && <div role="alert" className="pp-note pp-note--danger mt-4">{error}</div>}
             {notice && <div role="status" className="pp-note mt-4">{notice}</div>}
           </div>
 
-          <div className="flex min-h-96 flex-col bg-slate-950 p-5 text-slate-200">
-            <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <div>
-                <h3 className="flex items-center gap-2 text-balance text-sm font-bold"><Braces size={15} className="text-sky-400" />执行结果</h3>
-                {selectedHistory && <p className="mt-1 text-[11px] text-slate-400">历史记录：{formatHistoryTime(selectedHistory.created_at)}</p>}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-40" disabled={!result} onClick={() => void copyText(result, '响应')}><Copy size={13} className="mr-1 inline" />复制响应</button>
-                <button type="button" className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800" onClick={() => void copyText(requestText, '请求')}><Copy size={13} className="mr-1 inline" />复制请求</button>
-                <button type="button" className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800" onClick={() => void copyText(transcript, '完整记录')}><Copy size={13} className="mr-1 inline" />复制完整记录</button>
-                <button type="button" className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-40" disabled={!result} onClick={clearResult}><X size={13} className="mr-1 inline" />清空结果</button>
-              </div>
-            </div>
-
-            {mode === 'http' && httpResult && (
-              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2">
-                <span className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${responseJSON ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
-                  {responseJSON ? `JSON · ${responseJSON.summary}` : '文本响应 · 未识别为 JSON'}
-                </span>
-                {(['formatted', 'compact', 'tree', 'raw'] as DiagnosticResponseView[]).map((view) => {
-                  const labels: Record<DiagnosticResponseView, string> = { formatted: '格式化 JSON', compact: '压缩 JSON', tree: '树形查看', raw: '原始响应' };
-                  const disabled = view !== 'raw' && !responseJSON;
-                  return (
-                    <button
-                      key={view}
-                      type="button"
-                      disabled={disabled}
-                      aria-pressed={responseView === view}
-                      onClick={() => setResponseView(view)}
-                      className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-35 ${responseView === view ? 'border-sky-500 bg-sky-950 text-sky-300' : 'border-slate-700 text-slate-400 hover:bg-slate-800'}`}
-                    >
-                      {labels[view]}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {mode === 'http' && httpResult && responseJSON && responseView === 'tree' ? (
-              <div className="min-h-0 flex-1 space-y-3 overflow-auto">
-                <pre className="whitespace-pre-wrap break-words rounded-2xl border border-slate-800 bg-slate-900 p-4 font-mono text-xs leading-6">{formatHTTPResultMetadata(httpResult)}</pre>
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <span className="text-xs font-bold text-slate-300">JSON 响应体</span>
-                    <span className="text-[11px] text-slate-500">点击对象或数组节点展开/折叠</span>
+          <div className="flex min-h-[42rem] min-w-0 flex-col bg-slate-950 text-slate-200">
+            <div className="border-b border-slate-800 px-4 py-3 sm:px-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <h3 className="flex items-center gap-2 text-sm font-bold"><Braces size={15} className="text-sky-400" />执行结果</h3>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                    {mode === 'http' && httpResult ? (
+                      <>
+                        <span className={`font-semibold ${httpResult.status_code >= 200 && httpResult.status_code < 400 ? 'text-emerald-400' : 'text-rose-400'}`}>{httpResult.status}</span>
+                        <span>{httpResult.duration_ms} ms</span>
+                        {httpResult.truncated && <span className="text-amber-400">输出已截断</span>}
+                      </>
+                    ) : mode === 'shell' && shellResult ? (
+                      <>
+                        <span className={shellResult.success ? 'text-emerald-400' : 'text-rose-400'}>exit={shellResult.exit_code}</span>
+                        <span>{shellResult.duration_ms} ms</span>
+                        {shellResult.timed_out && <span className="text-amber-400">已超时</span>}
+                      </>
+                    ) : <span>等待执行</span>}
+                    {selectedHistory && <span>· 历史 {formatHistoryTime(selectedHistory.created_at)}</span>}
                   </div>
-                  <DiagnosticJSONViewer value={responseJSON.value} />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-800 disabled:opacity-35" disabled={!result} onClick={() => void copyText(result, '响应')}><Copy size={13} />响应</button>
+                  <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-800" onClick={() => void copyText(requestText, '请求')}><Copy size={13} />请求</button>
+                  <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-800" onClick={() => void copyText(transcript, '完整记录')}><Copy size={13} />完整记录</button>
+                  <button type="button" className="grid size-8 place-items-center rounded-lg border border-slate-700 text-slate-400 transition hover:bg-slate-800 disabled:opacity-35" title="清空结果" disabled={!result} onClick={clearResult}><X size={13} /></button>
                 </div>
               </div>
-            ) : (
-              <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-slate-800 bg-slate-900 p-4 font-mono text-xs leading-6">{result || '执行后将在这里显示状态、响应头和输出。可从上方选择历史记录恢复请求与响应。'}</pre>
-            )}
-            <p className="mt-3 text-[11px] leading-5 text-slate-500">检测到有效 JSON 时默认格式化显示，也可切换压缩、树形或原始响应。复制响应和完整记录会采用当前视图对应的文本。实时结果最大 {formatBytes(status?.max_output || 65536)}。</p>
+
+              {mode === 'http' && httpResult && (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <span className={`mr-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold ${responseJSON ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-900 text-slate-400'}`}>
+                    {responseJSON ? `JSON · ${responseJSON.summary}` : '文本响应'}
+                  </span>
+                  {(['formatted', 'compact', 'tree', 'raw'] as DiagnosticResponseView[]).map((view) => {
+                    const labels: Record<DiagnosticResponseView, string> = { formatted: '格式化', compact: '压缩', tree: '树形', raw: '原始' };
+                    const disabled = view !== 'raw' && !responseJSON;
+                    return (
+                      <button
+                        key={view}
+                        type="button"
+                        disabled={disabled}
+                        aria-pressed={responseView === view}
+                        onClick={() => setResponseView(view)}
+                        className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-30 ${responseView === view ? 'border-sky-500 bg-sky-950 text-sky-300' : 'border-slate-700 text-slate-400 hover:bg-slate-900 hover:text-slate-200'}`}
+                      >
+                        {labels[view]}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="min-h-0 flex-1 p-4 sm:p-5">
+              {mode === 'http' && httpResult && responseJSON && responseView === 'tree' ? (
+                <div className="h-full min-h-0 space-y-3 overflow-auto">
+                  <pre className="whitespace-pre-wrap break-words rounded-xl border border-slate-800 bg-slate-900/70 p-3 font-mono text-xs leading-6 text-slate-400">{formatHTTPResultMetadata(httpResult)}</pre>
+                  <DiagnosticJSONViewer value={responseJSON.value} />
+                </div>
+              ) : (
+                <pre className="h-full min-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-slate-800 bg-slate-900/70 p-4 font-mono text-xs leading-6 text-slate-200">{result || '执行后将在这里显示状态、响应头和输出。\n\n可从顶部选择模板或历史记录快速恢复请求。'}</pre>
+              )}
+            </div>
+
+            <div className="border-t border-slate-800 px-4 py-2.5 text-[11px] text-slate-500 sm:px-5">
+              JSON 响应可切换格式化、压缩、树形或原始视图；复制操作使用当前视图文本。最大输出 {formatBytes(status?.max_output || 65536)}。
+            </div>
           </div>
+        </div>
+
+        <div className="border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-[11px] leading-5 text-slate-500 sm:px-5">
+          历史与自定义模板保存在当前浏览器 <code className="font-mono">localStorage</code>，会保留 Authorization、Cookie、Token 和请求体原值；相同请求只更新最新响应。历史键：<code className="font-mono">{diagnosticHistoryStorageKey}</code>；模板键：<code className="font-mono">{diagnosticTemplateStorageKey}</code>。
         </div>
       </section>
     </div>

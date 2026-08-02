@@ -1,97 +1,147 @@
-# Boss 系统 API（0.8.71）
+# Boss 系统 API（0.8.81）
 
-`0.8.64` 建立 Boss 模板、奖励和召唤审计；`0.8.67` 增加多波次编排；`0.8.68` 增加定时计划和后台扫描器；`0.8.71` 接入 PalDefender 游戏内预警广播及测试操作。
+`0.8.81` 在现有 Boss 模板、奖励、波次、定时计划和召唤审计基础上增加安全的 PalDefender RCON 执行适配层。
 
-Boss 执行模式仍为 `record_only`：计划到点后会自动创建召唤记录与波次快照，但不会向 PalDefender 或 RCON 发送实际生成 Boss 的命令。
+计划到点仍先创建召唤记录和完整波次快照。管理员随后从召唤记录逐波执行；本版不会自动连续执行后续波次。
 
-## 定时计划
+## 执行器
 
-计划支持两种模式：
+当前执行器代码：
 
 ```text
-daily  每天固定时间
-cron   五段 Cron：分 时 日 月 周
+paldefender_rcon_palsummon
 ```
 
-每个计划保存：
-
-- Boss 模板；
-- 时区；
-- 每日时间或 Cron 表达式；
-- 提前预警分钟数；
-- 预警标题和消息；
-- 可选坐标覆盖；
-- 启用状态和扩展 metadata；
-- 下次运行、上次运行和上次预警时间。
-
-后台工作器启动后 5 秒进行第一次扫描，之后每 30 秒扫描一次。应用重启后会根据数据库中的 `next_run_at` 继续运行。
-
-## Cron 语法
-
-Cron 使用五段格式：
+执行流程：
 
 ```text
-分 时 日 月 周
+选择下一条 pending 波次
+→ 创建 running 执行尝试
+→ 波次变为 active
+→ 写入 PalDefender PalTemplate / PalSummon JSON
+→ 通过 RCON 发送 /summon <PalSummon名称>
+→ 成功时完成波次
+→ 明确失败时标记波次失败
+→ 结果不确定时保留 active，等待人工核对
 ```
 
 支持：
 
-- `*` 通配符；
-- 逗号列表，例如 `1,15,30`；
-- 范围，例如 `1-5`；
-- 步长，例如 `*/15`、`1-10/2`；
-- 周日可写 `0` 或 `7`。
+- 固定世界坐标；
+- 多只 Boss 按生成半径分散；
+- 允许或禁止捕捉；
+- 使用现有 PalDefender PalTemplate；
+- 倍率全部为 `1` 时自动生成最小 PalTemplate；
+- 每次命令和响应的持久化审计。
 
-示例：
+## PalTemplate 配置
 
-```text
-0 20 * * 6      每周六 20:00
-0 20 * * 0      每周日 20:00
-30 19 * * 1-5   工作日 19:30
-*/15 * * * *    每 15 分钟
-```
-
-时间按计划的 IANA 时区解释，例如 `Asia/Shanghai`。
-
-## 提前预警
-
-当当前时间进入 `next_run_at - warning_minutes` 到 `next_run_at` 之间时，系统先通过 PalDefender 发送重要广播，再写入 `warning` 审计事件。成功和失败都会记录；同一计划、同一计划时间只会在当前 PalPanel 进程内发送一次。
-
-预警消息支持变量：
-
-```text
-{{minutes}}  提前分钟数
-{{schedule}} 计划名称
-{{boss}}     Boss 模板名称
-```
-
-`0.8.71` 使用 PalDefender `Alert` 广播通道发送预警。PalDefender 未安装、未加载、REST 未启用、Token 缺失或网络异常时，事件状态为 `failed`，不会伪装为成功。
-
-## 到期执行
-
-计划到期时，系统使用确定性的请求键创建召唤记录：
-
-```text
-boss-schedule:<schedule_id>:<planned_unix>
-```
-
-因此重复扫描不会重复创建召唤。召唤 metadata 会包含：
+模板或单个波次的 `metadata` 可以指定：
 
 ```json
 {
-  "schedule_id": "schedule_xxx",
-  "schedule_name": "周六晚间Boss",
-  "planned_for": "2026-08-01T12:00:00Z",
-  "source": "scheduled"
+  "pal_template_file": "ArenaBoss.json"
 }
 ```
 
-计划执行失败也会写入审计，并把计划推进到下一次时间，避免每 30 秒无限重试同一个过期时间点。
+文件必须是有效 JSON，且其中的 `PalID` 和 `Level` 必须与波次配置一致。文件必须位于：
 
-## 路由
+```text
+PalDefender/Pals/Templates
+```
+
+当生命、攻击或防御倍率不为 `1` 时，必须指定经过管理员确认的 PalTemplate 文件。系统不会猜测 PalTemplate 的具体属性字段，也不会静默生成属性不一致的 Boss。
+
+还可以配置 PalSummon 的状态禁用列表：
+
+```json
+{
+  "disable_statuses": ["Burn", "Poison"]
+}
+```
+
+## 执行安全
+
+同一 PalPanel 进程一次只允许一个 Boss 波次执行。
+
+以下情况会阻止继续执行：
+
+- 已有波次处于 `active`；
+- 上一次执行仍为 `running`；
+- RCON 或 PalDefender 路径未配置；
+- `AdminPassword` 为空；
+- 指定的 PalTemplate 不存在；
+- 非 1 倍率没有精确 PalTemplate。
+
+当 RCON 命令已经发送，但连接在响应前断开，执行尝试标记为：
+
+```text
+uncertain
+```
+
+系统不会自动重试，避免重复生成。管理员应先进入游戏核对，再手动把活动波次更新为完成、失败或跳过。波次离开 `active` 后可以继续执行下一波；历史 `uncertain` 记录会保留。
+
+## 执行状态
+
+```text
+GET /api/boss/execution/status
+```
+
+响应包含：
+
+- 执行器是否可用；
+- 当前是否忙碌；
+- running / uncertain 尝试数量；
+- active 波次数量；
+- 是否需要人工核对；
+- 支持能力与限制。
+
+## 执行下一波
+
+```text
+POST /api/boss/summons/{id}/execute-next
+```
+
+无需请求体。接口选择第一条 `pending` 波次执行，返回执行尝试：
+
+```json
+{
+  "id": "boss_exec_xxx",
+  "summon_id": "summon_xxx",
+  "wave_position": 1,
+  "adapter": "paldefender_rcon_palsummon",
+  "status": "succeeded",
+  "command_count": 2,
+  "completed_commands": 2,
+  "commands": [
+    "/summon PalPanelBoss_summon_xxx_W01_01",
+    "/summon PalPanelBoss_summon_xxx_W01_02"
+  ],
+  "responses": ["...", "..."],
+  "details": {}
+}
+```
+
+`failed` 和 `uncertain` 也作为执行尝试返回，便于前端直接显示审计信息。
+
+## 查询执行记录
+
+```text
+GET /api/boss/summons/{id}/executions
+```
+
+支持：
+
+```text
+limit
+offset
+```
+
+## Boss 路由
 
 ```text
 GET    /api/boss/summary
+GET    /api/boss/execution/status
 
 GET    /api/boss/rewards
 POST   /api/boss/rewards
@@ -111,81 +161,23 @@ POST   /api/boss/summons/{id}/transition
 GET    /api/boss/summons/{id}/waves
 POST   /api/boss/summons/{id}/waves/{position}/transition
 GET    /api/boss/summons/{id}/events
+POST   /api/boss/summons/{id}/execute-next
+GET    /api/boss/summons/{id}/executions
 
 GET    /api/boss/schedules
 POST   /api/boss/schedules
 PUT    /api/boss/schedules/{id}
 DELETE /api/boss/schedules/{id}
 POST   /api/boss/schedules/{id}/run-now
+POST   /api/boss/schedules/{id}/test-warning
 GET    /api/boss/schedule-events
 POST   /api/boss/maintenance/run-due
 ```
 
-## 创建每日计划示例
+## 当前限制
 
-```json
-{
-  "name": "每日晚八点Boss",
-  "template_id": "template_xxx",
-  "mode": "daily",
-  "daily_time": "20:00",
-  "cron": "",
-  "timezone": "Asia/Shanghai",
-  "warning_minutes": 30,
-  "warning_title": "Boss活动即将开始",
-  "warning_message": "{{boss}}将在{{minutes}}分钟后开始，请提前前往活动区域。",
-  "enabled": true,
-  "metadata": {}
-}
-```
-
-## 创建 Cron 计划示例
-
-```json
-{
-  "name": "周六晚间Boss",
-  "template_id": "template_xxx",
-  "mode": "cron",
-  "daily_time": "",
-  "cron": "0 20 * * 6",
-  "timezone": "Asia/Shanghai",
-  "warning_minutes": 60,
-  "warning_title": "周末Boss预警",
-  "warning_message": "{{schedule}}将在{{minutes}}分钟后开始。",
-  "location_override": {
-    "x": 100,
-    "y": 200,
-    "z": 300,
-    "label": "火山竞技场"
-  },
-  "enabled": true,
-  "metadata": {}
-}
-```
-
-## 面板操作
-
-`/boss` 页面新增“定时计划”页签：
-
-- 创建和编辑每日/Cron 计划；
-- 配置时区、预警和坐标覆盖；
-- 查看下次运行和上次计划时间；
-- 立即创建一次召唤记录；
-- 手动触发到期扫描；
-- 查看预警和召唤审计。
-
-## PalDefender 预警广播
-
-定时计划进入预警窗口时，PalPanel 会调用 PalDefender 重要广播。预警文本支持：
-
-- `{{minutes}}`：提前分钟数
-- `{{schedule}}`：计划名称
-- `{{boss}}`：Boss 模板名称
-
-管理员可以通过以下接口测试当前计划的渲染结果和 PalDefender 连通性：
-
-```text
-POST /api/boss/schedules/{id}/test-warning
-```
-
-测试广播同样写入 `boss_schedule_events`，`details.test=true`。失败记录不会伪装为成功；PalDefender 未安装、未加载、未启用 REST、Token 缺失或网络错误都会保留失败审计。
+- 定时计划不会自动执行第一波；
+- 不会按照 `delay_seconds` 自动连续推进；
+- 不会自动判断 Boss 是否死亡；
+- 尚未实现参与者、伤害、击杀归属和奖励结算；
+- 未提供自动清场和传送。

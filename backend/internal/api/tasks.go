@@ -27,6 +27,9 @@ func (s Server) registerTaskRoutes(api *gin.RouterGroup) {
 	group.GET("", Require(PermRead), s.listTasks)
 	group.POST("", Require(PermConfigWrite), s.createTask)
 	group.GET("/progress/:player_uid", Require(PermRead), s.playerTaskProgress)
+	group.GET("/online-tracking", Require(PermRead), s.onlineTaskTracking)
+	group.POST("/diagnostics/evaluate", Require(PermRead), s.evaluateTaskEvent)
+	group.POST("/diagnostics/replay", Require(PermPlayersWrite), s.replayTaskEvent)
 	group.POST("/maintenance/retry-rewards", Require(PermPlayersWrite), s.retryTaskRewards)
 	group.PUT("/:id", Require(PermConfigWrite), s.updateTask)
 	group.DELETE("/:id", Require(PermConfigWrite), s.archiveTask)
@@ -34,6 +37,50 @@ func (s Server) registerTaskRoutes(api *gin.RouterGroup) {
 
 func (s Server) taskService() (*tasks.Service, error) {
 	return tasks.ForPath(s.cfg.DBPath, strings.TrimSpace(os.Getenv("PALPANEL_OPERATIONS_TIMEZONE")))
+}
+
+type gameTaskQueryRequest struct {
+	PlayerUID string `json:"player_uid"`
+	Query     string `json:"query,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
+	Offset    int    `json:"offset,omitempty"`
+}
+
+func (s Server) gameTaskQuery(c *gin.Context) {
+	var request gameTaskQueryRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	if strings.TrimSpace(request.PlayerUID) == "" {
+		fail(c, http.StatusBadRequest, "task_player_uid_required", "player_uid is required")
+		return
+	}
+	service, err := s.taskService()
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	page, err := service.PlayerProgressPage(c.Request.Context(), request.PlayerUID, request.Query, request.Limit, request.Offset)
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	ok(c, page)
+}
+
+func (s Server) onlineTaskTracking(c *gin.Context) {
+	service, err := s.taskService()
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	items, err := service.OnlineTrackingRecords(c.Request.Context(), economyQueryInt(c, "limit", 100))
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	ok(c, gin.H{"items": items, "count": len(items)})
 }
 
 func (s Server) listTasks(c *gin.Context) {
@@ -115,6 +162,58 @@ func (s Server) playerTaskProgress(c *gin.Context) {
 		return
 	}
 	ok(c, gin.H{"items": items, "count": len(items)})
+}
+
+func (s Server) evaluateTaskEvent(c *gin.Context) {
+	var event tasks.Event
+	if err := c.ShouldBindJSON(&event); err != nil {
+		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	service, err := s.taskService()
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	report, err := service.DiagnoseEvent(c.Request.Context(), event)
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	ok(c, report)
+}
+
+func (s Server) replayTaskEvent(c *gin.Context) {
+	var event tasks.Event
+	if err := c.ShouldBindJSON(&event); err != nil {
+		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	if strings.TrimSpace(event.EventID) == "" || strings.TrimSpace(event.Type) == "" || strings.TrimSpace(event.PlayerUID) == "" {
+		fail(c, http.StatusBadRequest, "task_event_invalid", "event_id, type, and player_uid are required for replay")
+		return
+	}
+	service, err := s.taskService()
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	before, err := service.DiagnoseEvent(c.Request.Context(), event)
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	pointService, err := s.economyService()
+	if err != nil {
+		economyFailure(c, err)
+		return
+	}
+	updates, err := service.ProcessEvent(c.Request.Context(), event, pointService)
+	if err != nil {
+		taskFailure(c, err)
+		return
+	}
+	ok(c, gin.H{"event": event, "diagnostic": before, "updates": updates, "count": len(updates)})
 }
 
 func (s Server) retryTaskRewards(c *gin.Context) {

@@ -41,11 +41,13 @@ export const Economy: React.FC = () => {
   const [legacyFile, setLegacyFile] = useState<File | null>(null);
   const [legacyPreview, setLegacyPreview] = useState<LegacyAstrBotPreview | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [deadLetterPlayerUIDs, setDeadLetterPlayerUIDs] = useState<Record<number, string>>({});
 
   const configQuery = useQuery({ queryKey: ['economy', 'config'], queryFn: economyApi.config });
   const summaryQuery = useQuery({ queryKey: ['economy', 'summary'], queryFn: economyApi.summary });
-  const bridgeQuery = useQuery({ queryKey: ['economy', 'game-event-bridge'], queryFn: economyApi.bridgeStatus, refetchInterval: 5000 });
-  const bridgeObservationsQuery = useQuery({ queryKey: ['economy', 'game-event-bridge', 'observations'], queryFn: economyApi.bridgeObservations, refetchInterval: 5000 });
+  const bridgeQuery = useQuery({ queryKey: ['economy', 'game-event-bridge'], queryFn: economyApi.bridgeStatus, refetchInterval: 10000 });
+  const bridgeObservationsQuery = useQuery({ queryKey: ['economy', 'game-event-bridge', 'observations'], queryFn: economyApi.bridgeObservations, refetchInterval: 15000 });
+  const bridgeDeadLettersQuery = useQuery({ queryKey: ['economy', 'game-event-bridge', 'dead-letters'], queryFn: () => economyApi.bridgeDeadLetters('pending'), refetchInterval: 15000 });
   const accountsQuery = useQuery({ queryKey: ['economy', 'accounts', search], queryFn: () => economyApi.accounts(search) });
   const ledgerQuery = useQuery({
     queryKey: ['economy', 'ledger', selected?.player_uid],
@@ -103,6 +105,32 @@ export const Economy: React.FC = () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['economy', 'game-event-bridge'] }),
         queryClient.invalidateQueries({ queryKey: ['economy', 'game-event-bridge', 'observations'] }),
+      ]);
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const replayDeadLetter = useMutation({
+    mutationFn: ({ id, playerUID }: { id: number; playerUID: string }) => economyApi.replayBridgeDeadLetter(id, playerUID),
+    onSuccess: async (result) => {
+      setNotice({ type: 'success', text: `死信 #${result.dead_letter_id} 已重放；重复事件会由幂等账本自动跳过。` });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['economy', 'game-event-bridge'] }),
+        queryClient.invalidateQueries({ queryKey: ['economy', 'game-event-bridge', 'observations'] }),
+        queryClient.invalidateQueries({ queryKey: ['economy', 'game-event-bridge', 'dead-letters'] }),
+        queryClient.invalidateQueries({ queryKey: ['economy', 'summary'] }),
+      ]);
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const dismissDeadLetter = useMutation({
+    mutationFn: (id: number) => economyApi.dismissBridgeDeadLetter(id),
+    onSuccess: async (result) => {
+      setNotice({ type: 'success', text: `死信 #${result.dead_letter_id} 已忽略。` });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['economy', 'game-event-bridge'] }),
+        queryClient.invalidateQueries({ queryKey: ['economy', 'game-event-bridge', 'dead-letters'] }),
       ]);
     },
     onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
@@ -276,11 +304,18 @@ export const Economy: React.FC = () => {
           </div>
           <button type="button" className="pp-btn pp-btn--primary shrink-0" disabled={repairBridge.isPending} onClick={() => repairBridge.mutate()}>{repairBridge.isPending ? <LoaderCircle className="animate-spin" size={15} /> : <Settings2 size={15} />}一键修复日志开关</button>
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-9">
           <BridgeMetric label="桥接进程" ok={Boolean(bridgeQuery.data?.bridge.running)} text={bridgeQuery.data?.bridge.running ? '运行中' : '未运行'} />
           <BridgeMetric label="已处理事件" ok={(bridgeQuery.data?.bridge.processed_events || 0) > 0} text={number.format(bridgeQuery.data?.bridge.processed_events || 0)} />
+          <BridgeMetric label="待处理死信" ok={(bridgeQuery.data?.bridge.pending_dead_letters || 0) === 0} text={number.format(bridgeQuery.data?.bridge.pending_dead_letters || 0)} />
           <BridgeMetric label="玩家未匹配" ok={(bridgeQuery.data?.bridge.unmatched_players || 0) === 0} text={number.format(bridgeQuery.data?.bridge.unmatched_players || 0)} />
-          <BridgeMetric label="处理失败" ok={(bridgeQuery.data?.bridge.failed_events || 0) === 0} text={number.format(bridgeQuery.data?.bridge.failed_events || 0)} />
+          <BridgeMetric label="游标文件" ok={(bridgeQuery.data?.bridge.cursor_files || 0) > 0} text={number.format(bridgeQuery.data?.bridge.cursor_files || 0)} />
+          <BridgeMetric label="轮转恢复" ok={(bridgeQuery.data?.bridge.rotation_resets || 0) === 0} text={number.format(bridgeQuery.data?.bridge.rotation_resets || 0)} />
+          <BridgeMetric label="当前在线" ok={!bridgeQuery.data?.bridge.last_online_error} text={number.format(bridgeQuery.data?.bridge.online_players || 0)} />
+          <BridgeMetric label="在线跟踪玩家" ok={!bridgeQuery.data?.bridge.last_online_error} text={number.format(bridgeQuery.data?.bridge.tracked_online_players || 0)} />
+          <BridgeMetric label="已结算在线分钟" ok={!bridgeQuery.data?.bridge.last_online_error} text={number.format(bridgeQuery.data?.bridge.online_minutes_emitted || 0)} />
+          <BridgeMetric label="日志扫描耗时" ok={(bridgeQuery.data?.bridge.last_scan_duration_ms || 0) < 1000} text={`${number.format(bridgeQuery.data?.bridge.last_scan_duration_ms || 0)} ms`} />
+          <BridgeMetric label="玩家快照年龄" ok={(bridgeQuery.data?.bridge.player_snapshot_age_seconds || 0) <= 45} text={`${number.format(bridgeQuery.data?.bridge.player_snapshot_age_seconds || 0)} 秒`} />
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {Object.entries(bridgeQuery.data?.bridge.configuration || {}).map(([key, enabled]) => <div key={key} className={`flex items-center justify-between rounded-xl border px-3 py-2 text-xs font-bold ${enabled ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}><span>{key}</span><span>{enabled ? '已启用' : '未启用'}</span></div>)}
@@ -289,10 +324,54 @@ export const Economy: React.FC = () => {
           <div className="rounded-xl border border-sky-100 bg-sky-50 p-3 text-xs leading-5 text-sky-800"><strong className="block">捕捉任务</strong><code className="font-mono">PAL_CAPTURED</code>，数量字段填 <code className="font-mono">count</code>。限定某种帕鲁时，过滤条件使用内部 ID，例如 <code className="font-mono">{`{"pal_id":"SheepBall"}`}</code>。</div>
           <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800"><strong className="block">签到任务</strong>玩家当天首次签到成功后会额外生成 <code className="font-mono">CHECKIN_COMPLETED</code>，数量字段填 <code className="font-mono">count</code>；重复签到不会推进任务。</div>
           <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs leading-5 text-amber-800"><strong className="block">击杀任务</strong><code className="font-mono">PAL_KILLED</code> 依赖 PalDefender 死亡日志。不同版本日志可能只提供目标名称；先查看下方日志样本，再选择 <code className="font-mono">target_name</code> 或 <code className="font-mono">pal_id</code> 过滤。</div>
+          <div className="rounded-xl border border-violet-100 bg-violet-50 p-3 text-xs leading-5 text-violet-800"><strong className="block">在线时长任务</strong>事件类型选择 <code className="font-mono">PLAYER_ONLINE</code>，数量字段填写 <code className="font-mono">minutes</code>。系统复用实时监控的玩家快照，最多每30秒结算一次；不会再单独轮询 PalDefender 玩家接口。</div>
         </div>
         {bridgeQuery.data?.bridge.last_error && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{bridgeQuery.data.bridge.last_error}</div>}
+        {bridgeQuery.data?.bridge.last_online_error && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">在线时长采样失败：{bridgeQuery.data.bridge.last_online_error}</div>}
+        {(bridgeQuery.data?.online_tracking || []).length > 0 && <details className="mt-4 rounded-xl border border-violet-100 bg-violet-50/50 p-3 text-xs text-slate-600"><summary className="cursor-pointer font-bold text-violet-800">在线时长跟踪明细（{bridgeQuery.data?.online_tracking.length}）</summary><div className="mt-3 grid gap-2 lg:grid-cols-2">{(bridgeQuery.data?.online_tracking || []).map((item) => <div key={item.player_uid} className="rounded-lg border border-violet-100 bg-white p-2"><div className="flex items-center justify-between gap-2"><strong className="truncate text-slate-800">{item.nickname || item.player_uid}</strong><span className={`rounded-full px-2 py-0.5 font-bold ${item.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{item.active ? '在线' : '离线'}</span></div><div className="mt-1 font-mono text-[11px] text-slate-400">{item.player_uid}</div><div className="mt-1 text-[11px]">已提交 {number.format(item.total_emitted_minutes)} 分钟 · 待累计 {number.format(item.pending_seconds)} 秒</div></div>)}</div></details>}
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-black text-slate-800"><CircleAlert size={16} className="text-amber-500" />事件死信</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-500">解析失败、玩家未匹配或任务处理失败的日志会保存在数据库中。修正配置后可安全重放；原事件ID保持不变，不会重复加分或发货。</p>
+            </div>
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">待处理 {number.format(bridgeDeadLettersQuery.data?.pending || 0)}</span>
+          </div>
+          <div className="mt-3 space-y-3">
+            {(bridgeDeadLettersQuery.data?.items || []).map((item) => (
+              <div key={item.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md bg-rose-50 px-2 py-1 font-mono text-[11px] font-bold text-rose-700">#{item.id} {item.event_type || 'UNKNOWN'}</span>
+                      <span className="text-xs font-bold text-slate-700">{item.nickname || item.player_hint || item.player_uid || '玩家未识别'}</span>
+                      <span className="text-[11px] text-slate-400">尝试 {item.attempts} 次 · {new Date(item.created_at).toLocaleString()}</span>
+                    </div>
+                    <p className="mt-2 text-xs font-semibold leading-5 text-rose-600">{item.last_error || item.reason}</p>
+                    <p className="mt-2 break-all rounded-lg bg-slate-950 px-3 py-2 font-mono text-[11px] leading-5 text-slate-300">{item.sample || item.raw_line || '-'}</p>
+                    <details className="mt-2 text-[11px] text-slate-500"><summary className="cursor-pointer font-bold">查看Payload与事件ID</summary><pre className="mt-2 overflow-auto rounded-lg bg-slate-100 p-2 font-mono">{JSON.stringify({ event_id: item.event_id, payload: item.payload }, null, 2)}</pre></details>
+                  </div>
+                  <div className="w-full shrink-0 space-y-2 xl:w-80">
+                    <input
+                      value={deadLetterPlayerUIDs[item.id] || ''}
+                      onChange={(event) => setDeadLetterPlayerUIDs((current) => ({ ...current, [item.id]: event.target.value }))}
+                      className="pp-input w-full font-mono text-xs"
+                      placeholder="可选：人工指定 PlayerUID"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" className="pp-btn pp-btn--primary justify-center" disabled={replayDeadLetter.isPending || dismissDeadLetter.isPending} onClick={() => replayDeadLetter.mutate({ id: item.id, playerUID: deadLetterPlayerUIDs[item.id] || '' })}>{replayDeadLetter.isPending ? <LoaderCircle size={14} className="animate-spin" /> : <RefreshCw size={14} />}重放</button>
+                      <button type="button" className="pp-btn justify-center" disabled={replayDeadLetter.isPending || dismissDeadLetter.isPending} onClick={() => { if (window.confirm(`确认忽略死信 #${item.id}？`)) dismissDeadLetter.mutate(item.id); }}><AlertTriangle size={14} />忽略</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!bridgeDeadLettersQuery.isLoading && (bridgeDeadLettersQuery.data?.items.length || 0) === 0 && <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-5 text-center text-sm font-bold text-emerald-700"><CheckCircle2 className="mx-auto mb-2" size={20} />当前没有待处理死信。</div>}
+          </div>
+        </div>
+        {(bridgeQuery.data?.offsets || []).length > 0 && <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-500"><summary className="cursor-pointer font-bold text-slate-700">持久化日志游标（{bridgeQuery.data?.offsets.length}）</summary><div className="mt-3 space-y-2">{(bridgeQuery.data?.offsets || []).map((item) => <div key={item.path} className="grid gap-1 rounded-lg bg-slate-50 p-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]"><span className="truncate font-mono" title={item.path}>{item.path}</span><span>偏移 {number.format(item.offset)} / {number.format(item.file_size)}</span><span>{item.reset_count > 0 ? `恢复 ${item.reset_count} 次 · ${item.last_reset_reason || '-'}` : '未发生轮转重置'}</span></div>)}</div></details>}
         <div className="mt-4 overflow-x-auto rounded-xl border border-slate-100">
-          <table className="min-w-full text-left text-xs"><thead className="bg-slate-50 font-bold text-slate-500"><tr><th className="px-3 py-2">时间</th><th className="px-3 py-2">事件</th><th className="px-3 py-2">玩家</th><th className="px-3 py-2">状态</th><th className="px-3 py-2">日志样本</th></tr></thead><tbody className="divide-y divide-slate-100">{(bridgeObservationsQuery.data?.items || []).map((item) => <tr key={item.id}><td className="whitespace-nowrap px-3 py-2 text-slate-400">{new Date(item.created_at).toLocaleString()}</td><td className="px-3 py-2 font-mono font-bold text-slate-700">{item.event_type || '-'}</td><td className="px-3 py-2 text-slate-600">{item.nickname || item.player_uid || '-'}</td><td className="px-3 py-2"><span className={`rounded-full px-2 py-1 font-bold ${item.status === 'processed' ? 'bg-emerald-50 text-emerald-700' : item.status === 'unmatched_player' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>{item.status === 'processed' ? '已处理' : item.status === 'unmatched_player' ? '玩家未匹配' : '失败'}</span>{item.reason && <div className="mt-1 max-w-72 text-[11px] text-rose-500">{item.reason}</div>}</td><td className="max-w-xl truncate px-3 py-2 font-mono text-[11px] text-slate-400" title={item.sample}>{item.sample || '-'}</td></tr>)}{!bridgeObservationsQuery.isLoading && (bridgeObservationsQuery.data?.items.length || 0) === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">等待新的游戏聊天、捕捉或击杀日志。更新后首次启动只从日志末尾开始，不会回放旧事件。</td></tr>}</tbody></table>
+          <table className="min-w-full text-left text-xs"><thead className="bg-slate-50 font-bold text-slate-500"><tr><th className="px-3 py-2">时间</th><th className="px-3 py-2">事件</th><th className="px-3 py-2">玩家</th><th className="px-3 py-2">状态</th><th className="px-3 py-2">日志样本</th></tr></thead><tbody className="divide-y divide-slate-100">{(bridgeObservationsQuery.data?.items || []).map((item) => <tr key={item.id}><td className="whitespace-nowrap px-3 py-2 text-slate-400">{new Date(item.created_at).toLocaleString()}</td><td className="px-3 py-2 font-mono font-bold text-slate-700">{item.event_type || '-'}</td><td className="px-3 py-2 text-slate-600">{item.nickname || item.player_uid || '-'}</td><td className="px-3 py-2"><span className={`rounded-full px-2 py-1 font-bold ${item.status === 'processed' || item.status === 'replayed' ? 'bg-emerald-50 text-emerald-700' : item.status === 'unmatched_player' || item.status === 'cursor_reset' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>{item.status === 'processed' ? '已处理' : item.status === 'replayed' ? '已重放' : item.status === 'unmatched_player' ? '玩家未匹配' : item.status === 'parse_failed' ? '解析失败' : item.status === 'cursor_reset' ? '游标恢复' : '失败'}</span>{item.reason && <div className="mt-1 max-w-72 text-[11px] text-rose-500">{item.reason}</div>}</td><td className="max-w-xl truncate px-3 py-2 font-mono text-[11px] text-slate-400" title={item.sample}>{item.sample || '-'}</td></tr>)}{!bridgeObservationsQuery.isLoading && (bridgeObservationsQuery.data?.items.length || 0) === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">等待新的游戏聊天、捕捉或击杀日志。更新后首次启动只从日志末尾开始，不会回放旧事件。</td></tr>}</tbody></table>
         </div>
       </section>
 

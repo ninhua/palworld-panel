@@ -69,13 +69,13 @@ type Definition struct {
 }
 
 type Event struct {
-	EventID    string
-	Type       string
-	PlayerUID  string
-	Nickname   string
-	SteamID    string
-	OccurredAt string
-	Payload    map[string]any
+	EventID    string         `json:"event_id,omitempty"`
+	Type       string         `json:"type"`
+	PlayerUID  string         `json:"player_uid"`
+	Nickname   string         `json:"nickname,omitempty"`
+	SteamID    string         `json:"steam_id,omitempty"`
+	OccurredAt string         `json:"occurred_at,omitempty"`
+	Payload    map[string]any `json:"payload,omitempty"`
 }
 
 type Progress struct {
@@ -117,6 +117,35 @@ type RetrySummary struct {
 	Selected int `json:"selected"`
 	Granted  int `json:"granted"`
 	Failed   int `json:"failed"`
+}
+
+type DiagnosticReport struct {
+	Event      Event                 `json:"event"`
+	Matched    int                   `json:"matched"`
+	WouldApply int                   `json:"would_apply"`
+	Results    []DiagnosticTaskMatch `json:"results"`
+}
+
+type DiagnosticTaskMatch struct {
+	TaskID          string         `json:"task_id"`
+	TaskName        string         `json:"task_name"`
+	TaskEventType   string         `json:"task_event_type"`
+	Enabled         bool           `json:"enabled"`
+	Archived        bool           `json:"archived"`
+	Cycle           string         `json:"cycle"`
+	CycleKey        string         `json:"cycle_key,omitempty"`
+	AmountField     string         `json:"amount_field,omitempty"`
+	Filters         map[string]any `json:"filters,omitempty"`
+	TargetAmount    int64          `json:"target_amount"`
+	CurrentProgress int64          `json:"current_progress"`
+	EventAmount     int64          `json:"event_amount"`
+	WouldAdd        int64          `json:"would_add"`
+	WouldProgress   int64          `json:"would_progress"`
+	Status          string         `json:"status"`
+	Reason          string         `json:"reason"`
+	Field           string         `json:"field,omitempty"`
+	Expected        any            `json:"expected,omitempty"`
+	Actual          any            `json:"actual,omitempty"`
 }
 
 type rewardRecord struct {
@@ -385,6 +414,123 @@ func (s *Service) PlayerProgress(ctx context.Context, playerUID string) ([]Progr
 		items = append(items, item)
 	}
 	return items, nil
+}
+
+func (s *Service) DiagnoseEvent(ctx context.Context, event Event) (DiagnosticReport, error) {
+	event = normalizeEvent(event)
+	report := DiagnosticReport{Event: event, Results: make([]DiagnosticTaskMatch, 0)}
+	definitions, err := s.ListDefinitions(ctx, true)
+	if err != nil {
+		return report, err
+	}
+	occurredAt := s.eventTime(event.OccurredAt)
+	for _, definition := range definitions {
+		item := DiagnosticTaskMatch{
+			TaskID: definition.ID, TaskName: definition.Name, TaskEventType: definition.EventType,
+			Enabled: definition.Enabled, Archived: definition.ArchivedAt != "", Cycle: definition.Cycle,
+			AmountField: definition.AmountField, Filters: definition.Filters, TargetAmount: definition.TargetAmount,
+			Status: "not_matched", Reason: "任务未匹配此事件",
+		}
+		if event.Type == "" {
+			item.Status, item.Reason, item.Field = "event_type_missing", "事件类型为空", "type"
+			report.Results = append(report.Results, item)
+			continue
+		}
+		if definition.EventType != event.Type {
+			item.Status, item.Reason, item.Field = "event_type_mismatch", "事件类型与任务定义不一致", "type"
+			item.Expected, item.Actual = definition.EventType, event.Type
+			report.Results = append(report.Results, item)
+			continue
+		}
+		report.Matched++
+		if definition.ArchivedAt != "" {
+			item.Status, item.Reason = "archived", "任务已归档"
+			report.Results = append(report.Results, item)
+			continue
+		}
+		if !definition.Enabled {
+			item.Status, item.Reason = "disabled", "任务已停用"
+			report.Results = append(report.Results, item)
+			continue
+		}
+		if event.PlayerUID == "" {
+			item.Status, item.Reason, item.Field = "player_missing", "缺少PlayerUID，无法记录玩家进度", "player_uid"
+			report.Results = append(report.Results, item)
+			continue
+		}
+		item.CycleKey = s.cycleKey(definition.Cycle, occurredAt)
+		var completed int
+		err := s.db.QueryRowContext(ctx, `SELECT progress,completed FROM operations_task_progress WHERE task_id=? AND player_uid=? AND cycle_key=?`, definition.ID, event.PlayerUID, item.CycleKey).Scan(&item.CurrentProgress, &completed)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return report, err
+		}
+		item.WouldProgress = item.CurrentProgress
+		if completed != 0 || item.CurrentProgress >= definition.TargetAmount {
+			item.Status, item.Reason = "already_completed", "当前周期任务已经完成"
+			report.Results = append(report.Results, item)
+			continue
+		}
+		if event.EventID != "" {
+			var duplicate int
+			if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM operations_task_event_receipts WHERE task_id=? AND player_uid=? AND cycle_key=? AND event_id=?)`, definition.ID, event.PlayerUID, item.CycleKey, event.EventID).Scan(&duplicate); err != nil {
+				return report, err
+			}
+			if duplicate != 0 {
+				item.Status, item.Reason, item.Field = "duplicate", "该事件ID已经处理过", "event_id"
+				item.Actual = event.EventID
+				report.Results = append(report.Results, item)
+				continue
+			}
+		}
+		if path, expected, actual, status, reason, matched := diagnoseFilters(event.Payload, definition.Filters); !matched {
+			item.Status, item.Reason, item.Field = status, reason, path
+			item.Expected, item.Actual = expected, actual
+			report.Results = append(report.Results, item)
+			continue
+		}
+		amount, valid := eventAmount(event.Payload, definition.AmountField)
+		if !valid || amount <= 0 {
+			item.Field = definition.AmountField
+			if strings.TrimSpace(definition.AmountField) == "" {
+				item.Status, item.Reason = "amount_invalid", "事件数量无效"
+			} else if actual, ok := valueAt(event.Payload, definition.AmountField); !ok {
+				item.Status, item.Reason = "amount_field_missing", "事件内容缺少数量字段"
+				item.Actual = nil
+			} else {
+				item.Status, item.Reason = "amount_invalid", "数量字段必须是正整数且不能超过单事件上限"
+				item.Actual = actual
+			}
+			report.Results = append(report.Results, item)
+			continue
+		}
+		item.EventAmount = amount
+		item.WouldAdd = amount
+		remaining := definition.TargetAmount - item.CurrentProgress
+		if item.WouldAdd > remaining {
+			item.WouldAdd = remaining
+		}
+		if item.WouldAdd < 0 {
+			item.WouldAdd = 0
+		}
+		item.WouldProgress = item.CurrentProgress + item.WouldAdd
+		item.Status, item.Reason = "would_apply", "事件将推进该任务"
+		report.WouldApply++
+		report.Results = append(report.Results, item)
+	}
+	return report, nil
+}
+
+func diagnoseFilters(payload map[string]any, filters map[string]any) (path string, expected, actual any, status, reason string, matched bool) {
+	for filterPath, filterExpected := range filters {
+		filterActual, ok := valueAt(payload, filterPath)
+		if !ok {
+			return filterPath, filterExpected, nil, "filter_field_missing", "事件内容缺少过滤字段", false
+		}
+		if scalarString(filterActual) != scalarString(filterExpected) {
+			return filterPath, filterExpected, filterActual, "filter_mismatch", "事件内容与过滤条件不一致", false
+		}
+	}
+	return "", nil, nil, "", "", true
 }
 
 func (s *Service) ProcessEvent(ctx context.Context, event Event, adjuster interface {

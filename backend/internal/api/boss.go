@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"palpanel/internal/boss"
+	"palpanel/internal/palconfig"
 )
 
 func init() {
@@ -35,6 +36,7 @@ func init() {
 func (s Server) registerBossRoutes(api *gin.RouterGroup) {
 	group := api.Group("/boss")
 	group.GET("/summary", Require(PermRead), s.bossSummary)
+	group.GET("/execution/status", Require(PermRead), s.bossExecutionStatus)
 	group.GET("/rewards", Require(PermRead), s.bossRewards)
 	group.POST("/rewards", Require(PermConfigWrite), s.createBossReward)
 	group.PUT("/rewards/:id", Require(PermConfigWrite), s.updateBossReward)
@@ -51,6 +53,8 @@ func (s Server) registerBossRoutes(api *gin.RouterGroup) {
 	group.GET("/summons/:id/waves", Require(PermRead), s.bossSummonWaves)
 	group.POST("/summons/:id/waves/:position/transition", Require(PermServerControl), s.transitionBossSummonWave)
 	group.GET("/summons/:id/events", Require(PermRead), s.bossSummonEvents)
+	group.POST("/summons/:id/execute-next", Require(PermServerControl), s.executeBossNextWave)
+	group.GET("/summons/:id/executions", Require(PermRead), s.bossSummonExecutions)
 	group.GET("/schedules", Require(PermRead), s.bossSchedules)
 	group.POST("/schedules", Require(PermConfigWrite), s.createBossSchedule)
 	group.PUT("/schedules/:id", Require(PermConfigWrite), s.updateBossSchedule)
@@ -70,7 +74,33 @@ func (s Server) bossService() (*boss.Service, error) {
 		_, broadcastErr := s.defender.RESTBroadcast(ctx, message, true)
 		return broadcastErr
 	}))
+	settings, settingsErr := palconfig.Read(s.cfg.PalWorldSettingsPath())
+	password := ""
+	var rconEnabled *bool
+	if settingsErr == nil {
+		password = strings.TrimSpace(settings["AdminPassword"])
+		enabled := strings.EqualFold(strings.TrimSpace(settings["RCONEnabled"]), "True")
+		rconEnabled = &enabled
+	}
+	service.SetExecutionAdapter(boss.NewPalDefenderRCONExecutor(boss.PalDefenderRCONOptions{
+		Host: s.cfg.EffectiveRCONHost(), Port: s.cfg.EffectiveRCONPort(), Password: password, RCONEnabled: rconEnabled,
+		PalDefenderDir: s.cfg.PalDefenderDir(), Timeout: 8 * time.Second,
+	}))
 	return service, nil
+}
+
+func (s Server) bossExecutionStatus(c *gin.Context) {
+	service, err := s.bossService()
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	status, err := service.ExecutionStatus(c.Request.Context())
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	ok(c, status)
 }
 
 func (s Server) bossSummary(c *gin.Context) {
@@ -365,6 +395,38 @@ func (s Server) bossSummonEvents(c *gin.Context) {
 	ok(c, gin.H{"items": items, "count": len(items)})
 }
 
+func (s Server) executeBossNextWave(c *gin.Context) {
+	service, err := s.bossService()
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	attempt, err := service.ExecuteNextWave(c.Request.Context(), c.Param("id"), CurrentPrincipal(c).Name)
+	if err != nil {
+		if errors.Is(err, boss.ErrExecutionFailed) || errors.Is(err, boss.ErrExecutionUncertain) {
+			ok(c, attempt)
+			return
+		}
+		bossFailure(c, err)
+		return
+	}
+	ok(c, attempt)
+}
+
+func (s Server) bossSummonExecutions(c *gin.Context) {
+	service, err := s.bossService()
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	items, err := service.ListExecutionAttempts(c.Request.Context(), c.Param("id"), bossQueryInt(c, "limit", 100), bossQueryInt(c, "offset", 0))
+	if err != nil {
+		bossFailure(c, err)
+		return
+	}
+	ok(c, gin.H{"items": items, "count": len(items)})
+}
+
 func (s Server) bossSchedules(c *gin.Context) {
 	service, err := s.bossService()
 	if err != nil {
@@ -512,8 +574,10 @@ func bossFailure(c *gin.Context, err error) {
 		fail(c, http.StatusBadRequest, "boss_request_invalid", err.Error())
 	case errors.Is(err, boss.ErrRewardNotFound), errors.Is(err, boss.ErrTemplateNotFound), errors.Is(err, boss.ErrWaveNotFound), errors.Is(err, boss.ErrSummonNotFound), errors.Is(err, boss.ErrScheduleNotFound), errors.Is(err, sql.ErrNoRows):
 		fail(c, http.StatusNotFound, "boss_resource_not_found", err.Error())
-	case errors.Is(err, boss.ErrTemplateDisabled), errors.Is(err, boss.ErrInvalidTransition), errors.Is(err, boss.ErrInvalidWaveTransition), errors.Is(err, boss.ErrScheduleDisabled), errors.Is(err, boss.ErrScheduleRunConflict):
+	case errors.Is(err, boss.ErrTemplateDisabled), errors.Is(err, boss.ErrInvalidTransition), errors.Is(err, boss.ErrInvalidWaveTransition), errors.Is(err, boss.ErrScheduleDisabled), errors.Is(err, boss.ErrScheduleRunConflict), errors.Is(err, boss.ErrExecutionBusy), errors.Is(err, boss.ErrExecutionReconcileRequired):
 		fail(c, http.StatusConflict, "boss_state_conflict", err.Error())
+	case errors.Is(err, boss.ErrExecutionUnavailable):
+		fail(c, http.StatusServiceUnavailable, "boss_execution_unavailable", err.Error())
 	case errors.Is(err, boss.ErrWarningBroadcasterMissing):
 		fail(c, http.StatusServiceUnavailable, "boss_warning_broadcaster_unavailable", err.Error())
 	case errors.Is(err, boss.ErrWarningBroadcastFailed):

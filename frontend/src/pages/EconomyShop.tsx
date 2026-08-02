@@ -18,7 +18,6 @@ import {
   X,
 } from 'lucide-react';
 import { getErrorMessage } from '../api/client';
-import { palDefenderGMApi } from '../api/paldefenderGM';
 import {
   shopApi,
   type ShopDeliveryEventType,
@@ -89,34 +88,14 @@ const eventTypeLabel: Record<ShopDeliveryEventType, string> = {
   cancelled: '订单取消',
 };
 
-interface ShopPayloadItem {
-  item_id: string;
-  count: number;
-}
-
-const payloadItems = (payload?: Record<string, unknown>): ShopPayloadItem[] => {
-  const raw = payload?.items;
-  if (!Array.isArray(raw)) return [];
-  return raw.flatMap((entry) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
-    const record = entry as Record<string, unknown>;
-    const itemID = String(record.item_id || '').trim();
-    const count = Number(record.count || 0);
-    if (!itemID || !Number.isSafeInteger(count) || count <= 0) return [];
-    return [{ item_id: itemID, count }];
-  });
-};
-
-const payloadTemplates = (payload?: Record<string, unknown>): string[] => {
-  const raw = payload?.pal_templates;
-  if (!Array.isArray(raw)) return [];
-  return [...new Set(raw.map((value) => String(value || '').trim()).filter(Boolean))];
-};
-
-const automaticPayload = (mode: ShopDeliveryMode, items: ShopPayloadItem[], templates: string[]): Record<string, unknown> => {
-  if (mode === 'paldefender_items') return { items: items.map((item) => ({ item_id: item.item_id, count: item.count })) };
-  if (mode === 'paldefender_pal_templates') return { pal_templates: templates };
-  return {};
+const payloadExample = (mode: ShopDeliveryMode) => {
+  if (mode === 'paldefender_items') {
+    return JSON.stringify({ items: [{ item_id: 'PalSphere', count: 10 }] }, null, 2);
+  }
+  if (mode === 'paldefender_pal_templates') {
+    return JSON.stringify({ pal_templates: ['starter_pal.json'] }, null, 2);
+  }
+  return '{}';
 };
 
 const formatTime = (value?: string) => {
@@ -142,12 +121,6 @@ export const EconomyShop: React.FC = () => {
   const [editingID, setEditingID] = useState('');
   const [productDraft, setProductDraft] = useState<ShopProductInput>(emptyProduct());
   const [payloadText, setPayloadText] = useState('{}');
-  const [selectedItems, setSelectedItems] = useState<ShopPayloadItem[]>([]);
-  const [selectedTemplates, setSelectedTemplates] = useState<string[]>([]);
-  const [itemSearch, setItemSearch] = useState('');
-  const [itemChoice, setItemChoice] = useState('');
-  const [templateSearch, setTemplateSearch] = useState('');
-  const [templateChoice, setTemplateChoice] = useState('');
   const [orderDraft, setOrderDraft] = useState<ShopOrderCreateInput>(newOrderDraft());
   const [activeTab, setActiveTab] = useState<'orders' | 'audit'>('orders');
   const [orderStatus, setOrderStatus] = useState('');
@@ -160,18 +133,6 @@ export const EconomyShop: React.FC = () => {
 
   const summaryQuery = useQuery({ queryKey: ['shop', 'summary'], queryFn: shopApi.summary });
   const productsQuery = useQuery({ queryKey: ['shop', 'products'], queryFn: () => shopApi.products(true) });
-  const itemCatalogQuery = useQuery({
-    queryKey: ['shop', 'catalog', 'items'],
-    queryFn: () => palDefenderGMApi.items('', 5000),
-    enabled: editorOpen && productDraft.delivery_mode === 'paldefender_items',
-    staleTime: 30 * 60 * 1000,
-  });
-  const templateCatalogQuery = useQuery({
-    queryKey: ['shop', 'catalog', 'pal-templates'],
-    queryFn: palDefenderGMApi.templates,
-    enabled: editorOpen && productDraft.delivery_mode === 'paldefender_pal_templates',
-    staleTime: 5 * 60 * 1000,
-  });
   const ordersQuery = useQuery({
     queryKey: ['shop', 'orders', orderStatus, orderPlayerUID, orderDeliveryState, orderDeliveryMode],
     queryFn: () => shopApi.orders(orderStatus, orderPlayerUID.trim(), orderDeliveryState, orderDeliveryMode),
@@ -188,17 +149,6 @@ export const EconomyShop: React.FC = () => {
 
   const saveProductMutation = useMutation({
     mutationFn: async () => {
-      let payload: Record<string, unknown>;
-      if (productDraft.delivery_mode === 'paldefender_items') {
-        if (selectedItems.length === 0) throw new Error('请至少从物品列表添加一种物品。');
-        if (selectedItems.some((item) => !Number.isSafeInteger(item.count) || item.count <= 0)) throw new Error('物品数量必须是大于0的整数。');
-        payload = automaticPayload(productDraft.delivery_mode, selectedItems, selectedTemplates);
-      } else if (productDraft.delivery_mode === 'paldefender_pal_templates') {
-        if (selectedTemplates.length === 0) throw new Error('请至少从帕鲁模板列表添加一个模板。');
-        payload = automaticPayload(productDraft.delivery_mode, selectedItems, selectedTemplates);
-      } else {
-        payload = parsePayload(payloadText);
-      }
       const input: ShopProductInput = {
         ...productDraft,
         name: productDraft.name.trim(),
@@ -206,7 +156,7 @@ export const EconomyShop: React.FC = () => {
         price: Number(productDraft.price),
         stock: Number(productDraft.stock),
         per_player_limit: Number(productDraft.per_player_limit),
-        payload,
+        payload: parsePayload(payloadText),
       };
       if (!input.name) throw new Error('请填写商品名称。');
       if (!Number.isSafeInteger(input.price) || input.price <= 0) throw new Error('商品价格必须是大于0的整数。');
@@ -322,44 +272,18 @@ export const EconomyShop: React.FC = () => {
     processing_deliveries: 0,
     delivery_events: 0,
   };
-  const catalogItems = itemCatalogQuery.data?.items || [];
-  const templates = templateCatalogQuery.data?.templates || [];
-  const filteredCatalogItems = useMemo(() => {
-    const needle = itemSearch.trim().toLowerCase();
-    if (!needle) return catalogItems.slice(0, 200);
-    return catalogItems.filter((item) => `${item.id} ${item.name}`.toLowerCase().includes(needle)).slice(0, 200);
-  }, [catalogItems, itemSearch]);
-  const filteredTemplates = useMemo(() => {
-    const needle = templateSearch.trim().toLowerCase();
-    if (!needle) return templates.slice(0, 200);
-    return templates.filter((template) => `${template.name} ${template.path}`.toLowerCase().includes(needle)).slice(0, 200);
-  }, [templateSearch, templates]);
-  const itemNameByID = useMemo(() => new Map(catalogItems.map((item) => [item.id, item.name])), [catalogItems]);
-  const generatedPayload = automaticPayload(productDraft.delivery_mode, selectedItems, selectedTemplates);
-  const payloadPreview = productDraft.delivery_mode === 'manual' ? payloadText : JSON.stringify(generatedPayload, null, 2);
-
-  function resetCatalogDraft() {
-    setSelectedItems([]);
-    setSelectedTemplates([]);
-    setItemSearch('');
-    setItemChoice('');
-    setTemplateSearch('');
-    setTemplateChoice('');
-  }
 
   function closeEditor() {
     setEditorOpen(false);
     setEditingID('');
     setProductDraft(emptyProduct());
     setPayloadText('{}');
-    resetCatalogDraft();
   }
 
   const openCreate = () => {
     setEditingID('');
     setProductDraft(emptyProduct());
     setPayloadText('{}');
-    resetCatalogDraft();
     setEditorOpen(true);
     setNotice(null);
   };
@@ -377,41 +301,8 @@ export const EconomyShop: React.FC = () => {
       payload: product.payload || {},
     });
     setPayloadText(JSON.stringify(product.payload || {}, null, 2));
-    setSelectedItems(payloadItems(product.payload));
-    setSelectedTemplates(payloadTemplates(product.payload));
-    setItemSearch('');
-    setItemChoice('');
-    setTemplateSearch('');
-    setTemplateChoice('');
     setEditorOpen(true);
     setNotice(null);
-  };
-
-  const changeDeliveryMode = (mode: ShopDeliveryMode) => {
-    setProductDraft((current) => ({ ...current, delivery_mode: mode }));
-    if (mode === 'manual') setPayloadText('{}');
-    if (mode === 'paldefender_items') setSelectedTemplates([]);
-    if (mode === 'paldefender_pal_templates') setSelectedItems([]);
-  };
-
-  const addItem = () => {
-    const itemID = itemChoice.trim();
-    if (!itemID) return;
-    setSelectedItems((current) => {
-      if (current.some((item) => item.item_id === itemID) || current.length >= 100) return current;
-      return [...current, { item_id: itemID, count: 1 }];
-    });
-    setItemChoice('');
-  };
-
-  const addTemplate = () => {
-    const name = templateChoice.trim();
-    if (!name) return;
-    setSelectedTemplates((current) => {
-      if (current.includes(name) || current.length >= 20) return current;
-      return [...current, name];
-    });
-    setTemplateChoice('');
   };
 
   return (
@@ -489,82 +380,9 @@ export const EconomyShop: React.FC = () => {
 
       {editorOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4 backdrop-blur-sm">
-          <form onSubmit={(event) => { event.preventDefault(); saveProductMutation.mutate(); }} className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">{editingID ? '编辑商品' : '新增商品'}</h2>
-                <p className="mt-1 text-xs text-slate-500">库存-1表示不限；自动交付商品可直接从目录选择，系统会生成Payload。</p>
-              </div>
-              <button type="button" onClick={closeEditor} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button>
-            </div>
-
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <Field label="商品名称"><input value={productDraft.name} onChange={(event) => setProductDraft((current) => ({ ...current, name: event.target.value }))} className="pp-input w-full" /></Field>
-              <Field label="价格（积分）"><input type="number" min={1} value={productDraft.price} onChange={(event) => setProductDraft((current) => ({ ...current, price: Number(event.target.value) }))} className="pp-input w-full" /></Field>
-              <Field label="库存"><input type="number" min={-1} value={productDraft.stock} onChange={(event) => setProductDraft((current) => ({ ...current, stock: Number(event.target.value) }))} className="pp-input w-full" /></Field>
-              <Field label="每人限购"><input type="number" min={0} value={productDraft.per_player_limit} onChange={(event) => setProductDraft((current) => ({ ...current, per_player_limit: Number(event.target.value) }))} className="pp-input w-full" /></Field>
-              <Field label="交付方式">
-                <select value={productDraft.delivery_mode} onChange={(event) => changeDeliveryMode(event.target.value as ShopDeliveryMode)} className="pp-input w-full">
-                  <option value="manual">人工交付</option>
-                  <option value="paldefender_items">PalDefender物品</option>
-                  <option value="paldefender_pal_templates">PalDefender帕鲁模板</option>
-                </select>
-              </Field>
-              <label className="flex items-center gap-3 self-end rounded-xl border border-slate-200 px-4 py-3 text-xs font-semibold text-slate-600"><input type="checkbox" checked={productDraft.enabled} onChange={(event) => setProductDraft((current) => ({ ...current, enabled: event.target.checked }))} />立即上架</label>
-              <div className="sm:col-span-2"><Field label="商品说明"><textarea value={productDraft.description || ''} onChange={(event) => setProductDraft((current) => ({ ...current, description: event.target.value }))} rows={3} className="pp-input w-full resize-y" /></Field></div>
-            </div>
-
-            {productDraft.delivery_mode === 'paldefender_items' && (
-              <section className="mt-5 rounded-2xl border border-slate-200 p-4">
-                <div className="flex items-start justify-between gap-3"><div><h3 className="text-sm font-black text-slate-800">选择物品</h3><p className="mt-1 text-xs leading-5 text-slate-500">目录来自面板内置物品本地化列表。订单数量会再乘以这里配置的每件数量。</p></div>{itemCatalogQuery.isFetching && <LoaderCircle size={16} className="animate-spin text-slate-400" />}</div>
-                <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                  <div className="relative"><Search size={14} className="absolute left-3 top-3 text-slate-400" /><input value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} placeholder="搜索物品名称或ID" className="pp-input w-full pl-9" /></div>
-                  <select value={itemChoice} onChange={(event) => setItemChoice(event.target.value)} className="pp-input min-w-0"><option value="">选择物品</option>{filteredCatalogItems.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}</select>
-                  <button type="button" onClick={addItem} disabled={!itemChoice} className="pp-btn pp-btn--primary disabled:opacity-40"><Plus size={14} />添加</button>
-                </div>
-                {itemCatalogQuery.error && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{getErrorMessage(itemCatalogQuery.error)}</p>}
-                <div className="mt-4 space-y-2">
-                  {selectedItems.map((item) => (
-                    <div key={item.item_id} className="grid items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 sm:grid-cols-[1fr_140px_auto]">
-                      <div className="min-w-0"><div className="truncate text-xs font-bold text-slate-700">{itemNameByID.get(item.item_id) || item.item_id}</div><div className="truncate font-mono text-[10px] text-slate-400">{item.item_id}</div></div>
-                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">数量<input type="number" min={1} max={2147483647} value={item.count} onChange={(event) => { const count = Number(event.target.value); setSelectedItems((current) => current.map((entry) => entry.item_id === item.item_id ? { ...entry, count } : entry)); }} className="pp-input w-24" /></label>
-                      <button type="button" onClick={() => setSelectedItems((current) => current.filter((entry) => entry.item_id !== item.item_id))} className="rounded-lg p-2 text-rose-500 hover:bg-rose-50" aria-label={`移除${item.item_id}`}><X size={15} /></button>
-                    </div>
-                  ))}
-                  {selectedItems.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-xs text-slate-400">尚未添加物品。</div>}
-                </div>
-              </section>
-            )}
-
-            {productDraft.delivery_mode === 'paldefender_pal_templates' && (
-              <section className="mt-5 rounded-2xl border border-slate-200 p-4">
-                <div className="flex items-start justify-between gap-3"><div><h3 className="text-sm font-black text-slate-800">选择帕鲁模板</h3><p className="mt-1 text-xs leading-5 text-slate-500">列表来自PalDefender模板目录。订单数量大于1时，会重复发放整组模板。</p></div>{templateCatalogQuery.isFetching && <LoaderCircle size={16} className="animate-spin text-slate-400" />}</div>
-                <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                  <div className="relative"><Search size={14} className="absolute left-3 top-3 text-slate-400" /><input value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="搜索模板名称" className="pp-input w-full pl-9" /></div>
-                  <select value={templateChoice} onChange={(event) => setTemplateChoice(event.target.value)} className="pp-input min-w-0"><option value="">选择模板</option>{filteredTemplates.map((template) => <option key={template.name} value={template.name}>{template.name}</option>)}</select>
-                  <button type="button" onClick={addTemplate} disabled={!templateChoice} className="pp-btn pp-btn--primary disabled:opacity-40"><Plus size={14} />添加</button>
-                </div>
-                {templateCatalogQuery.error && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{getErrorMessage(templateCatalogQuery.error)}</p>}
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {selectedTemplates.map((name) => <span key={name} className="inline-flex items-center gap-2 rounded-full bg-violet-50 px-3 py-2 font-mono text-[11px] font-bold text-violet-700">{name}<button type="button" onClick={() => setSelectedTemplates((current) => current.filter((entry) => entry !== name))} className="text-violet-400 hover:text-rose-500" aria-label={`移除${name}`}><X size={13} /></button></span>)}
-                  {selectedTemplates.length === 0 && <div className="w-full rounded-xl border border-dashed border-slate-200 py-6 text-center text-xs text-slate-400">尚未添加帕鲁模板。</div>}
-                </div>
-              </section>
-            )}
-
-            {productDraft.delivery_mode === 'manual' && (
-              <section className="mt-5 rounded-2xl border border-slate-200 p-4">
-                <Field label="人工交付附加Payload（可选JSON对象）"><textarea value={payloadText} onChange={(event) => setPayloadText(event.target.value)} rows={5} spellCheck={false} className="pp-input w-full resize-y font-mono text-[11px]" /></Field>
-                <p className="mt-2 text-xs leading-5 text-slate-400">人工商品通常使用空对象 <code>{'{}'}</code>。这里的数据只随商品和订单保存，供管理员或后续扩展读取。</p>
-              </section>
-            )}
-
-            <details className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/50 p-4">
-              <summary className="cursor-pointer text-xs font-black text-sky-800">查看系统生成的最终Payload</summary>
-              <p className="mt-3 text-xs leading-5 text-sky-700">Payload是商品的机器可读交付参数。物品商品保存物品ID和数量；帕鲁商品保存模板文件名。管理员无需再手写。</p>
-              <pre className="mt-3 overflow-x-auto rounded-xl bg-slate-950 p-4 text-[11px] leading-5 text-slate-100">{payloadPreview || '{}'}</pre>
-            </details>
-
+          <form onSubmit={(event) => { event.preventDefault(); saveProductMutation.mutate(); }} className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between"><div><h2 className="text-lg font-bold text-slate-900">{editingID ? '编辑商品' : '新增商品'}</h2><p className="mt-1 text-xs text-slate-500">库存-1表示不限；自动交付商品必须配置对应Payload。</p></div><button type="button" onClick={closeEditor} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button></div>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2"><Field label="商品名称"><input value={productDraft.name} onChange={(event) => setProductDraft((current) => ({ ...current, name: event.target.value }))} className="pp-input w-full" /></Field><Field label="价格（积分）"><input type="number" min={1} value={productDraft.price} onChange={(event) => setProductDraft((current) => ({ ...current, price: Number(event.target.value) }))} className="pp-input w-full" /></Field><Field label="库存"><input type="number" min={-1} value={productDraft.stock} onChange={(event) => setProductDraft((current) => ({ ...current, stock: Number(event.target.value) }))} className="pp-input w-full" /></Field><Field label="每人限购"><input type="number" min={0} value={productDraft.per_player_limit} onChange={(event) => setProductDraft((current) => ({ ...current, per_player_limit: Number(event.target.value) }))} className="pp-input w-full" /></Field><Field label="交付方式"><select value={productDraft.delivery_mode} onChange={(event) => { const mode = event.target.value as ShopDeliveryMode; setProductDraft((current) => ({ ...current, delivery_mode: mode })); setPayloadText(payloadExample(mode)); }} className="pp-input w-full"><option value="manual">人工交付</option><option value="paldefender_items">PalDefender物品</option><option value="paldefender_pal_templates">PalDefender帕鲁模板</option></select></Field><label className="flex items-center gap-3 self-end rounded-xl border border-slate-200 px-4 py-3 text-xs font-semibold text-slate-600"><input type="checkbox" checked={productDraft.enabled} onChange={(event) => setProductDraft((current) => ({ ...current, enabled: event.target.checked }))} />立即上架</label><div className="sm:col-span-2"><Field label="商品说明"><textarea value={productDraft.description || ''} onChange={(event) => setProductDraft((current) => ({ ...current, description: event.target.value }))} rows={3} className="pp-input w-full resize-y" /></Field></div><div className="sm:col-span-2"><Field label="Payload JSON"><textarea value={payloadText} onChange={(event) => setPayloadText(event.target.value)} rows={7} className="pp-input w-full resize-y font-mono text-[11px]" /></Field><p className="mt-2 text-[10px] leading-4 text-slate-400">物品格式：{`{"items":[{"item_id":"PalSphere","count":10}]}`}。帕鲁模板格式：{`{"pal_templates":["starter_pal.json"]}`}。</p></div></div>
             <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={closeEditor} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600">取消</button><button disabled={saveProductMutation.isPending} type="submit" className="flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{saveProductMutation.isPending ? <LoaderCircle size={14} className="animate-spin" /> : <Save size={14} />}保存商品</button></div>
           </form>
         </div>

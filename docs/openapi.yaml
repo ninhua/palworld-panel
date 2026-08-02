@@ -1425,13 +1425,6 @@ paths:
     parameters: [*idParameter]
     patch: {operationId: renameSaveSource, tags: [world], x-palpanel-permission: 'server:control', requestBody: *jsonRequest, responses: *writeResponses}
     delete: {operationId: deleteSaveSource, tags: [world], x-palpanel-permission: 'server:control', responses: *writeResponses}
-  /save-sources/{id}/migration/players:
-    parameters: [*idParameter]
-    get: {operationId: getSaveMigrationPlayers, tags: [world], x-palpanel-permission: 'server:control', responses: *readResponses}
-  /save-migrations/preview:
-    post: {operationId: previewSaveMigration, tags: [world], x-palpanel-permission: 'server:control', requestBody: *jsonRequest, responses: *writeResponses}
-  /save-migrations:
-    post: {operationId: startSaveMigration, tags: [world], x-palpanel-permission: 'server:control', requestBody: *jsonRequest, responses: *writeResponses}
   /breeding/catalog:
     get: {operationId: getBreedingCatalog, tags: [world], x-palpanel-permission: read, responses: *readResponses}
   /breeding/status:
@@ -1639,6 +1632,12 @@ paths:
       tags: [boss]
       x-palpanel-permission: read
       responses: {'200': *success, '401': *error, '500': *error}
+  /boss/execution/status:
+    get:
+      operationId: getBossExecutionStatus
+      tags: [boss]
+      x-palpanel-permission: read
+      responses: {'200': *success, '401': *error, '500': *error}
   /boss/rewards:
     get:
       operationId: listBossRewards
@@ -1795,6 +1794,23 @@ paths:
       - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
       - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
       responses: {'200': *success, '400': *error, '401': *error, '404': *error, '500': *error}
+  /boss/summons/{id}/execute-next:
+    parameters: [*idParameter]
+    post:
+      operationId: executeBossNextWave
+      tags: [boss]
+      x-palpanel-permission: 'server:control'
+      responses: {'200': *success, '401': *error, '403': *error, '404': *error, '409': *error, '503': *error, '500': *error}
+  /boss/summons/{id}/executions:
+    parameters: [*idParameter]
+    get:
+      operationId: listBossExecutionAttempts
+      tags: [boss]
+      x-palpanel-permission: read
+      parameters:
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      responses: {'200': *success, '400': *error, '401': *error, '404': *error, '500': *error}
   /players:
     get:
       operationId: listSavePlayers
@@ -1844,9 +1860,6 @@ paths:
   /bases/{id}/feed-boxes:
     parameters: [*idParameter]
     get: {operationId: getBaseFeedBoxes, tags: [world], x-palpanel-permission: read, responses: *readResponses}
-  /bases/{id}/clean:
-    parameters: [*idParameter]
-    post: {operationId: cleanSaveBase, tags: [world], x-palpanel-permission: 'server:control', responses: *writeResponses}
   /inventory:
     get:
       operationId: listGlobalInventory
@@ -2090,6 +2103,28 @@ paths:
       tags: [operations, tasks]
       x-palpanel-permission: read
       responses: *readResponses
+  /tasks/online-tracking:
+    get:
+      operationId: listOnlineTaskTracking
+      tags: [operations, tasks]
+      x-palpanel-permission: read
+      parameters:
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 1000, default: 100}}
+      responses: *readResponses
+  /tasks/diagnostics/evaluate:
+    post:
+      operationId: evaluateOperationsTaskEvent
+      tags: [operations, tasks]
+      x-palpanel-permission: read
+      requestBody: *jsonRequest
+      responses: *writeResponses
+  /tasks/diagnostics/replay:
+    post:
+      operationId: replayOperationsTaskEvent
+      tags: [operations, tasks]
+      x-palpanel-permission: 'players:write'
+      requestBody: *jsonRequest
+      responses: *writeResponses
   /tasks/maintenance/retry-rewards:
     post:
       operationId: retryTaskRewards
@@ -2111,6 +2146,14 @@ paths:
       tags: [operations, tasks]
       x-palpanel-permission: 'config:write'
       responses: *writeResponses
+  /integrations/game/tasks/query:
+    post:
+      operationId: queryGamePlayerTasks
+      tags: [integrations, tasks]
+      security: []
+      x-palpanel-permission: hmac-integration
+      requestBody: *jsonRequest
+      responses: {'200': *success, '400': *error, '401': *error, '500': *error}
   /integrations/game/events:
     post:
       operationId: ingestGameEvent
@@ -2119,6 +2162,30 @@ paths:
       x-palpanel-permission: hmac-integration
       requestBody: *jsonRequest
       responses: {'200': *success, '400': *error, '401': *error, '409': *error, '422': *error, '500': *error}
+  /integrations/game/shop/catalog:
+    post:
+      operationId: listGameShopCatalog
+      tags: [integrations, economy]
+      security: []
+      x-palpanel-permission: hmac-integration
+      requestBody: *jsonRequest
+      responses: {'200': *success, '400': *error, '401': *error, '500': *error}
+  /integrations/game/shop/orders:
+    post:
+      operationId: createGameShopOrder
+      tags: [integrations, economy]
+      security: []
+      x-palpanel-permission: hmac-integration
+      requestBody: *jsonRequest
+      responses: {'200': *success, '201': *success, '400': *error, '401': *error, '404': *error, '409': *error, '500': *error}
+  /integrations/game/shop/orders/query:
+    post:
+      operationId: listGameShopOrders
+      tags: [integrations, economy]
+      security: []
+      x-palpanel-permission: hmac-integration
+      requestBody: *jsonRequest
+      responses: {'200': *success, '400': *error, '401': *error, '500': *error}
   /game-events:
     get:
       operationId: listGameEvents
@@ -2142,10 +2209,36 @@ paths:
       tags: [events]
       x-palpanel-permission: read
       parameters:
-      - {name: status, in: query, required: false, schema: {type: string, enum: [processed, unmatched_player, error]}}
+      - {name: status, in: query, required: false, schema: {type: string, enum: [processed, replayed, unmatched_player, parse_failed, cursor_reset, error]}}
       - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 50}}
       - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
       responses: *readResponses
+  /game-events/bridge/dead-letters:
+    get:
+      operationId: listGameEventBridgeDeadLetters
+      tags: [events]
+      x-palpanel-permission: read
+      parameters:
+      - {name: status, in: query, required: false, schema: {type: string, enum: [pending, replayed, dismissed], default: pending}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 50}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      responses: *readResponses
+  /game-events/bridge/dead-letters/{id}/replay:
+    parameters: [*idParameter]
+    post:
+      operationId: replayGameEventBridgeDeadLetter
+      description: Replays a pending bridge dead letter with its original idempotent event ID. An optional player_uid can resolve previously unmatched players.
+      tags: [events]
+      x-palpanel-permission: 'players:write'
+      requestBody: *jsonRequest
+      responses: {'200': *success, '400': *error, '404': *error, '409': *error, '422': *error, '500': *error, '502': *error}
+  /game-events/bridge/dead-letters/{id}/dismiss:
+    parameters: [*idParameter]
+    post:
+      operationId: dismissGameEventBridgeDeadLetter
+      tags: [events]
+      x-palpanel-permission: 'players:write'
+      responses: {'200': *success, '400': *error, '409': *error, '500': *error}
   /game-events/bridge/repair:
     post:
       operationId: repairGameEventBridge
@@ -4847,6 +4940,50 @@ components:
         message: {type: string}
         details: {$ref: '#/components/schemas/JsonObject'}
         created_at: {type: string, format: date-time}
+    BossExecutionCapabilities:
+      type: object
+      required: [fixed_coordinates, multiple_spawns, uncapturable, custom_pal_template, exact_multipliers]
+      properties:
+        fixed_coordinates: {type: boolean}
+        multiple_spawns: {type: boolean}
+        uncapturable: {type: boolean}
+        custom_pal_template: {type: boolean}
+        exact_multipliers: {type: boolean}
+    BossExecutionStatus:
+      type: object
+      required: [adapter, available, state, capabilities, limitations, busy, running_attempts, uncertain_attempts, active_waves, reconciliation_required]
+      properties:
+        adapter: {type: string}
+        available: {type: boolean}
+        state: {type: string}
+        message: {type: string}
+        capabilities: {$ref: '#/components/schemas/BossExecutionCapabilities'}
+        limitations: {type: array, items: {type: string}}
+        busy: {type: boolean}
+        running_attempts: {type: integer, minimum: 0}
+        uncertain_attempts: {type: integer, minimum: 0}
+        active_waves: {type: integer, minimum: 0}
+        reconciliation_required: {type: boolean}
+    BossExecutionAttempt:
+      type: object
+      required: [id, summon_id, wave_position, adapter, status, command_count, completed_commands, commands, responses, details, started_at, created_at, updated_at]
+      properties:
+        id: {type: string}
+        summon_id: {type: string}
+        wave_position: {type: integer, minimum: 1, maximum: 20}
+        adapter: {type: string}
+        status: {type: string, enum: [running, succeeded, failed, uncertain]}
+        command_count: {type: integer, minimum: 0}
+        completed_commands: {type: integer, minimum: 0}
+        commands: {type: array, items: {type: string}}
+        responses: {type: array, items: {type: string}}
+        details: {$ref: '#/components/schemas/JsonObject'}
+        failure: {type: string}
+        actor: {type: string}
+        started_at: {type: string, format: date-time}
+        completed_at: {type: string, format: date-time}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
     BossSummary:
       type: object
       required: [rewards, enabled_rewards, templates, enabled_templates, pending_summons, active_summons, completed_summons, failed_summons, cancelled_summons, template_waves, pending_waves, active_waves, completed_waves, failed_waves, skipped_waves, schedules, enabled_schedules]
@@ -4893,7 +5030,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.75}
+            version: {type: string, const: 0.8.81}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

@@ -6,11 +6,13 @@ import {
   CircleAlert,
   Copy,
   Gift,
+  FlaskConical,
   LoaderCircle,
   Pencil,
   Plus,
   RefreshCw,
   RotateCcw,
+  PlayCircle,
   Save,
   Search,
   Target,
@@ -22,6 +24,8 @@ import {
   operationsTasksApi,
   type OperationsTaskCycle,
   type OperationsTaskDefinition,
+  type OperationsTaskDiagnosticReport,
+  type OperationsTaskEvent,
   type OperationsTaskInput,
   type OperationsTaskProgress,
 } from '../api/operationsTasks';
@@ -82,7 +86,7 @@ const presets: TaskPreset[] = [
   },
   {
     name: '在线时长',
-    description: '由在线事件中的 minutes 字段推进。',
+    description: '系统每30秒采样在线玩家，并按完整分钟自动推进。',
     input: {
       name: '每日在线 60 分钟',
       description: '每天累计在线 60 分钟。',
@@ -122,7 +126,7 @@ interface TaskEventOption {
 const eventOptions: TaskEventOption[] = [
   { value: 'PAL_CAPTURED', label: '捕获帕鲁', help: '捕获事件；可用 pal_id 等事件内容字段筛选。', amountField: 'count' },
   { value: 'PAL_KILLED', label: '击杀帕鲁或敌对目标', help: '击杀事件；可用 pal_id、target_id 等字段筛选。', amountField: 'count' },
-  { value: 'PLAYER_ONLINE', label: '累计在线时长', help: '在线采样事件；通常读取 minutes 字段。', amountField: 'minutes' },
+  { value: 'PLAYER_ONLINE', label: '累计在线时长', help: '系统每30秒采样PalDefender在线玩家；数量字段必须使用 minutes。', amountField: 'minutes' },
   { value: 'CHECKIN_COMPLETED', label: '完成签到', help: '签到成功事件；每个事件通常增加1。', amountField: 'count' },
   { value: 'BOSS_PARTICIPATION', label: '参与Boss活动', help: 'Boss参与事件；可用 boss_id 筛选指定Boss。', amountField: 'count' },
   { value: 'BOSS_KILLED', label: '击败Boss', help: 'Boss击杀事件；要求事件桥接器实际发送该类型。', amountField: 'count' },
@@ -160,6 +164,46 @@ const parseFilters = (value: string): Record<string, unknown> => {
 
 const prettyFilters = (filters?: Record<string, unknown>) => JSON.stringify(filters || {}, null, 2);
 
+const newDiagnosticEventID = () => {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  return `task-test-${uuid || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
+};
+
+const setNestedValue = (target: Record<string, unknown>, path: string, value: unknown) => {
+  const parts = path.split('.').map((item) => item.trim()).filter(Boolean);
+  if (parts.length === 0) return;
+  let current = target;
+  for (const part of parts.slice(0, -1)) {
+    const existing = current[part];
+    if (!existing || Array.isArray(existing) || typeof existing !== 'object') current[part] = {};
+    current = current[part] as Record<string, unknown>;
+  }
+  current[parts[parts.length - 1]] = value;
+};
+
+const diagnosticPayload = (definition?: OperationsTaskDefinition) => {
+  const payload: Record<string, unknown> = {};
+  for (const [path, value] of Object.entries(definition?.filters || {})) setNestedValue(payload, path, value);
+  if (definition?.amount_field) setNestedValue(payload, definition.amount_field, 1);
+  else if (!('count' in payload)) payload.count = 1;
+  return payload;
+};
+
+const diagnosticStatus: Record<string, { label: string; className: string }> = {
+  would_apply: { label: '会推进', className: 'bg-emerald-50 text-emerald-700' },
+  event_type_mismatch: { label: '事件类型不匹配', className: 'bg-slate-100 text-slate-600' },
+  event_type_missing: { label: '缺少事件类型', className: 'bg-rose-50 text-rose-700' },
+  player_missing: { label: '缺少玩家', className: 'bg-rose-50 text-rose-700' },
+  filter_field_missing: { label: '缺少过滤字段', className: 'bg-amber-50 text-amber-700' },
+  filter_mismatch: { label: '过滤条件不匹配', className: 'bg-amber-50 text-amber-700' },
+  amount_field_missing: { label: '缺少数量字段', className: 'bg-amber-50 text-amber-700' },
+  amount_invalid: { label: '数量无效', className: 'bg-rose-50 text-rose-700' },
+  duplicate: { label: '重复事件', className: 'bg-slate-100 text-slate-600' },
+  already_completed: { label: '当前周期已完成', className: 'bg-sky-50 text-sky-700' },
+  disabled: { label: '任务已停用', className: 'bg-amber-50 text-amber-700' },
+  archived: { label: '任务已归档', className: 'bg-slate-100 text-slate-500' },
+};
+
 export const OperationsTasks: React.FC = () => {
   const queryClient = useQueryClient();
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -170,6 +214,12 @@ export const OperationsTasks: React.FC = () => {
   const [playerInput, setPlayerInput] = useState('');
   const [progressPlayerUID, setProgressPlayerUID] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [diagnosticVisible, setDiagnosticVisible] = useState(false);
+  const [diagnosticEvent, setDiagnosticEvent] = useState<OperationsTaskEvent>({
+    event_id: newDiagnosticEventID(), type: 'PAL_CAPTURED', player_uid: '', payload: { count: 1 },
+  });
+  const [diagnosticPayloadText, setDiagnosticPayloadText] = useState('{\n  "count": 1\n}');
+  const [diagnosticReport, setDiagnosticReport] = useState<OperationsTaskDiagnosticReport | null>(null);
 
   const definitionsQuery = useQuery({
     queryKey: ['operations-tasks', 'definitions', includeArchived],
@@ -229,6 +279,35 @@ export const OperationsTasks: React.FC = () => {
     onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
   });
 
+  const diagnosticMutation = useMutation({
+    mutationFn: async () => {
+      const payload = parseFilters(diagnosticPayloadText);
+      return operationsTasksApi.evaluateEvent({ ...diagnosticEvent, type: diagnosticEvent.type.trim().toUpperCase(), player_uid: diagnosticEvent.player_uid.trim(), payload });
+    },
+    onSuccess: (report) => { setDiagnosticReport(report); setNotice(null); },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const replayMutation = useMutation({
+    mutationFn: async () => {
+      const payload = parseFilters(diagnosticPayloadText);
+      const event = { ...diagnosticEvent, event_id: diagnosticEvent.event_id?.trim() || newDiagnosticEventID(), type: diagnosticEvent.type.trim().toUpperCase(), player_uid: diagnosticEvent.player_uid.trim(), payload };
+      if (!event.player_uid) throw new Error('实际推进必须填写PlayerUID。');
+      if (!window.confirm('实际推进会写入玩家任务进度，并可能发放积分奖励。确认继续？')) throw new Error('已取消实际推进。');
+      setDiagnosticEvent(event);
+      return operationsTasksApi.replayEvent(event);
+    },
+    onSuccess: async (result) => {
+      setDiagnosticReport(result.diagnostic);
+      setNotice({ type: 'success', text: `事件已处理：命中 ${result.count} 个任务，实际新增 ${result.updates.reduce((sum, item) => sum + item.added, 0)} 点进度。` });
+      await queryClient.invalidateQueries({ queryKey: ['operations-tasks', 'progress'] });
+    },
+    onError: (error) => {
+      const message = getErrorMessage(error);
+      if (message !== '已取消实际推进。') setNotice({ type: 'error', text: message });
+    },
+  });
+
   const definitions = definitionsQuery.data?.items || [];
   const activeDefinitions = useMemo(() => definitions.filter((item) => !item.archived_at), [definitions]);
   const enabledDefinitions = useMemo(() => activeDefinitions.filter((item) => item.enabled), [activeDefinitions]);
@@ -282,6 +361,20 @@ export const OperationsTasks: React.FC = () => {
     });
   };
 
+  const openDiagnostic = (definition?: OperationsTaskDefinition) => {
+    const payload = diagnosticPayload(definition);
+    setDiagnosticEvent((current) => ({
+      ...current,
+      event_id: newDiagnosticEventID(),
+      type: definition?.event_type || current.type || 'PAL_CAPTURED',
+      payload,
+    }));
+    setDiagnosticPayloadText(JSON.stringify(payload, null, 2));
+    setDiagnosticReport(null);
+    setDiagnosticVisible(true);
+    setNotice(null);
+  };
+
   const lookupProgress = () => {
     const value = playerInput.trim();
     if (!value) {
@@ -310,8 +403,13 @@ export const OperationsTasks: React.FC = () => {
             <button type="button" onClick={() => retryMutation.mutate()} disabled={retryMutation.isPending} className="pp-button">
               {retryMutation.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <RotateCcw size={14} />}重试奖励
             </button>
+            <button type="button" onClick={() => openDiagnostic()} className="pp-button"><FlaskConical size={14} />任务诊断</button>
             <button type="button" onClick={() => openCreate()} className="pp-btn pp-btn--primary"><Plus size={15} />新建任务</button>
           </div>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs leading-5 text-sky-800"><strong className="block">玩家游戏内入口</strong>玩家可发送 <code className="font-mono">任务</code>、<code className="font-mono">我的任务</code> 或 <code className="font-mono">任务进度</code> 查询当前任务；支持页码和关键词，例如 <code className="font-mono">任务 2</code>、<code className="font-mono">任务 捕捉</code>。</div>
+          <div className="rounded-xl border border-violet-100 bg-violet-50 px-4 py-3 text-xs leading-5 text-violet-800"><strong className="block">在线时长自动结算</strong><code className="font-mono">PLAYER_ONLINE</code> 任务会按完整分钟自动推进。面板重启后的首轮采样不会把停机时间计入，掉线时会补结算最后一个采样区间。</div>
         </div>
         {notice && <div className={`mt-4 rounded-xl border px-4 py-3 text-sm font-semibold ${notice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>{notice.text}</div>}
       </section>
@@ -344,6 +442,24 @@ export const OperationsTasks: React.FC = () => {
         </div>
       </section>
 
+      {diagnosticVisible && <section className="rounded-2xl border border-violet-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div><h2 className="flex items-center gap-2 font-black text-slate-900"><FlaskConical size={17} className="text-violet-600" />任务事件诊断</h2><p className="mt-1 text-xs leading-5 text-slate-500">“仅检查”不会写入数据；“实际推进”会使用事件ID执行幂等重放，并可能发放任务积分。</p></div>
+          <button type="button" onClick={() => { setDiagnosticVisible(false); setDiagnosticReport(null); }} className="pp-button"><X size={14} />关闭</button>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
+          <label><FieldLabel>事件类型</FieldLabel><select value={diagnosticEvent.type} onChange={(event) => setDiagnosticEvent((current) => ({ ...current, type: event.target.value }))} className="pp-input w-full">{eventOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <label><FieldLabel>PlayerUID</FieldLabel><input value={diagnosticEvent.player_uid} onChange={(event) => setDiagnosticEvent((current) => ({ ...current, player_uid: event.target.value }))} className="pp-input w-full font-mono" placeholder="实际推进时必填" /></label>
+          <label className="xl:col-span-2"><FieldLabel>事件ID</FieldLabel><div className="flex gap-2"><input value={diagnosticEvent.event_id || ''} onChange={(event) => setDiagnosticEvent((current) => ({ ...current, event_id: event.target.value }))} className="pp-input min-w-0 flex-1 font-mono" /><button type="button" onClick={() => setDiagnosticEvent((current) => ({ ...current, event_id: newDiagnosticEventID() }))} className="pp-button shrink-0">重新生成</button></div></label>
+          <label className="lg:col-span-2 xl:col-span-4"><FieldLabel>事件Payload（JSON对象）</FieldLabel><textarea value={diagnosticPayloadText} onChange={(event) => setDiagnosticPayloadText(event.target.value)} rows={6} spellCheck={false} className="pp-input w-full resize-y font-mono text-xs" /></label>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={diagnosticMutation.isPending || replayMutation.isPending} onClick={() => diagnosticMutation.mutate()} className="pp-btn pp-btn--primary">{diagnosticMutation.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <Search size={14} />}仅检查</button><button type="button" disabled={diagnosticMutation.isPending || replayMutation.isPending} onClick={() => replayMutation.mutate()} className="pp-button">{replayMutation.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <PlayCircle size={14} />}实际推进</button></div>
+        {diagnosticReport && <div className="mt-5">
+          <div className="mb-3 flex flex-wrap gap-2 text-xs font-bold"><span className="rounded-full bg-violet-50 px-3 py-1.5 text-violet-700">相同事件类型 {diagnosticReport.matched}</span><span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">会推进 {diagnosticReport.would_apply}</span><span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-600">检查任务 {diagnosticReport.results.length}</span></div>
+          <div className="overflow-x-auto rounded-xl border border-slate-100"><table className="min-w-full text-left text-xs"><thead className="bg-slate-50 font-bold text-slate-500"><tr><th className="px-3 py-2.5">任务</th><th className="px-3 py-2.5">结果</th><th className="px-3 py-2.5">原因</th><th className="px-3 py-2.5">字段</th><th className="px-3 py-2.5 text-right">进度预览</th></tr></thead><tbody className="divide-y divide-slate-100">{diagnosticReport.results.map((item) => { const status = diagnosticStatus[item.status] || { label: item.status, className: 'bg-slate-100 text-slate-600' }; return <tr key={item.task_id}><td className="px-3 py-3"><div className="font-bold text-slate-800">{item.task_name}</div><div className="mt-1 font-mono text-[10px] text-slate-400">{item.task_event_type}</div></td><td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 font-bold ${status.className}`}>{status.label}</span></td><td className="max-w-sm px-3 py-3 text-slate-600">{item.reason}{item.expected !== undefined && <div className="mt-1 font-mono text-[10px] text-slate-400">期望 {JSON.stringify(item.expected)} · 实际 {JSON.stringify(item.actual)}</div>}</td><td className="px-3 py-3 font-mono text-[11px] text-slate-500">{item.field || '-'}</td><td className="px-3 py-3 text-right font-bold text-slate-700">{number.format(item.current_progress)}{item.status === 'would_apply' ? ` + ${number.format(item.would_add)} → ${number.format(item.would_progress)}` : ` / ${number.format(item.target_amount)}`}</td></tr>; })}</tbody></table></div>
+        </div>}
+      </section>}
+
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
@@ -368,6 +484,7 @@ export const OperationsTasks: React.FC = () => {
                   <td className="px-4 py-3 text-right font-black text-violet-600">{number.format(definition.reward_points)}</td>
                   <td className="px-4 py-3"><Status definition={definition} /></td>
                   <td className="px-4 py-3"><div className="flex justify-end gap-1.5">
+                    <IconButton title="测试任务" onClick={() => openDiagnostic(definition)} icon={<FlaskConical size={14} />} />
                     <IconButton title="复制任务" onClick={() => cloneDefinition(definition)} icon={<Copy size={14} />} />
                     {!definition.archived_at && <IconButton title="编辑任务" onClick={() => openEdit(definition)} icon={<Pencil size={14} />} />}
                     {!definition.archived_at && <IconButton title="归档任务" danger onClick={() => {

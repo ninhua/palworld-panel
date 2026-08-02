@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -83,5 +84,77 @@ func TestCycleKeys(t *testing.T) {
 	}
 	if got := service.cycleKey("once", instant); got != "once" {
 		t.Fatalf("once cycle = %s", got)
+	}
+}
+
+func TestDiagnoseEventExplainsMatchesAndFailures(t *testing.T) {
+	service, err := Open(t.TempDir()+"/tasks.db", "Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	service.now = func() time.Time { return time.Date(2026, 8, 2, 1, 0, 0, 0, time.UTC) }
+	ctx := context.Background()
+	_, err = service.CreateDefinition(ctx, DefinitionInput{
+		Name: "捕获棉悠悠", EventType: "PAL_CAPTURED", TargetAmount: 3, RewardPoints: 0,
+		Cycle: "daily", AmountField: "count", Filters: map[string]any{"pal_id": "SheepBall"}, Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.CreateDefinition(ctx, DefinitionInput{
+		Name: "登录任务", EventType: "PLAYER_LOGIN", TargetAmount: 1, RewardPoints: 0,
+		Cycle: "daily", AmountField: "count", Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := service.DiagnoseEvent(ctx, Event{
+		EventID: "diagnostic-1", Type: "PAL_CAPTURED", PlayerUID: "player-1",
+		Payload: map[string]any{"pal_id": "SheepBall", "count": float64(2)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Matched != 1 || report.WouldApply != 1 {
+		t.Fatalf("unexpected report counts: %#v", report)
+	}
+	var captured, login DiagnosticTaskMatch
+	for _, item := range report.Results {
+		switch item.TaskName {
+		case "捕获棉悠悠":
+			captured = item
+		case "登录任务":
+			login = item
+		}
+	}
+	if captured.Status != "would_apply" || captured.WouldAdd != 2 {
+		t.Fatalf("unexpected matched result: %#v", captured)
+	}
+	if login.Status != "event_type_mismatch" {
+		t.Fatalf("unexpected mismatch result: %#v", login)
+	}
+
+	missing, err := service.DiagnoseEvent(ctx, Event{Type: "PAL_CAPTURED", PlayerUID: "player-1", Payload: map[string]any{"count": 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range missing.Results {
+		if item.TaskName == "捕获棉悠悠" && (item.Status != "filter_field_missing" || item.Field != "pal_id") {
+			t.Fatalf("unexpected missing filter result: %#v", item)
+		}
+	}
+}
+
+func TestDiagnoseFiltersExplainsMissingAndMismatch(t *testing.T) {
+	payload := map[string]any{"pal_id": "SheepBall", "count": 1}
+	path, expected, actual, status, _, matched := diagnoseFilters(payload, map[string]any{"boss.id": "BOSS_001"})
+	if matched || status != "filter_field_missing" || path != "boss.id" || expected != "BOSS_001" || actual != nil {
+		t.Fatalf("unexpected missing diagnostic: path=%s expected=%v actual=%v status=%s matched=%v", path, expected, actual, status, matched)
+	}
+	path, expected, actual, status, _, matched = diagnoseFilters(payload, map[string]any{"pal_id": "BerryGoat"})
+	if matched || status != "filter_mismatch" || path != "pal_id" || expected != "BerryGoat" || actual != "SheepBall" {
+		t.Fatalf("unexpected mismatch diagnostic: path=%s expected=%v actual=%v status=%s matched=%v", path, expected, actual, status, matched)
 	}
 }

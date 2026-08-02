@@ -32,6 +32,9 @@ func (s Server) registerGameEventRoutes(api *gin.RouterGroup) {
 	api.GET("/game-events", Require(PermRead), s.listGameEvents)
 	api.GET("/game-events/bridge/status", Require(PermRead), s.gameEventBridgeStatusHandler)
 	api.GET("/game-events/bridge/observations", Require(PermRead), s.listGameEventBridgeObservations)
+	api.GET("/game-events/bridge/dead-letters", Require(PermRead), s.listGameEventBridgeDeadLetters)
+	api.POST("/game-events/bridge/dead-letters/:id/replay", Require(PermPlayersWrite), s.replayGameEventBridgeDeadLetter)
+	api.POST("/game-events/bridge/dead-letters/:id/dismiss", Require(PermPlayersWrite), s.dismissGameEventBridgeDeadLetter)
 	api.POST("/game-events/bridge/repair", Require(PermSecurityWrite), s.repairGameEventBridge)
 	api.GET("/game-events/:id", Require(PermRead), s.getGameEvent)
 	s.startGameEventBridge()
@@ -109,26 +112,24 @@ func (s Server) ingestGameEvent(c *gin.Context) {
 	result := map[string]any{"accepted": true, "retry": claim.Retry}
 	var commandResult *economy.CommandResult
 	if claim.Record.Type == "PLAYER_CHAT" {
-		message, _ := claim.Record.Payload["message"].(string)
-		economyService, economyErr := s.economyService()
-		if economyErr != nil {
-			_, _ = service.Fail(c.Request.Context(), claim.Record.EventID, economyErr)
-			economyFailure(c, economyErr)
-			return
-		}
-		command, commandErr := economyService.ExecuteCommandDetailed(c.Request.Context(), economy.CommandRequest{
-			EventID: claim.Record.EventID, PlayerUID: claim.Record.PlayerUID, Nickname: claim.Record.Nickname,
-			SteamID: claim.Record.SteamID, Message: message,
-		})
+		outcome, commandErr := s.executeGameChatCommand(c.Request.Context(), claim.Record)
 		if commandErr != nil {
 			_, _ = service.Fail(c.Request.Context(), claim.Record.EventID, commandErr)
-			economyFailure(c, commandErr)
+			fail(c, http.StatusInternalServerError, "game_chat_command_failed", commandErr.Error())
 			return
 		}
-		result["command"] = command
-		commandResult = &command
-		if command.Handled && command.Reply != "" && !command.Duplicate {
-			delivery, deliveryErr := s.deliverGameEventReply(c.Request.Context(), claim.Record, command.Reply)
+		if outcome.Economy != nil {
+			result["command"] = outcome.Economy
+			commandResult = outcome.Economy
+		}
+		if outcome.Shop != nil && outcome.Shop.Handled {
+			result["shop_command"] = outcome.Shop
+		}
+		if outcome.Tasks != nil && outcome.Tasks.Handled {
+			result["task_command"] = outcome.Tasks
+		}
+		if outcome.Handled && outcome.Reply != "" && !outcome.Duplicate {
+			delivery, deliveryErr := s.deliverGameEventReply(c.Request.Context(), claim.Record, outcome.Reply)
 			result["reply_delivery"] = delivery
 			if deliveryErr != nil {
 				result["reply_error"] = deliveryErr.Error()

@@ -74,7 +74,65 @@ export interface GameEventBridgeStatus {
   processed_events: number;
   unmatched_players: number;
   failed_events: number;
+  pending_dead_letters: number;
+  rotation_resets: number;
+  cursor_files: number;
+  online_players: number;
+  tracked_online_players: number;
+  online_minutes_emitted: number;
+  last_online_sample_at?: string;
+  last_online_error?: string;
+  player_snapshot_source?: string;
+  player_snapshot_age_seconds?: number;
+  player_sample_duration_ms?: number;
+  last_scan_duration_ms: number;
+  last_scan_read_bytes: number;
   configuration: Record<string, boolean>;
+}
+
+export interface OnlineTaskTrackingRecord {
+  player_uid: string;
+  nickname?: string;
+  steam_id?: string;
+  active: boolean;
+  online_since?: string;
+  last_seen_at?: string;
+  pending_seconds: number;
+  total_emitted_minutes: number;
+  updated_at: string;
+}
+
+export interface GameEventBridgeOffset {
+  path: string;
+  offset: number;
+  file_size: number;
+  prefix_hash?: string;
+  reset_count: number;
+  last_reset_reason?: string;
+  updated_at: string;
+}
+
+export interface GameEventBridgeDeadLetter {
+  id: number;
+  event_id: string;
+  source_path: string;
+  offset: number;
+  event_type?: string;
+  player_hint?: string;
+  player_uid?: string;
+  steam_id?: string;
+  nickname?: string;
+  payload: Record<string, unknown>;
+  raw_line?: string;
+  sample?: string;
+  reason: string;
+  status: 'pending' | 'replayed' | 'dismissed';
+  attempts: number;
+  last_error?: string;
+  replayed_at?: string;
+  dismissed_at?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface GameEventBridgeObservation {
@@ -132,6 +190,7 @@ interface EconomyAccountList { items: EconomyAccount[]; count: number }
 interface EconomyLedgerList { items: EconomyLedgerEntry[]; count: number }
 interface EconomyCheckinList { items: EconomyCheckinHistoryEntry[]; count: number }
 interface BridgeObservationList { items: GameEventBridgeObservation[]; count: number }
+interface BridgeDeadLetterList { items: GameEventBridgeDeadLetter[]; count: number; pending: number }
 
 const configFallback: EconomyConfig = {
   command_prefix: '!',
@@ -154,7 +213,7 @@ const summaryFallback: EconomySummary = {
 };
 
 const bridgeFallback: GameEventBridgeStatus = {
-  enabled: true, running: false, parsed_events: 0, processed_events: 0, unmatched_players: 0, failed_events: 0, configuration: {},
+  enabled: true, running: false, parsed_events: 0, processed_events: 0, unmatched_players: 0, failed_events: 0, pending_dead_letters: 0, rotation_resets: 0, cursor_files: 0, online_players: 0, tracked_online_players: 0, online_minutes_emitted: 0, last_scan_duration_ms: 0, last_scan_read_bytes: 0, configuration: {},
 };
 
 export const economyApi = {
@@ -183,14 +242,25 @@ export const economyApi = {
     { account: { player_uid: playerUID, status: 'active', balance: 0, created_at: '', updated_at: '' } },
     { fallbackOnError: false },
   ),
-  bridgeStatus: () => handleRequest<unknown, { bridge: GameEventBridgeStatus; required_configuration: string[] }>(
-    () => apiClient.get('/game-events/bridge/status'), { bridge: bridgeFallback, required_configuration: [] }, { fallbackOnError: false },
+  bridgeStatus: () => handleRequest<unknown, { bridge: GameEventBridgeStatus; offsets: GameEventBridgeOffset[]; online_tracking: OnlineTaskTrackingRecord[]; required_configuration: string[] }>(
+    () => apiClient.get('/game-events/bridge/status'), { bridge: bridgeFallback, offsets: [], online_tracking: [], required_configuration: [] }, { fallbackOnError: false },
   ),
   repairBridge: () => handleRequest<unknown, { configuration: Record<string, boolean>; reload_required: boolean; reload_error?: string }>(
     () => apiClient.post('/game-events/bridge/repair'), { configuration: {}, reload_required: false }, { fallbackOnError: false },
   ),
   bridgeObservations: () => handleRequest<unknown, BridgeObservationList>(
     () => apiClient.get('/game-events/bridge/observations', { params: { limit: 30 } }), { items: [], count: 0 }, { fallbackOnError: false },
+  ),
+  bridgeDeadLetters: (status = 'pending') => handleRequest<unknown, BridgeDeadLetterList>(
+    () => apiClient.get('/game-events/bridge/dead-letters', { params: { status, limit: 50 } }), { items: [], count: 0, pending: 0 }, { fallbackOnError: false },
+  ),
+  replayBridgeDeadLetter: (id: number, playerUID = '') => handleRequest<unknown, { dead_letter_id: number; result: Record<string, unknown> }>(
+    () => apiClient.post(`/game-events/bridge/dead-letters/${id}/replay`, playerUID.trim() ? { player_uid: playerUID.trim() } : {}),
+    { dead_letter_id: id, result: {} }, { fallbackOnError: false },
+  ),
+  dismissBridgeDeadLetter: (id: number) => handleRequest<unknown, { dead_letter_id: number; status: string }>(
+    () => apiClient.post(`/game-events/bridge/dead-letters/${id}/dismiss`, {}),
+    { dead_letter_id: id, status: 'dismissed' }, { fallbackOnError: false },
   ),
   inspectAstrBot: (file: File) => {
     const form = new FormData(); form.append('database', file);

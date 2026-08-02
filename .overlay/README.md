@@ -1,49 +1,33 @@
-# Palworld Panel 根目录覆盖包
+# Palworld Panel 0.8.81 Boss 自动续波维护增量 1
 
-升级范围：`0.8.66 -> 0.8.67`
+将本压缩包直接解压到 `ninhua/palworld-panel` 仓库根目录，覆盖同名文件。
 
-## 本版内容
+## 基线
 
-### Boss 多波次编排
+- 分支：`custom-stable`
+- 基线提交：`a890aa9b14cb2cb64b9edf252726cd8ab4905133`
+- 面板补丁版本：`0.8.81`
+- 本包为同版本维护增量，不修改 `patchVersion`、OpenAPI 或生成合同。
 
-Boss 模板新增波次配置：
+## 内容
 
-- 每个模板最多 20 波；
-- 支持主 Boss、护卫怪和增援；
-- 每波独立配置 Pal ID、等级、数量、生命/攻击/防御倍率、生成半径、延迟和捕获规则；
-- 支持添加、删除和上下调整顺序；
-- Pal ID 可直接从现有帕鲁目录下拉选择；
-- 清空显式波次后，新召唤会自动使用模板本身生成一个隐式主 Boss 波次。
+- 新增显式启用的 Boss 自动续波执行器。
+- 支持波次 `delay_seconds`。
+- 支持重启后的持久化待执行扫描。
+- 遇到活动波次或不确定执行记录时停止推进。
+- 单周期最多执行一波，失败或不确定结果不自动重试。
 
-### 召唤波次快照与状态
+## 启用示例
 
-创建召唤记录时会复制当时的模板波次。以后修改模板不会改变历史记录。
+创建召唤时传入：
 
-波次状态中文显示为：
-
-- 等待执行；
-- 进行中；
-- 已完成；
-- 失败；
-- 已跳过。
-
-前置波次未结束时不能启动后续波次。第一波开始时召唤记录自动进入“进行中”；全部波次完成或跳过后自动进入“已完成”；任一波次失败时召唤记录进入“失败”，其余未结束波次自动跳过。
-
-每次逐波操作都会写入原有召唤审计事件。
-
-## 前置条件
-
-必须已经应用到 `0.8.66`，并确认：
-
-```go
-patchVersion = "0.8.66"
+```json
+{
+  "metadata": {
+    "auto_execute": true
+  }
+}
 ```
-
-## 安装
-
-将压缩包内容直接解压到 `ninhua/palworld-panel` 仓库根目录，覆盖同名文件。
-
-压缩包顶层直接是 `.overlay`、`backend`、`docs` 和 `frontend`，不包含额外目录层级。
 
 ## 验证
 
@@ -51,17 +35,11 @@ patchVersion = "0.8.66"
 git diff --check
 
 cd backend
-go test ./internal/boss -count=1
-go test ./internal/api -run '^TestNewContractRoutes$|^TestPatchVersionArtifactsStayInSync$' -count=1
+gofmt -w internal/boss/auto_execution.go internal/boss/auto_execution_test.go internal/api/boss_auto_execution_features.go
+go test ./internal/boss -run '^TestAutoExecution' -count=1
+go test ./internal/api -run '^TestPatchInfo$' -count=1
 go test ./...
 
 cd ../frontend
 npm run check
 ```
-
-## 使用注意
-
-- 当前执行模式仍为 `record_only`，不会自动调用 PalDefender 或 RCON 生成 Boss。
-- “延迟秒数”目前用于编排和审计，不会自动等待或执行命令。
-- 管理员应在游戏内完成每一波实际操作后，再在面板推进对应波次状态。
-- 原有单 Boss 模板不需要迁移；未配置波次时会自动生成兼容的隐式波次。
