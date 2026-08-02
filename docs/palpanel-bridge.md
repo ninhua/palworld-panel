@@ -8,9 +8,12 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 当前版本不会修改玩家、背包、帕鲁或存档。
 
+后续功能优先级、完成标准和 GitHub Actions 构建部署门禁统一记录在
+[`development/palpanel-bridge-roadmap.md`](development/palpanel-bridge-roadmap.md)。
+
 ## 兼容版本
 
-- PalPanelBridge：`0.1.18`
+- PalPanelBridge：`0.1.19`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -58,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.18",
+  "bridge_version": "0.1.19",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -162,13 +165,17 @@ PlayerState 和 Pawn 上名称含背包、容器、装备、物品、槽位、�
 增加最多 64 个关键词匹配的 `function_candidates`，包含函数名和参数缓冲区大小。
 插件不会调用这些函数，也不会读取集合元素。
 
+`0.1.19` 为每个函数候选增加 `parameters`，只返回参数名、类型、大小和返回值标记，
+用于确认 `GetContainer`、`TryGetContainer` 与 `TryGetLoadedOtomoData` 的安全调用结构；
+本版本仍不会调用这些函数。所有可读时间改为中国标准时间（UTC+8）。
+
 ## 响应与任务时间
 
-所有 JSON 响应均包含 `response_time_unix_ms` 和 UTC 格式的
-`response_time_utc`。任务详情同时包含：
+所有 JSON 响应均包含 `response_time_unix_ms` 和中国标准时间格式的
+`response_time_china`。任务详情同时包含：
 
-- `queued_at_unix_ms` / `queued_at_utc`：进入队列的时间。
-- `executed_at_unix_ms` / `executed_at_utc`：游戏线程开始执行该任务的时间。
+- `queued_at_unix_ms` / `queued_at_china`：进入队列的时间。
+- `executed_at_unix_ms` / `executed_at_china`：游戏线程开始执行该任务的时间。
 - `game_thread_tick_count_at_execution`：执行时的游戏线程 Tick 计数。
 
 在线玩家结果还返回 `query_world_found` 和 `query_world`，用于确认每次查询实际使用

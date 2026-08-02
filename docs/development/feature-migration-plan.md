@@ -2,6 +2,9 @@
 
 基线：`ninhua/palworld-panel` 的 `custom-stable` 分支。
 
+PalPanelBridge 的独立优先级、完成标准和交付门禁见
+[`palpanel-bridge-roadmap.md`](palpanel-bridge-roadmap.md)。
+
 | 顺序 | 功能 | 状态 |
 |---|---|---|
 | 1 | 双模式面板更新与健康回滚 | 已完成 |

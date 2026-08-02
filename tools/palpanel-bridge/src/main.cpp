@@ -67,6 +67,15 @@ struct FunctionCandidateSnapshot
     std::string name{};
     std::string full_name{};
     std::int32_t params_size{};
+    struct Parameter
+    {
+        std::string name{};
+        std::string kind{};
+        std::string declared_type{};
+        std::int32_t size{};
+        bool return_value{};
+    };
+    std::vector<Parameter> parameters{};
 };
 
 struct PropertyCandidateSnapshot
@@ -233,11 +242,23 @@ std::vector<FunctionCandidateSnapshot> collect_player_data_function_candidates(
                 }
             }
             if (!selected || !seen.insert(name).second) continue;
-            candidates.emplace_back(FunctionCandidateSnapshot{
+            FunctionCandidateSnapshot candidate{
                 .name = std::move(name),
                 .full_name = RC::to_utf8_string(function->GetFullName()),
                 .params_size = function->GetParmsSize(),
-            });
+            };
+            for (auto* parameter : function->ForEachProperty()) {
+                if (!parameter || candidate.parameters.size() >= 32) continue;
+                const auto details = describe_property_candidate(parameter);
+                candidate.parameters.emplace_back(FunctionCandidateSnapshot::Parameter{
+                    .name = details.name,
+                    .kind = details.kind,
+                    .declared_type = details.declared_type,
+                    .size = parameter->GetSize(),
+                    .return_value = details.name == "ReturnValue",
+                });
+            }
+            candidates.emplace_back(std::move(candidate));
         }
     } catch (...) {
     }
@@ -565,15 +586,16 @@ unsigned long long unix_time_ms()
                                                .count());
 }
 
-std::string utc_time(unsigned long long milliseconds)
+std::string china_time(unsigned long long milliseconds)
 {
     if (milliseconds == 0) return {};
-    const auto seconds = static_cast<std::time_t>(milliseconds / 1000);
-    std::tm utc{};
-    if (gmtime_s(&utc, &seconds) != 0) return {};
+    constexpr std::time_t china_offset_seconds = 8 * 60 * 60;
+    const auto seconds = static_cast<std::time_t>(milliseconds / 1000) + china_offset_seconds;
+    std::tm china{};
+    if (gmtime_s(&china, &seconds) != 0) return {};
     std::ostringstream output;
-    output << std::put_time(&utc, "%Y-%m-%dT%H:%M:%S") << '.' << std::setw(3) << std::setfill('0')
-           << (milliseconds % 1000) << 'Z';
+    output << std::put_time(&china, "%Y-%m-%dT%H:%M:%S") << '.' << std::setw(3) << std::setfill('0')
+           << (milliseconds % 1000) << "+08:00";
     return output.str();
 }
 
@@ -622,7 +644,17 @@ void append_property_candidate_json(
         const auto& function = candidate.function_candidates[index];
         body << "{\"name\":\"" << json_escape(function.name)
              << "\",\"full_name\":\"" << json_escape(function.full_name)
-             << "\",\"params_size\":" << function.params_size << '}';
+             << "\",\"params_size\":" << function.params_size << ",\"parameters\":[";
+        for (size_t parameter_index = 0; parameter_index < function.parameters.size(); ++parameter_index) {
+            if (parameter_index > 0) body << ',';
+            const auto& parameter = function.parameters[parameter_index];
+            body << "{\"name\":\"" << json_escape(parameter.name)
+                 << "\",\"kind\":\"" << json_escape(parameter.kind)
+                 << "\",\"declared_type\":\"" << json_escape(parameter.declared_type)
+                 << "\",\"size\":" << parameter.size
+                 << ",\"return_value\":" << (parameter.return_value ? "true" : "false") << '}';
+        }
+        body << "]}";
     }
     body << "]}";
 }
@@ -639,8 +671,8 @@ std::string add_response_time(const std::string& body)
     if (body.empty() || body.front() != '{') return body;
     const auto now = unix_time_ms();
     std::ostringstream output;
-    output << "{\"response_time_unix_ms\":" << now << ",\"response_time_utc\":\""
-           << utc_time(now) << '"';
+    output << "{\"response_time_unix_ms\":" << now << ",\"response_time_china\":\""
+           << china_time(now) << '"';
     if (body.size() > 2) output << ',' << body.substr(1);
     else output << '}';
     return output.str();
@@ -668,7 +700,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.18");
+        ModVersion = STR("0.1.19");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -838,7 +870,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.18\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.19\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -851,7 +883,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.18\","
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.19\","
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -884,9 +916,9 @@ class PalPanelBridge final : public RC::CppUserModBase
         std::ostringstream body;
         body << "{\"ok\":true,\"job\":{\"id\":\"" << job.id << "\",\"type\":\"" << job_kind_name(job.kind)
              << "\",\"status\":\"" << job.status << "\",\"queued_at_unix_ms\":" << job.queued_at_unix_ms
-             << ",\"queued_at_utc\":\"" << utc_time(job.queued_at_unix_ms)
+             << ",\"queued_at_china\":\"" << china_time(job.queued_at_unix_ms)
              << "\",\"executed_at_unix_ms\":" << job.executed_at_unix_ms
-             << ",\"executed_at_utc\":\"" << utc_time(job.executed_at_unix_ms)
+             << ",\"executed_at_china\":\"" << china_time(job.executed_at_unix_ms)
              << "\",\"game_thread_tick_count_at_execution\":" << job.game_thread_tick_count_at_execution
              << ",\"result\":{\"unreal_initialized\":" << (job.unreal_initialized ? "true" : "false")
              << ",\"game_thread_tick_seen\":" << (job.game_thread_tick_seen ? "true" : "false");

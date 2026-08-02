@@ -10,6 +10,8 @@ It does not expose arbitrary UObject calls and cannot modify players, inventory,
 
 For the Chinese installation, diagnostic-console examples, and troubleshooting
 matrix, see [`docs/palpanel-bridge.md`](../../docs/palpanel-bridge.md).
+The unified feature priorities and CI-only delivery gates are maintained in
+[`docs/development/palpanel-bridge-roadmap.md`](../../docs/development/palpanel-bridge-roadmap.md).
 
 ## Build with GitHub Actions
 
@@ -21,12 +23,17 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.18-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.19-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
 
-## Optional local build
+## Local build script
+
+The project delivery workflow does not compile or test PalPanelBridge locally.
+Use the dedicated GitHub Actions workflow for every accepted build. The script
+below is retained only as an emergency SDK diagnostic reference and is not a
+release or deployment path.
 
 Run from an MSVC developer shell with CMake, Ninja, and Rust available:
 
@@ -42,7 +49,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.18-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.19-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -96,6 +103,10 @@ It also lists up to 64 keyword-matched reflected functions on the two confirmed
 entry objects, including function names and parameter-buffer sizes. Functions
 are never invoked and collection elements are never read.
 
+Version `0.1.19` adds parameter metadata to those function candidates without
+invoking them. Human-readable timestamps use China Standard Time (`+08:00`),
+while Unix millisecond fields remain unchanged.
+
 ## Verified SFTP deployment
 
 After the dedicated Action completes, run the repository deployment helper with
@@ -127,7 +138,7 @@ read-only fallback. The primary fallback calls Palworld's reflected
 `PalUtility.GetAllPlayerStates` with the current World context. It does not read
 inventory or Pal data and never modifies the objects.
 
-Every JSON response includes `response_time_unix_ms` and `response_time_utc`.
+Every JSON response includes `response_time_unix_ms` and `response_time_china`.
 Jobs also preserve their queue time, game-thread execution time, and tick count
 at execution. Online-player results identify the exact World object used for
 the PalUtility query.
