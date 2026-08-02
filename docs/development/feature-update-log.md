@@ -1,5 +1,14 @@
 # 功能移植更新记录
 
+## 2026-08-03：关键玩家组件完整属性探针
+
+已完成：
+
+- PalPanelBridge 升级至 `0.1.17`。
+- 对 `PalItemSelectorComponent` 和 `BP_OtomoPalHolderComponent` 返回最多 96 个完整属性元数据。
+- 其他在线对象继续使用关键词过滤，控制响应体大小。
+- 仍不读取属性值、数组或容器内容，不修改游戏对象。
+
 ## 2026-08-03：PalPanelBridge 自动校验部署脚本
 
 已完成：

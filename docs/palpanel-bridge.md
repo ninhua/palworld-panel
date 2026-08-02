@@ -10,7 +10,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.16`
+- PalPanelBridge：`0.1.17`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -58,7 +58,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.16",
+  "bridge_version": "0.1.17",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -153,6 +153,10 @@ PlayerState 和 Pawn 上名称含背包、容器、装备、物品、槽位、�
 `0.1.16` 对 `object` 类型候选执行一次受限展开，增加 `object_value_found`、
 `object_value` 和 `nested_candidates`。展开仅限一层且仍只读取反射元数据，主要用于确认
 `BP_OtomoPalHolderComponent`、`LoadoutItemSelector` 等对象的实际实例及内部入口。
+
+`0.1.17` 仅对已确认的 `PalItemSelectorComponent` 与 `BP_OtomoPalHolderComponent`
+返回最多 96 个未经过关键词过滤的内部属性；其他对象继续使用原过滤规则。该探针用于发现
+帕鲁队伍和装备数据的真实入口，仍不读取属性值、数组或容器内容。
 
 ## 响应与任务时间
 

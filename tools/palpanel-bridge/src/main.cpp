@@ -196,7 +196,7 @@ PropertyCandidateSnapshot describe_property_candidate(RC::Unreal::FProperty* pro
 }
 
 std::vector<PropertyCandidateSnapshot> collect_player_data_property_candidates(
-    RC::Unreal::UObject* object, bool inspect_object_values = true)
+    RC::Unreal::UObject* object, bool inspect_object_values = true, bool include_all_properties = false)
 {
     std::vector<PropertyCandidateSnapshot> candidates;
     if (!object || !RC::Unreal::UObject::IsReal(object)) return candidates;
@@ -205,33 +205,39 @@ std::vector<PropertyCandidateSnapshot> collect_player_data_property_candidates(
     std::unordered_set<std::string> seen;
     try {
         for (auto* property : object->GetClassPrivate()->ForEachProperty()) {
-            if (!property || candidates.size() >= 64) continue;
+            const auto max_candidates = include_all_properties ? size_t{96} : size_t{64};
+            if (!property || candidates.size() >= max_candidates) continue;
             auto name = RC::to_utf8_string(property->GetName());
             auto lower = name;
             std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char character) {
                 return static_cast<char>(std::tolower(character));
             });
+            auto selected = include_all_properties;
             for (const auto keyword : keywords) {
-                if (lower.find(keyword) != std::string::npos) {
-                    if (seen.insert(name).second) {
-                        auto candidate = describe_property_candidate(property);
-                        if (inspect_object_values && candidate.kind == "object") {
-                            auto* object_property = RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(property);
-                            auto* value = object_property
-                                              ? object_property->GetObjectPropertyValue(
-                                                    property->ContainerPtrToValuePtr<void>(object))
-                                              : nullptr;
-                            candidate.object_value_found = value && RC::Unreal::UObject::IsReal(value);
-                            if (candidate.object_value_found) {
-                                candidate.object_value = describe_object(value);
-                                candidate.nested_candidates = collect_player_data_property_candidates(value, false);
-                            }
-                        }
-                        candidates.emplace_back(std::move(candidate));
-                    }
-                    break;
+                if (lower.find(keyword) != std::string::npos) selected = true;
+            }
+            if (!selected || !seen.insert(name).second) continue;
+            auto candidate = describe_property_candidate(property);
+            if (inspect_object_values && candidate.kind == "object") {
+                auto* object_property = RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(property);
+                auto* value = object_property
+                                  ? object_property->GetObjectPropertyValue(
+                                        property->ContainerPtrToValuePtr<void>(object))
+                                  : nullptr;
+                candidate.object_value_found = value && RC::Unreal::UObject::IsReal(value);
+                if (candidate.object_value_found) {
+                    candidate.object_value = describe_object(value);
+                    auto nested_class = candidate.object_value.class_name;
+                    std::transform(nested_class.begin(), nested_class.end(), nested_class.begin(), [](unsigned char character) {
+                        return static_cast<char>(std::tolower(character));
+                    });
+                    const auto expand_all = nested_class == "palitemselectorcomponent" ||
+                                            nested_class.find("otomopalholdercomponent") != std::string::npos;
+                    candidate.nested_candidates =
+                        collect_player_data_property_candidates(value, false, expand_all);
                 }
             }
+            candidates.emplace_back(std::move(candidate));
         }
     } catch (...) {
     }
@@ -583,7 +589,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.16");
+        ModVersion = STR("0.1.17");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -753,7 +759,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.16\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.17\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -766,7 +772,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.16\","
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.17\","
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
