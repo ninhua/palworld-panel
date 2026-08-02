@@ -10,7 +10,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.13`
+- PalPanelBridge：`0.1.14`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -58,7 +58,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.13",
+  "bridge_version": "0.1.14",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -140,6 +140,10 @@ PlayerState 数组，并返回 `game_state_found`、`game_state`、
 
 `0.1.13` 使用 UE4SS `FScriptArrayHelper_InContainer` 和数组内部对象属性逐项解析
 UE5 `TObjectPtr<APlayerState>`，避免把对象句柄误当成裸指针导致游戏进程崩溃。
+
+`0.1.14` 在在线玩家结果中增加只读 `property_candidates`，分别列出 Controller、
+PlayerState 和 Pawn 上名称含背包、容器、装备、物品、槽位、队伍或帕鲁关键词的
+运行时属性。该探针只返回属性名，不读取属性值。
 
 ## 响应与任务时间
 
