@@ -113,7 +113,9 @@ After the dedicated Action completes, run the repository deployment helper with
 `uv run --with paramiko python tools/palpanel-bridge/deploy.py`. It checks the
 latest workflow result, downloads and verifies the artifact, pins the SFTP host
 key, uploads a temporary DLL, backs up the current DLL, atomically renames the
-new file, and downloads it again for SHA-256 verification. Set
+new file, and downloads it again for SHA-256 verification. Downloaded build
+snapshots are stored in the workspace-level `PalPanelBridge/versions` directory
+by default; `--output-root` may override that location. Set
 `PALPANEL_SFTP_HOST`, `PALPANEL_SFTP_USERNAME`, `PALPANEL_SFTP_PASSWORD`, and
 `PALPANEL_SFTP_HOSTKEY_SHA256`; optionally set `PALPANEL_SFTP_PORT` and
 `PALPANEL_SFTP_REMOTE_DIR`. Credentials are never stored in the repository.

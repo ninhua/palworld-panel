@@ -253,7 +253,11 @@ def main() -> None:
     parser.add_argument("--branch", default="custom-stable")
     parser.add_argument("--poll-seconds", type=int, default=30)
     parser.add_argument("--timeout-seconds", type=int, default=2700)
-    parser.add_argument("--output-root", type=Path, default=Path(__file__).resolve().parents[2].parent)
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=Path(__file__).resolve().parents[3] / "PalPanelBridge" / "versions",
+    )
     parser.add_argument("--host")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PALPANEL_SFTP_PORT", "22")))
     parser.add_argument("--username")
