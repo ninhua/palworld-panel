@@ -82,6 +82,11 @@ export interface GameEventBridgeStatus {
   online_minutes_emitted: number;
   last_online_sample_at?: string;
   last_online_error?: string;
+  player_snapshot_source?: string;
+  player_snapshot_age_seconds?: number;
+  player_sample_duration_ms?: number;
+  last_scan_duration_ms: number;
+  last_scan_read_bytes: number;
   configuration: Record<string, boolean>;
 }
 
@@ -208,7 +213,7 @@ const summaryFallback: EconomySummary = {
 };
 
 const bridgeFallback: GameEventBridgeStatus = {
-  enabled: true, running: false, parsed_events: 0, processed_events: 0, unmatched_players: 0, failed_events: 0, pending_dead_letters: 0, rotation_resets: 0, cursor_files: 0, online_players: 0, tracked_online_players: 0, online_minutes_emitted: 0, configuration: {},
+  enabled: true, running: false, parsed_events: 0, processed_events: 0, unmatched_players: 0, failed_events: 0, pending_dead_letters: 0, rotation_resets: 0, cursor_files: 0, online_players: 0, tracked_online_players: 0, online_minutes_emitted: 0, last_scan_duration_ms: 0, last_scan_read_bytes: 0, configuration: {},
 };
 
 export const economyApi = {

@@ -1,49 +1,32 @@
-# Palworld Panel 根目录覆盖包
+# Palworld Panel overlay 0.8.79 → 0.8.80
 
-升级范围：`0.8.66 -> 0.8.67`
+将本压缩包直接解压到 `ninhua/palworld-panel` 仓库根目录，覆盖同名文件。
 
-## 本版内容
+## 内容
 
-### Boss 多波次编排
+- 修复 0.8.79 游戏事件桥接与在线任务采样可能导致的后端响应延迟。
+- 在线时长任务改为复用面板实时监控原有的 Palworld REST 玩家快照。
+- 新玩家礼包、玩家在线状态、游戏日志身份匹配和在线任务共享同一份玩家状态。
+- 删除游戏事件桥接中的独立 PalDefender 玩家目录轮询。
+- 日志桥接改为每轮扫描结束后再等待，避免 Ticker 积压后连续扫描。
+- 有新增日志时等待 1 秒，空闲时等待 3 秒。
+- 每轮只处理最近两个 PalDefender 日志文件。
+- PalDefender 日志目录和积分命令配置缓存 30 秒。
+- 死信及游标统计不再放入后台高频扫描。
+- 积分页面的桥接状态刷新降低频率，并显示日志扫描耗时、共享快照年龄。
+- OpenAPI 操作数量仍为 348，补丁版本同步至 `0.8.80`。
 
-Boss 模板新增波次配置：
+## 覆盖前提
 
-- 每个模板最多 20 波；
-- 支持主 Boss、护卫怪和增援；
-- 每波独立配置 Pal ID、等级、数量、生命/攻击/防御倍率、生成半径、延迟和捕获规则；
-- 支持添加、删除和上下调整顺序；
-- Pal ID 可直接从现有帕鲁目录下拉选择；
-- 清空显式波次后，新召唤会自动使用模板本身生成一个隐式主 Boss 波次。
-
-### 召唤波次快照与状态
-
-创建召唤记录时会复制当时的模板波次。以后修改模板不会改变历史记录。
-
-波次状态中文显示为：
-
-- 等待执行；
-- 进行中；
-- 已完成；
-- 失败；
-- 已跳过。
-
-前置波次未结束时不能启动后续波次。第一波开始时召唤记录自动进入“进行中”；全部波次完成或跳过后自动进入“已完成”；任一波次失败时召唤记录进入“失败”，其余未结束波次自动跳过。
-
-每次逐波操作都会写入原有召唤审计事件。
-
-## 前置条件
-
-必须已经应用到 `0.8.66`，并确认：
+仓库当前补丁版本应为：
 
 ```go
-patchVersion = "0.8.66"
+patchVersion = "0.8.79"
 ```
 
-## 安装
+## 关键行为
 
-将压缩包内容直接解压到 `ninhua/palworld-panel` 仓库根目录，覆盖同名文件。
-
-压缩包顶层直接是 `.overlay`、`backend`、`docs` 和 `frontend`，不包含额外目录层级。
+实时监控仍按原有 15 秒周期取得玩家列表；在线任务最多每 30 秒结算一次。游戏日志桥接只负责聊天、捕捉、击杀、登录和制作日志，不再查询玩家目录。
 
 ## 验证
 
@@ -51,17 +34,10 @@ patchVersion = "0.8.66"
 git diff --check
 
 cd backend
-go test ./internal/boss -count=1
-go test ./internal/api -run '^TestNewContractRoutes$|^TestPatchVersionArtifactsStayInSync$' -count=1
+go test ./internal/monitor -count=1
+go test ./internal/api -run '^TestParsePalDefender|^TestGameEventBridge|^TestPatchVersionArtifactsStayInSync$' -count=1
 go test ./...
 
 cd ../frontend
 npm run check
 ```
-
-## 使用注意
-
-- 当前执行模式仍为 `record_only`，不会自动调用 PalDefender 或 RCON 生成 Boss。
-- “延迟秒数”目前用于编排和审计，不会自动等待或执行命令。
-- 管理员应在游戏内完成每一波实际操作后，再在面板推进对应波次状态。
-- 原有单 Boss 模板不需要迁移；未配置波次时会自动生成兼容的隐式波次。

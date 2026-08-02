@@ -37,11 +37,6 @@ interface Notice {
 
 const number = new Intl.NumberFormat('zh-CN');
 
-const productCode = (id: string) => {
-  const value = id.includes('_') ? id.slice(id.lastIndexOf('_') + 1) : id;
-  return value.slice(0, 8).toUpperCase();
-};
-
 const emptyProduct = (): ShopProductInput => ({
   name: '',
   description: '',
@@ -331,7 +326,7 @@ export const EconomyShop: React.FC = () => {
 
       <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div><h2 className="text-base font-bold text-slate-900">商品管理</h2><p className="mt-1 text-xs text-slate-500">配置积分价格、库存、限购和交付Payload。玩家可在游戏内发送“商城”“兑换 兑换码 数量”“我的订单”。</p></div>
+          <div><h2 className="text-base font-bold text-slate-900">商品管理</h2><p className="mt-1 text-xs text-slate-500">配置积分价格、库存、限购和交付Payload。</p></div>
           <div className="flex gap-2">
             <button type="button" onClick={() => refresh()} className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"><RefreshCw size={14} />刷新</button>
             <button type="button" onClick={openCreate} className="flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-xs font-semibold text-white"><Plus size={14} />新增商品</button>
@@ -341,7 +336,7 @@ export const EconomyShop: React.FC = () => {
           <div className="mt-5 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
             {products.map((product) => (
               <div key={product.id} className={`rounded-2xl border p-4 ${product.enabled ? 'border-slate-100' : 'border-slate-100 bg-slate-50/70 opacity-70'}`}>
-                <div className="flex items-start justify-between gap-3"><div><div className="font-bold text-slate-800">{product.name}</div><div className="mt-1 text-[10px] text-slate-400">兑换码 <span className="font-mono font-bold text-sky-600">{productCode(product.id)}</span> · {product.id}</div></div><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${product.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{product.enabled ? '上架' : '下架'}</span></div>
+                <div className="flex items-start justify-between gap-3"><div><div className="font-bold text-slate-800">{product.name}</div><div className="mt-1 text-[10px] text-slate-400">{product.id}</div></div><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${product.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{product.enabled ? '上架' : '下架'}</span></div>
                 <p className="mt-3 min-h-8 text-xs leading-5 text-slate-500">{product.description || '无说明'}</p>
                 <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><Metric label="价格" value={`${number.format(product.price)} 积分`} /><Metric label="库存" value={product.stock < 0 ? '不限' : number.format(product.stock)} /><Metric label="每人限购" value={product.per_player_limit === 0 ? '不限' : number.format(product.per_player_limit)} /><Metric label="交付" value={deliveryModeLabel[product.delivery_mode]} /></div>
                 <div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => openEdit(product)} className="flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600"><Pencil size={12} />编辑</button>{product.enabled && <button type="button" onClick={() => { if (window.confirm(`下架商品“${product.name}”？`)) archiveProductMutation.mutate(product); }} className="flex items-center gap-1 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700"><Archive size={12} />下架</button>}</div>
@@ -354,7 +349,7 @@ export const EconomyShop: React.FC = () => {
       <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
         <div><h2 className="text-base font-bold text-slate-900">创建兑换订单</h2><p className="mt-1 text-xs text-slate-500">管理员代玩家兑换；自动商品会立即尝试通过PalDefender发放。</p></div>
         <form onSubmit={(event) => { event.preventDefault(); createOrderMutation.mutate(); }} className="mt-5 grid gap-3 lg:grid-cols-6">
-          <select value={orderDraft.product_id} onChange={(event) => setOrderDraft((current) => ({ ...current, product_id: event.target.value }))} className="pp-input lg:col-span-2"><option value="">选择上架商品</option>{enabledProducts.map((product) => <option key={product.id} value={product.id}>[{productCode(product.id)}] {product.name} · {product.price}积分</option>)}</select>
+          <select value={orderDraft.product_id} onChange={(event) => setOrderDraft((current) => ({ ...current, product_id: event.target.value }))} className="pp-input lg:col-span-2"><option value="">选择上架商品</option>{enabledProducts.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.price}积分</option>)}</select>
           <input value={orderDraft.player_uid} onChange={(event) => setOrderDraft((current) => ({ ...current, player_uid: event.target.value }))} placeholder="PlayerUID" className="pp-input lg:col-span-2" />
           <input type="number" min={1} max={1000} value={orderDraft.quantity} onChange={(event) => setOrderDraft((current) => ({ ...current, quantity: Number(event.target.value) }))} className="pp-input" />
           <button disabled={createOrderMutation.isPending} type="submit" className="flex items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{createOrderMutation.isPending ? <LoaderCircle size={14} className="animate-spin" /> : <ShoppingBag size={14} />}创建订单</button>

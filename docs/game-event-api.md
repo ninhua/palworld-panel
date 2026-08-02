@@ -4,7 +4,7 @@
 
 ## 内置日志桥接
 
-PalPanel 启动后会自动读取 PalDefender 的 `Logs/*.log`，无需额外部署转发程序。桥接器每秒检查一次新增内容，并将每个日志文件的读取偏移、文件前缀指纹和轮转恢复次数保存到 SQLite。
+PalPanel 启动后会自动读取 PalDefender 的 `Logs/*.log`，无需额外部署转发程序。桥接器在读取完成后等待下一轮：有新增内容时等待 1 秒，空闲时等待 3 秒，不再使用会追赶积压 Tick 的每秒轮询。只检查最近两个日志文件，并将读取偏移、文件前缀指纹和轮转恢复次数保存到 SQLite。
 
 首次启用时从当前日志末尾开始，不回放旧日志，避免更新后重复发奖。后续重启会从持久化游标继续。日志文件被截断、同名替换或轮转后，桥接器会识别文件身份变化并从新文件开头继续；所有标准事件仍通过原始事件 ID 幂等去重。
 
@@ -66,7 +66,7 @@ POST /api/game-events/bridge/repair
 
 - `processed`：日志已识别、玩家已匹配并进入积分/任务链路。
 - `replayed`：管理员从死信记录成功重放。
-- `unmatched_player`：识别了事件，但无法从 PalDefender 玩家目录匹配 PlayerUID。
+- `unmatched_player`：识别了事件，但无法从实时监控共享的玩家快照匹配 PlayerUID。
 - `parse_failed`：日志看起来属于聊天、捕捉、击杀、登录或制作事件，但当前解析器无法识别。
 - `cursor_reset`：检测到日志截断或同名文件替换，持久化游标已安全恢复。
 - `error`：处理、积分、任务或存储阶段失败。
@@ -77,7 +77,7 @@ POST /api/game-events/bridge/repair
 2. 确认对应日志开关为“已启用”。
 3. 在游戏内产生一条新的聊天、捕捉或死亡事件。
 4. 检查最近观察记录是否出现。
-5. 若为 `unmatched_player`，检查日志中是否包含昵称、PlayerUID 或 UserID，并确认 PalDefender 玩家目录可读取。
+5. 若为 `unmatched_player`，检查日志中是否包含昵称、PlayerUID 或 UserID，并确认面板实时监控已产生玩家快照。
 6. 若事件为 `processed` 但任务无进度，检查任务事件类型、`amount_field` 和 Payload 过滤条件。
 
 ## 游戏聊天签到回执
@@ -86,7 +86,7 @@ POST /api/game-events/bridge/repair
 
 - PalDefender 已安装并成功加载。
 - REST API 已启用并配置有效 Token。
-- 玩家可在 PalDefender 玩家目录中匹配。
+- 玩家可在实时监控共享快照中匹配。
 - PalDefender 消息接口可用。
 
 可通过 `GET /api/game-events/<event_id>` 查看 `reply_delivery` 和 `reply_error`。
@@ -147,4 +147,4 @@ PalDefender 日志桥接现在识别：
 
 命令结果通过 PalDefender 私人消息返回。相同聊天日志事件仍由游戏事件账本去重。
 
-在线时长不依赖聊天或日志文本。桥接器每 30 秒查询 PalDefender 玩家目录，并把完整分钟转换为 `PLAYER_ONLINE` 任务事件。追踪游标保存在 SQLite；下线、重连和面板重启不会造成重复分钟事件。
+在线时长不依赖聊天或日志文本。实时监控原本每 15 秒获取一次 Palworld REST 玩家列表；任务系统直接复用这份玩家快照，最多每 30 秒结算一次完整分钟，不再从日志桥接器单独查询 PalDefender 玩家目录。追踪游标保存在 SQLite；下线、重连和面板重启不会造成重复分钟事件。

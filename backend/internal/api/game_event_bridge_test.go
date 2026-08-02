@@ -143,3 +143,12 @@ func TestBridgeFilePrefixHashIsStableAfterPrefixFilled(t *testing.T) {
 		t.Fatalf("prefix hash changed after append: first=%q second=%q err=%v", first, second, err)
 	}
 }
+
+func TestGameEventBridgeDelayDoesNotCatchUp(t *testing.T) {
+	if got := gameEventBridgeNextDelay(0); got != gameEventBridgeIdleInterval {
+		t.Fatalf("idle delay=%s", got)
+	}
+	if got := gameEventBridgeNextDelay(128); got != gameEventBridgeActiveInterval {
+		t.Fatalf("active delay=%s", got)
+	}
+}

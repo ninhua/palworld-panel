@@ -173,7 +173,7 @@ POST /api/integrations/game/tasks/query
 
 ## 在线时长自动结算（0.8.79）
 
-PalPanel 每 30 秒调用 PalDefender 玩家目录，对 `Status=Online` 的玩家累计完整分钟，并生成：
+PalPanel 复用实时监控每 15 秒取得的 Palworld REST 玩家快照，最多每 30 秒对在线玩家累计完整分钟，并生成：
 
 ```json
 {
@@ -208,4 +208,4 @@ PalPanel 每 30 秒调用 PalDefender 玩家目录，对 `Status=Online` 的玩�
 GET /api/tasks/online-tracking?limit=100
 ```
 
-游戏事件桥接状态也会返回当前在线人数、跟踪玩家数、累计提交分钟、最近采样时间和采样错误。
+游戏事件桥接状态也会返回当前在线人数、跟踪玩家数、累计提交分钟、共享快照年龄、玩家采样耗时、日志扫描耗时和采样错误。

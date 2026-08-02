@@ -45,9 +45,9 @@ export const Economy: React.FC = () => {
 
   const configQuery = useQuery({ queryKey: ['economy', 'config'], queryFn: economyApi.config });
   const summaryQuery = useQuery({ queryKey: ['economy', 'summary'], queryFn: economyApi.summary });
-  const bridgeQuery = useQuery({ queryKey: ['economy', 'game-event-bridge'], queryFn: economyApi.bridgeStatus, refetchInterval: 5000 });
-  const bridgeObservationsQuery = useQuery({ queryKey: ['economy', 'game-event-bridge', 'observations'], queryFn: economyApi.bridgeObservations, refetchInterval: 5000 });
-  const bridgeDeadLettersQuery = useQuery({ queryKey: ['economy', 'game-event-bridge', 'dead-letters'], queryFn: () => economyApi.bridgeDeadLetters('pending'), refetchInterval: 5000 });
+  const bridgeQuery = useQuery({ queryKey: ['economy', 'game-event-bridge'], queryFn: economyApi.bridgeStatus, refetchInterval: 10000 });
+  const bridgeObservationsQuery = useQuery({ queryKey: ['economy', 'game-event-bridge', 'observations'], queryFn: economyApi.bridgeObservations, refetchInterval: 15000 });
+  const bridgeDeadLettersQuery = useQuery({ queryKey: ['economy', 'game-event-bridge', 'dead-letters'], queryFn: () => economyApi.bridgeDeadLetters('pending'), refetchInterval: 15000 });
   const accountsQuery = useQuery({ queryKey: ['economy', 'accounts', search], queryFn: () => economyApi.accounts(search) });
   const ledgerQuery = useQuery({
     queryKey: ['economy', 'ledger', selected?.player_uid],
@@ -314,6 +314,8 @@ export const Economy: React.FC = () => {
           <BridgeMetric label="当前在线" ok={!bridgeQuery.data?.bridge.last_online_error} text={number.format(bridgeQuery.data?.bridge.online_players || 0)} />
           <BridgeMetric label="在线跟踪玩家" ok={!bridgeQuery.data?.bridge.last_online_error} text={number.format(bridgeQuery.data?.bridge.tracked_online_players || 0)} />
           <BridgeMetric label="已结算在线分钟" ok={!bridgeQuery.data?.bridge.last_online_error} text={number.format(bridgeQuery.data?.bridge.online_minutes_emitted || 0)} />
+          <BridgeMetric label="日志扫描耗时" ok={(bridgeQuery.data?.bridge.last_scan_duration_ms || 0) < 1000} text={`${number.format(bridgeQuery.data?.bridge.last_scan_duration_ms || 0)} ms`} />
+          <BridgeMetric label="玩家快照年龄" ok={(bridgeQuery.data?.bridge.player_snapshot_age_seconds || 0) <= 45} text={`${number.format(bridgeQuery.data?.bridge.player_snapshot_age_seconds || 0)} 秒`} />
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {Object.entries(bridgeQuery.data?.bridge.configuration || {}).map(([key, enabled]) => <div key={key} className={`flex items-center justify-between rounded-xl border px-3 py-2 text-xs font-bold ${enabled ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}><span>{key}</span><span>{enabled ? '已启用' : '未启用'}</span></div>)}
@@ -322,7 +324,7 @@ export const Economy: React.FC = () => {
           <div className="rounded-xl border border-sky-100 bg-sky-50 p-3 text-xs leading-5 text-sky-800"><strong className="block">捕捉任务</strong><code className="font-mono">PAL_CAPTURED</code>，数量字段填 <code className="font-mono">count</code>。限定某种帕鲁时，过滤条件使用内部 ID，例如 <code className="font-mono">{`{"pal_id":"SheepBall"}`}</code>。</div>
           <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800"><strong className="block">签到任务</strong>玩家当天首次签到成功后会额外生成 <code className="font-mono">CHECKIN_COMPLETED</code>，数量字段填 <code className="font-mono">count</code>；重复签到不会推进任务。</div>
           <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs leading-5 text-amber-800"><strong className="block">击杀任务</strong><code className="font-mono">PAL_KILLED</code> 依赖 PalDefender 死亡日志。不同版本日志可能只提供目标名称；先查看下方日志样本，再选择 <code className="font-mono">target_name</code> 或 <code className="font-mono">pal_id</code> 过滤。</div>
-          <div className="rounded-xl border border-violet-100 bg-violet-50 p-3 text-xs leading-5 text-violet-800"><strong className="block">在线时长任务</strong>事件类型选择 <code className="font-mono">PLAYER_ONLINE</code>，数量字段填写 <code className="font-mono">minutes</code>。系统每30秒采样一次在线玩家，下线时补结算最后一个采样区间。</div>
+          <div className="rounded-xl border border-violet-100 bg-violet-50 p-3 text-xs leading-5 text-violet-800"><strong className="block">在线时长任务</strong>事件类型选择 <code className="font-mono">PLAYER_ONLINE</code>，数量字段填写 <code className="font-mono">minutes</code>。系统复用实时监控的玩家快照，最多每30秒结算一次；不会再单独轮询 PalDefender 玩家接口。</div>
         </div>
         {bridgeQuery.data?.bridge.last_error && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{bridgeQuery.data.bridge.last_error}</div>}
         {bridgeQuery.data?.bridge.last_online_error && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">在线时长采样失败：{bridgeQuery.data.bridge.last_online_error}</div>}

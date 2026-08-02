@@ -1225,7 +1225,6 @@ export interface components {
       "returned": number;
     };
     "PalDefenderItemCatalogEntry": {
-      "collaboration"?: string;
       "icon"?: string;
       "id": string;
       "name": string;
@@ -1249,7 +1248,6 @@ export interface components {
     };
     "PalDefenderPalCatalogEntry": {
       "id": string;
-      "kind"?: string;
       "name": string;
     };
     "PalDefenderPalGrant": {
@@ -1472,7 +1470,7 @@ export interface components {
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/palworld-panel";
-        "version": "0.8.79";
+        "version": "0.8.80";
       };
       "upstream": {
         "commit": string;
