@@ -1,5 +1,14 @@
 # 功能移植更新记录
 
+## 2026-08-02：修复 GameState 玩家数组读取崩溃
+
+已完成：
+
+- PalPanelBridge 升级至 `0.1.13`。
+- 修复 `0.1.12` 将 UE5 `TObjectPtr<APlayerState>` 数组元素当作裸 `UObject*` 读取导致的服务器崩溃。
+- 改用 UE4SS 数组助手定位元素，并通过内部对象属性安全解析每个 PlayerState。
+- 保持 GameState 权威玩家枚举、响应时间和诊断字段不变，全过程只读。
+
 ## 2026-08-02：PalPanelBridge 从 GameState 权威数组读取在线玩家
 
 已完成：

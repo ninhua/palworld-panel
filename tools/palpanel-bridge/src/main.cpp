@@ -303,17 +303,16 @@ void append_game_state_player_states(
             error = "GameState.PlayerArray does not match this game build";
             return;
         }
-        auto* states = static_cast<TArray<UObject*>*>(
-            states_property->ContainerPtrToValuePtr<void>(game_state));
-        const auto count = states->Num();
+        FScriptArrayHelper_InContainer states(states_array_property, game_state);
+        const auto count = states.Num();
         if (count < 0 || count > 1024) {
             error = "GameState.PlayerArray returned an invalid array size";
             return;
         }
         available = true;
         state_count = static_cast<size_t>(count);
-        for (TArray<UObject*>::SizeType index = 0; index < count; ++index) {
-            auto* state = (*states)[index];
+        for (std::int32_t index = 0; index < count; ++index) {
+            auto* state = inner_object_property->GetObjectPropertyValue(states.GetRawPtr(index));
             if (state && UObject::IsReal(state) && state->IsA(player_state_class) && seen.insert(state).second) {
                 output.emplace_back(state);
             }
@@ -479,7 +478,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.12");
+        ModVersion = STR("0.1.13");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -645,7 +644,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.12\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.13\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -658,7 +657,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.12\","
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.13\","
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
