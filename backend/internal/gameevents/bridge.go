@@ -188,7 +188,69 @@ func (s *Service) ListBridgeOffsets(ctx context.Context) ([]BridgeOffset, error)
 }
 
 func (s *Service) SaveBridgeOffset(ctx context.Context, path string, offset, fileSize int64) error {
-	return s.SaveBridgeOffsetState(ctx, BridgeOffset{Path: path, Offset: offset, FileSize: fileSize})
+	if err := s.EnsureBridgeSchema(ctx); err != nil {
+		return err
+	}
+	path = strings.TrimSpace(path)
+	if offset < 0 {
+		offset = 0
+	}
+	if fileSize < 0 {
+		fileSize = 0
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	offset, err = clampBridgeOffsetToPendingError(ctx, tx, path, offset, fileSize)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO game_event_bridge_offsets(path,offset,file_size,updated_at) VALUES(?,?,?,?) ON CONFLICT(path) DO UPDATE SET offset=excluded.offset,file_size=excluded.file_size,updated_at=excluded.updated_at`, path, offset, fileSize, s.timestamp()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func clampBridgeOffsetToPendingError(ctx context.Context, tx *sql.Tx, path string, offset, fileSize int64) (int64, error) {
+	var previousOffset, previousFileSize int64
+	err := tx.QueryRowContext(ctx, `SELECT offset,file_size FROM game_event_bridge_offsets WHERE path=?`, path).Scan(&previousOffset, &previousFileSize)
+	if err == sql.ErrNoRows {
+		return offset, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	// Only constrain forward progress within the same file generation. When a
+	// log is truncated or replaced with a smaller file, observations from the
+	// previous generation must not pin the new offset.
+	if offset <= previousOffset || fileSize < previousFileSize {
+		return offset, nil
+	}
+
+	var pendingOffset sql.NullInt64
+	err = tx.QueryRowContext(ctx, `
+		SELECT MIN(latest.offset)
+		FROM game_event_bridge_observations AS latest
+		JOIN (
+			SELECT offset, MAX(id) AS id
+			FROM game_event_bridge_observations
+			WHERE source_path=? AND offset>=? AND offset<?
+			GROUP BY offset
+		) AS selected ON selected.id=latest.id
+		WHERE latest.status='error'
+	`, path, previousOffset, offset).Scan(&pendingOffset)
+	if err != nil {
+		return 0, err
+	}
+	if pendingOffset.Valid && pendingOffset.Int64 >= 0 && pendingOffset.Int64 < offset {
+		return pendingOffset.Int64, nil
+	}
+	return offset, nil
 }
 
 func (s *Service) SaveBridgeOffsetState(ctx context.Context, item BridgeOffset) error {
