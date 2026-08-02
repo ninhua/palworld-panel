@@ -76,7 +76,6 @@ var (
 	}
 	userIDPattern    = regexp.MustCompile(`(?i)\b(?:steam|gdk|ps5)_[A-Za-z0-9_-]+\b`)
 	playerUIDPattern = regexp.MustCompile(`(?i)PlayerUID\s*[:=]\s*([A-Za-z0-9_-]{4,128})`)
-	ipv4Pattern      = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
 )
 
 type parsedPalDefenderEvent struct {
