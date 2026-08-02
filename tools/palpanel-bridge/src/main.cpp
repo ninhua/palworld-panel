@@ -247,17 +247,6 @@ std::vector<FunctionCandidateSnapshot> collect_player_data_function_candidates(
                 .full_name = RC::to_utf8_string(function->GetFullName()),
                 .params_size = function->GetParmsSize(),
             };
-            for (auto* parameter : function->ForEachProperty()) {
-                if (!parameter || candidate.parameters.size() >= 32) continue;
-                const auto details = describe_property_candidate(parameter);
-                candidate.parameters.emplace_back(FunctionCandidateSnapshot::Parameter{
-                    .name = details.name,
-                    .kind = details.kind,
-                    .declared_type = details.declared_type,
-                    .size = parameter->GetSize(),
-                    .return_value = details.name == "ReturnValue",
-                });
-            }
             candidates.emplace_back(std::move(candidate));
         }
     } catch (...) {
@@ -700,7 +689,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.19");
+        ModVersion = STR("0.1.20");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -734,115 +723,128 @@ class PalPanelBridge final : public RC::CppUserModBase
         game_thread_tick_seen_.store(true);
         game_thread_tick_count_.fetch_add(1, std::memory_order_relaxed);
         last_game_thread_tick_unix_ms_.store(unix_time_ms(), std::memory_order_relaxed);
-        std::scoped_lock lock(jobs_mutex_);
-        for (auto& [_, job] : jobs_) {
-            if (job.status != "queued") continue;
-            job.executed_at_unix_ms = unix_time_ms();
-            job.game_thread_tick_count_at_execution =
-                game_thread_tick_count_.load(std::memory_order_relaxed);
-            job.unreal_initialized = unreal_initialized_.load();
-            job.game_thread_tick_seen = true;
-            if (job.kind == JobKind::World) {
-                try {
-                    auto* world = RC::Unreal::UObjectGlobals::FindFirstOf(STR("World"));
-                    job.world_found = world != nullptr;
-                    if (world) {
-                        job.world_name = RC::to_utf8_string(world->GetName());
-                        job.world_full_name = RC::to_utf8_string(world->GetFullName());
-                        if (auto* world_class = world->GetClassPrivate(); world_class) {
-                            job.world_class_name = RC::to_utf8_string(world_class->GetName());
-                        }
-                    }
-                } catch (...) {
-                    job.status = "failed";
-                    break;
-                }
-            } else if (job.kind == JobKind::OnlinePlayers) {
-                try {
-                    std::vector<RC::Unreal::UObject*> controllers;
-                    std::unordered_set<RC::Unreal::UObject*> seen_controllers;
-                    append_instances("PalPlayerController", controllers, seen_controllers);
-                    append_instances("BP_PalPlayerController_C", controllers, seen_controllers);
-                    job.controller_object_count = controllers.size();
-                    std::unordered_set<RC::Unreal::UObject*> seen_player_states;
-                    constexpr size_t max_results = 64;
-                    for (auto* controller : controllers) {
-                        if (!controller || job.online_players.size() >= max_results) continue;
-                        OnlinePlayerSnapshot player;
-                        player.source = "controller";
-                        player.controller = describe_object(controller);
-                        player.controller_property_candidates = collect_player_data_property_candidates(controller);
-                        auto* player_state = read_object_property(controller, {STR("PlayerState")});
-                        if (player_state) seen_player_states.insert(player_state);
-                        populate_player_state(player_state, player);
-                        auto* pawn = read_object_property(controller, {STR("AcknowledgedPawn")});
-                        if (!pawn) pawn = read_object_property(controller, {STR("Pawn")});
-                        player.pawn_found = pawn != nullptr;
-                        if (pawn) {
-                            player.pawn = describe_object(pawn);
-                            player.pawn_property_candidates = collect_player_data_property_candidates(pawn);
-                        }
-                        job.online_players.emplace_back(std::move(player));
-                    }
-                    std::vector<RC::Unreal::UObject*> player_states;
-                    std::unordered_set<RC::Unreal::UObject*> all_player_states;
-                    auto* world = RC::Unreal::UObjectGlobals::FindFirstOf(STR("World"));
-                    job.query_world_found = world && RC::Unreal::UObject::IsReal(world);
-                    if (job.query_world_found) job.query_world = describe_object(world);
-                    std::vector<RC::Unreal::UObject*> game_state_player_states;
-                    std::unordered_set<RC::Unreal::UObject*> game_state_seen;
-                    append_game_state_player_states(
-                        world,
-                        game_state_player_states,
-                        game_state_seen,
-                        job.game_state_found,
-                        job.game_state,
-                        job.game_state_player_array_available,
-                        job.game_state_player_state_count,
-                        job.game_state_error);
-                    for (auto* player_state : game_state_player_states) {
-                        if (job.online_players.size() >= max_results) break;
-                        if (!seen_player_states.insert(player_state).second) continue;
-                        OnlinePlayerSnapshot player;
-                        player.source = "game_state_player_array";
-                        populate_player_state(player_state, player);
-                        job.online_players.emplace_back(std::move(player));
-                    }
-                    std::vector<RC::Unreal::UObject*> utility_player_states;
-                    std::unordered_set<RC::Unreal::UObject*> utility_seen;
-                    append_pal_utility_player_states(
-                        world,
-                        utility_player_states,
-                        utility_seen,
-                        job.pal_utility_available,
-                        job.pal_utility_error);
-                    job.pal_utility_player_state_count = utility_player_states.size();
-                    for (auto* player_state : utility_player_states) {
-                        if (job.online_players.size() >= max_results) break;
-                        if (!seen_player_states.insert(player_state).second) continue;
-                        OnlinePlayerSnapshot player;
-                        player.source = "pal_utility";
-                        populate_player_state(player_state, player);
-                        job.online_players.emplace_back(std::move(player));
-                    }
-                    append_instances("PalPlayerState", player_states, all_player_states);
-                    append_instances("BP_PalPlayerState_C", player_states, all_player_states);
-                    job.player_state_object_count = player_states.size();
-                    for (auto* player_state : player_states) {
-                        if (job.online_players.size() >= max_results) break;
-                        if (!seen_player_states.insert(player_state).second) continue;
-                        OnlinePlayerSnapshot player;
-                        player.source = "player_state_fallback";
-                        populate_player_state(player_state, player);
-                        job.online_players.emplace_back(std::move(player));
-                    }
-                } catch (...) {
-                    job.status = "failed";
-                    break;
-                }
+        std::string job_id;
+        Job job;
+        {
+            std::scoped_lock lock(jobs_mutex_);
+            for (auto& [id, queued_job] : jobs_) {
+                if (queued_job.status != "queued") continue;
+                queued_job.status = "running";
+                queued_job.executed_at_unix_ms = unix_time_ms();
+                queued_job.game_thread_tick_count_at_execution =
+                    game_thread_tick_count_.load(std::memory_order_relaxed);
+                queued_job.unreal_initialized = unreal_initialized_.load();
+                queued_job.game_thread_tick_seen = true;
+                job_id = id;
+                job = queued_job;
+                break;
             }
-            job.status = "completed";
-            break;
+        }
+        if (job_id.empty()) return;
+
+        if (job.kind == JobKind::World) {
+            try {
+                auto* world = RC::Unreal::UObjectGlobals::FindFirstOf(STR("World"));
+                job.world_found = world != nullptr;
+                if (world) {
+                    job.world_name = RC::to_utf8_string(world->GetName());
+                    job.world_full_name = RC::to_utf8_string(world->GetFullName());
+                    if (auto* world_class = world->GetClassPrivate(); world_class) {
+                        job.world_class_name = RC::to_utf8_string(world_class->GetName());
+                    }
+                }
+            } catch (...) {
+                job.status = "failed";
+            }
+        } else if (job.kind == JobKind::OnlinePlayers) {
+            try {
+                std::vector<RC::Unreal::UObject*> controllers;
+                std::unordered_set<RC::Unreal::UObject*> seen_controllers;
+                append_instances("PalPlayerController", controllers, seen_controllers);
+                append_instances("BP_PalPlayerController_C", controllers, seen_controllers);
+                job.controller_object_count = controllers.size();
+                std::unordered_set<RC::Unreal::UObject*> seen_player_states;
+                constexpr size_t max_results = 64;
+                for (auto* controller : controllers) {
+                    if (!controller || job.online_players.size() >= max_results) continue;
+                    OnlinePlayerSnapshot player;
+                    player.source = "controller";
+                    player.controller = describe_object(controller);
+                    player.controller_property_candidates = collect_player_data_property_candidates(controller);
+                    auto* player_state = read_object_property(controller, {STR("PlayerState")});
+                    if (player_state) seen_player_states.insert(player_state);
+                    populate_player_state(player_state, player);
+                    auto* pawn = read_object_property(controller, {STR("AcknowledgedPawn")});
+                    if (!pawn) pawn = read_object_property(controller, {STR("Pawn")});
+                    player.pawn_found = pawn != nullptr;
+                    if (pawn) {
+                        player.pawn = describe_object(pawn);
+                        player.pawn_property_candidates = collect_player_data_property_candidates(pawn);
+                    }
+                    job.online_players.emplace_back(std::move(player));
+                }
+                std::vector<RC::Unreal::UObject*> player_states;
+                std::unordered_set<RC::Unreal::UObject*> all_player_states;
+                auto* world = RC::Unreal::UObjectGlobals::FindFirstOf(STR("World"));
+                job.query_world_found = world && RC::Unreal::UObject::IsReal(world);
+                if (job.query_world_found) job.query_world = describe_object(world);
+                std::vector<RC::Unreal::UObject*> game_state_player_states;
+                std::unordered_set<RC::Unreal::UObject*> game_state_seen;
+                append_game_state_player_states(
+                    world,
+                    game_state_player_states,
+                    game_state_seen,
+                    job.game_state_found,
+                    job.game_state,
+                    job.game_state_player_array_available,
+                    job.game_state_player_state_count,
+                    job.game_state_error);
+                for (auto* player_state : game_state_player_states) {
+                    if (job.online_players.size() >= max_results) break;
+                    if (!seen_player_states.insert(player_state).second) continue;
+                    OnlinePlayerSnapshot player;
+                    player.source = "game_state_player_array";
+                    populate_player_state(player_state, player);
+                    job.online_players.emplace_back(std::move(player));
+                }
+                std::vector<RC::Unreal::UObject*> utility_player_states;
+                std::unordered_set<RC::Unreal::UObject*> utility_seen;
+                append_pal_utility_player_states(
+                    world,
+                    utility_player_states,
+                    utility_seen,
+                    job.pal_utility_available,
+                    job.pal_utility_error);
+                job.pal_utility_player_state_count = utility_player_states.size();
+                for (auto* player_state : utility_player_states) {
+                    if (job.online_players.size() >= max_results) break;
+                    if (!seen_player_states.insert(player_state).second) continue;
+                    OnlinePlayerSnapshot player;
+                    player.source = "pal_utility";
+                    populate_player_state(player_state, player);
+                    job.online_players.emplace_back(std::move(player));
+                }
+                append_instances("PalPlayerState", player_states, all_player_states);
+                append_instances("BP_PalPlayerState_C", player_states, all_player_states);
+                job.player_state_object_count = player_states.size();
+                for (auto* player_state : player_states) {
+                    if (job.online_players.size() >= max_results) break;
+                    if (!seen_player_states.insert(player_state).second) continue;
+                    OnlinePlayerSnapshot player;
+                    player.source = "player_state_fallback";
+                    populate_player_state(player_state, player);
+                    job.online_players.emplace_back(std::move(player));
+                }
+            } catch (...) {
+                job.status = "failed";
+            }
+        }
+        if (job.status == "running") job.status = "completed";
+
+        std::scoped_lock lock(jobs_mutex_);
+        const auto found = jobs_.find(job_id);
+        if (found != jobs_.end() && found->second.status == "running") {
+            found->second = std::move(job);
         }
     }
 
@@ -870,7 +872,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.19\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.20\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -883,7 +885,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.19\","
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.20\","
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -902,17 +904,26 @@ class PalPanelBridge final : public RC::CppUserModBase
                                 : kind == JobKind::OnlinePlayers ? "players_" : "probe_";
         const auto id = std::string(prefix) + std::to_string(now) + "_" + std::to_string(++sequence_);
         std::scoped_lock lock(jobs_mutex_);
-        if (jobs_.size() >= 64) jobs_.erase(jobs_.begin());
+        if (jobs_.size() >= 64) {
+            const auto removable = std::find_if(jobs_.begin(), jobs_.end(), [](const auto& entry) {
+                return entry.second.status == "completed" || entry.second.status == "failed";
+            });
+            if (removable == jobs_.end()) return {};
+            jobs_.erase(removable);
+        }
         jobs_.emplace(id, Job{.id = id, .kind = kind, .queued_at_unix_ms = static_cast<unsigned long long>(now)});
         return id;
     }
 
     std::string get_job(const std::string& id)
     {
-        std::scoped_lock lock(jobs_mutex_);
-        const auto found = jobs_.find(id);
-        if (found == jobs_.end()) return {};
-        const auto& job = found->second;
+        Job job;
+        {
+            std::scoped_lock lock(jobs_mutex_);
+            const auto found = jobs_.find(id);
+            if (found == jobs_.end()) return {};
+            job = found->second;
+        }
         std::ostringstream body;
         body << "{\"ok\":true,\"job\":{\"id\":\"" << job.id << "\",\"type\":\"" << job_kind_name(job.kind)
              << "\",\"status\":\"" << job.status << "\",\"queued_at_unix_ms\":" << job.queued_at_unix_ms
@@ -1026,16 +1037,22 @@ class PalPanelBridge final : public RC::CppUserModBase
             body = runtime();
         } else if (first == "POST /v1/world HTTP/1.1") {
             const auto id = enqueue(JobKind::World);
-            status = 202;
-            body = "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
+            status = id.empty() ? 503 : 202;
+            body = id.empty()
+                       ? "{\"ok\":false,\"error\":{\"code\":\"job_queue_full\",\"message\":\"all job slots are queued or running\"}}"
+                       : "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
         } else if (first == "POST /v1/players/online HTTP/1.1") {
             const auto id = enqueue(JobKind::OnlinePlayers);
-            status = 202;
-            body = "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
+            status = id.empty() ? 503 : 202;
+            body = id.empty()
+                       ? "{\"ok\":false,\"error\":{\"code\":\"job_queue_full\",\"message\":\"all job slots are queued or running\"}}"
+                       : "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
         } else if (first == "POST /v1/probe/game-thread HTTP/1.1") {
             const auto id = enqueue(JobKind::GameThread);
-            status = 202;
-            body = "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
+            status = id.empty() ? 503 : 202;
+            body = id.empty()
+                       ? "{\"ok\":false,\"error\":{\"code\":\"job_queue_full\",\"message\":\"all job slots are queued or running\"}}"
+                       : "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
         } else if (first.rfind("GET /v1/jobs/", 0) == 0 && first.ends_with(" HTTP/1.1")) {
             const auto id = first.substr(13, first.size() - 13 - 9);
             body = get_job(id);

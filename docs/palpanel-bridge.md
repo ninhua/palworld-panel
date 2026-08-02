@@ -13,7 +13,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.19`
+- PalPanelBridge：`0.1.20`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.19",
+  "bridge_version": "0.1.20",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -168,6 +168,13 @@ PlayerState 和 Pawn 上名称含背包、容器、装备、物品、槽位、�
 `0.1.19` 为每个函数候选增加 `parameters`，只返回参数名、类型、大小和返回值标记，
 用于确认 `GetContainer`、`TryGetContainer` 与 `TryGetLoadedOtomoData` 的安全调用结构；
 本版本仍不会调用这些函数。所有可读时间改为中国标准时间（UTC+8）。
+
+`0.1.20` 将 UE 反射扫描移出 job 表互斥区。在线玩家扫描耗时时，任务会保持
+`running`，但 `/v1/health`、`/v1/runtime` 和 `/v1/jobs/<job_id>` 不再被同一把锁
+阻塞。由于 `0.1.19` 实机出现在线任务后整体 HTTP 无响应，函数参数遍历暂时停用；
+所有函数候选保留空 `parameters` 数组以兼容响应结构。job 表满 64 条时只淘汰已完成
+或失败的任务；若全部任务仍在排队或执行，新请求返回 `503 job_queue_full`，不会删除
+运行中的任务。
 
 ## 响应与任务时间
 
