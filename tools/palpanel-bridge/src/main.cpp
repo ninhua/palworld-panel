@@ -165,8 +165,8 @@ std::vector<std::string> collect_player_data_property_candidates(RC::Unreal::UOb
         "inventory", "container", "equipment", "equip", "otomo", "party", "item", "slot", "pal"};
     std::unordered_set<std::string> seen;
     try {
-        object->GetClassPrivate()->ForEachProperty([&](RC::Unreal::FProperty* property) {
-            if (!property || candidates.size() >= 64) return RC::LoopAction::Continue;
+        for (auto* property : object->GetClassPrivate()->ForEachProperty()) {
+            if (!property || candidates.size() >= 64) continue;
             auto name = RC::to_utf8_string(property->GetName());
             auto lower = name;
             std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char character) {
@@ -178,8 +178,7 @@ std::vector<std::string> collect_player_data_property_candidates(RC::Unreal::UOb
                     break;
                 }
             }
-            return RC::LoopAction::Continue;
-        });
+        }
     } catch (...) {
     }
     return candidates;
