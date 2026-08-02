@@ -14,5 +14,9 @@ func init() {
 		"boss-auto-wave-resume-control",
 		"boss-auto-wave-skip-current-control",
 		"boss-auto-wave-control-audit",
+		"boss-auto-wave-confirmed-failure-retry",
+		"boss-auto-wave-retry-delay",
+		"boss-auto-wave-retry-state-restore",
+		"boss-auto-wave-uncertain-retry-block",
 	)
 }

@@ -1,48 +1,70 @@
 {
-  "name": "Palworld-Panel-overlay-v0.8.81-player-identity-fix1-to-v0.8.81-task-feedback1",
+  "name": "Palworld-Panel-overlay-v0.8.81-boss-auto3-to-v0.8.81-boss-retry1",
   "repository": "ninhua/palworld-panel",
   "branch": "custom-stable",
-  "base_commit": "f16dff93a44741d24f1b92602aaea1ee87b68a54",
+  "observed_head": "d0d8b3dbe693365df5ba67b56b8bbffa5b118cf8",
   "base_patch_version": "0.8.81",
-  "base_maintenance_revision": "player-identity-fix1",
+  "base_maintenance_revision": "boss-auto3",
   "target_patch_version": "0.8.81",
-  "maintenance_revision": "task-feedback1",
+  "target_maintenance_revision": "boss-retry1",
   "overlay_mode": "copy_to_repository_root",
-  "created_at": "2026-08-03T02:29:00+08:00",
+  "created_at": "2026-08-03T02:33:00+08:00",
+  "required_features": [
+    "boss-auto-wave-execution-opt-in",
+    "boss-auto-wave-database-lease",
+    "boss-auto-wave-pause-control",
+    "boss-auto-wave-resume-control",
+    "boss-auto-wave-skip-current-control"
+  ],
   "features": [
-    "task-completion-private-feedback",
-    "task-reward-confirmation-message",
-    "task-completion-notification-ledger",
-    "task-completion-notification-retry",
-    "task-completion-multi-process-claim",
-    "task-completion-offline-player-retry",
-    "task-completion-background-event-support",
-    "task-completion-historical-backfill-suppression"
+    "boss-auto-wave-confirmed-failure-retry",
+    "boss-auto-wave-retry-delay",
+    "boss-auto-wave-retry-state-restore",
+    "boss-auto-wave-manual-skip-preservation",
+    "boss-auto-wave-uncertain-retry-block",
+    "boss-auto-wave-partial-execution-retry-block",
+    "boss-auto-wave-retry-audit",
+    "boss-auto-wave-existing-transition-route"
+  ],
+  "source_preconditions": [
+    {
+      "path": "backend/internal/boss/auto_execution_control.go",
+      "git_blob_sha": "68df5af7439ebf18e367351098a067a3d7e93a9a"
+    },
+    {
+      "path": "backend/internal/api/boss_auto_execution_control.go",
+      "git_blob_sha": "45454a6dbb13b4206271069aed0b429afc5da37f"
+    },
+    {
+      "path": "backend/internal/api/boss_auto_execution_features.go",
+      "git_blob_sha": "51d1fb4ac3078fafc085ebc10f346cb0af99d51b"
+    }
   ],
   "files": [
     ".overlay/README.md",
+    ".overlay/checksums.sha256",
     ".overlay/manifest.json",
-    "backend/internal/api/tasks.go",
-    "backend/internal/tasks/completion_notifications.go",
-    "backend/internal/tasks/completion_notifications_test.go",
-    "docs/releases/0.8.81-task-feedback1.md"
+    "backend/internal/api/boss_auto_execution_control.go",
+    "backend/internal/api/boss_auto_execution_features.go",
+    "backend/internal/boss/auto_execution_control.go",
+    "backend/internal/boss/auto_execution_retry_test.go",
+    "docs/releases/0.8.81-boss-retry1.md"
   ],
   "verification": [
-    "Current custom-stable head and patch version checked before packaging",
-    "Go sources formatted with gofmt",
-    "Task completion notifier passed isolated Go compilation, unit test and go vet",
-    "Task API integration passed isolated Go compilation and go vet with application stubs",
-    "SQLite integration verified activation cutoff, reward-granted gating, identity fields and single-claim behavior",
-    "Pending rewards do not notify until the reward status becomes granted",
-    "Offline or failed private-message delivery remains queued for retry",
+    "Current custom-stable HEAD and patch version inspected",
+    "All three replaced source files reverse-reconstructed to their exact Git blob SHA preconditions",
+    "Modified Boss control code passed isolated Go tests and go vet",
+    "Modified API control and feature files passed isolated Go compilation and go vet",
+    "SQLite retry-state simulation restored the failed wave and system-skipped waves while preserving manual skips",
+    "Go formatting completed",
     "UTF-8, LF, final-newline and trailing-whitespace checks",
-    "Internal SHA-256 manifest and ZIP integrity checks"
+    "Internal SHA-256 manifest, ZIP integrity and extract-and-verify checks"
   ],
   "limitations": [
-    "The complete repository go test ./... and frontend npm run check were not run in this environment",
-    "No live Palworld or PalDefender server was available for end-to-end private-message verification",
-    "Notification queue status does not yet have a dedicated management UI",
-    "Players must come online for a pending private completion message to be delivered",
-    "Completions that occurred before this revision was activated are intentionally not backfilled"
+    "The complete repository go test ./... was not run without a full repository checkout",
+    "No live Palworld or PalDefender server was available",
+    "The Boss page does not yet include a retry button",
+    "Retries are administrator-triggered and are not an automatic infinite retry policy",
+    "Uncertain or partially completed attempts remain blocked pending manual reconciliation"
   ]
 }
