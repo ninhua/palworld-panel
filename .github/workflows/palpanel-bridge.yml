@@ -5,7 +5,10 @@ on:
   push:
     branches: [custom-stable]
     paths:
-      - "tools/palpanel-bridge/**"
+      - "tools/palpanel-bridge/src/**"
+      - "tools/palpanel-bridge/CMakeLists.txt"
+      - "tools/palpanel-bridge/build-local.ps1"
+      - "tools/palpanel-bridge/config.ini.example"
       - ".github/workflows/palpanel-bridge.yml"
 
 permissions:
