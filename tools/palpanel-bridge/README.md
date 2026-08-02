@@ -21,7 +21,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.14-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.15-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -42,7 +42,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.14-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.15-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -74,6 +74,12 @@ curl -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/jobs/<job_id>
 
 Success means the job changes from `queued` to `completed` and reports
 `game_thread_tick_seen=true` plus `unreal_initialized=true`.
+
+Online-player jobs keep the `property_candidates` name lists and also return
+`property_details`. Each detail reports the reflected property `name`, its
+coarse `kind` (`object`, `array`, `struct`, or `other`), and the declared
+object/array-element/struct type when UE4SS exposes one. This is metadata only;
+the bridge does not read container contents or modify game objects.
 
 Calling `/v1/runtime` twice should show an increasing
 `game_thread_tick_count`. It also reports the last game-thread tick time and
