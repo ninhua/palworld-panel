@@ -96,6 +96,10 @@ new file, and downloads it again for SHA-256 verification. Set
 `PALPANEL_SFTP_HOST`, `PALPANEL_SFTP_USERNAME`, `PALPANEL_SFTP_PASSWORD`, and
 `PALPANEL_SFTP_HOSTKEY_SHA256`; optionally set `PALPANEL_SFTP_PORT` and
 `PALPANEL_SFTP_REMOTE_DIR`. Credentials are never stored in the repository.
+Without `--run-id`, the helper binds to the current Git commit, waits up to 45
+minutes for its Action to appear and finish, and checks every 30 seconds. A
+failed build is never deployed; failed-step output is saved as
+`PalPanelBridge-failed-run-<id>.log` and returned to the caller.
 
 Calling `/v1/runtime` twice should show an increasing
 `game_thread_tick_count`. It also reports the last game-thread tick time and
