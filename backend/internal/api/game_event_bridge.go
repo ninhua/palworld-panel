@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -33,19 +34,22 @@ const (
 )
 
 type gameEventBridgeStatus struct {
-	Enabled          bool            `json:"enabled"`
-	Running          bool            `json:"running"`
-	LogDirectory     string          `json:"log_directory,omitempty"`
-	ActiveFile       string          `json:"active_file,omitempty"`
-	LastScanAt       string          `json:"last_scan_at,omitempty"`
-	LastLineAt       string          `json:"last_line_at,omitempty"`
-	LastEventAt      string          `json:"last_event_at,omitempty"`
-	LastError        string          `json:"last_error,omitempty"`
-	ParsedEvents     int64           `json:"parsed_events"`
-	ProcessedEvents  int64           `json:"processed_events"`
-	UnmatchedPlayers int64           `json:"unmatched_players"`
-	FailedEvents     int64           `json:"failed_events"`
-	Configuration    map[string]bool `json:"configuration"`
+	Enabled            bool            `json:"enabled"`
+	Running            bool            `json:"running"`
+	LogDirectory       string          `json:"log_directory,omitempty"`
+	ActiveFile         string          `json:"active_file,omitempty"`
+	LastScanAt         string          `json:"last_scan_at,omitempty"`
+	LastLineAt         string          `json:"last_line_at,omitempty"`
+	LastEventAt        string          `json:"last_event_at,omitempty"`
+	LastError          string          `json:"last_error,omitempty"`
+	ParsedEvents       int64           `json:"parsed_events"`
+	ProcessedEvents    int64           `json:"processed_events"`
+	UnmatchedPlayers   int64           `json:"unmatched_players"`
+	FailedEvents       int64           `json:"failed_events"`
+	PendingDeadLetters int64           `json:"pending_dead_letters"`
+	RotationResets     int64           `json:"rotation_resets"`
+	CursorFiles        int             `json:"cursor_files"`
+	Configuration      map[string]bool `json:"configuration"`
 }
 
 type gameEventBridgeRuntime struct {
@@ -175,6 +179,18 @@ func (s Server) scanGameEventBridge(ctx context.Context, runtime *gameEventBridg
 			return err
 		}
 	}
+	pending, pendingErr := service.CountBridgeDeadLetters(ctx, "pending")
+	if pendingErr != nil {
+		return pendingErr
+	}
+	offsets, offsetErr := service.ListBridgeOffsets(ctx)
+	if offsetErr != nil {
+		return offsetErr
+	}
+	runtime.update(func(item *gameEventBridgeStatus) {
+		item.PendingDeadLetters = pending
+		item.CursorFiles = len(offsets)
+	})
 	runtime.mu.Lock()
 	runtime.initialized = true
 	runtime.mu.Unlock()
@@ -186,6 +202,10 @@ func (s Server) tailGameEventLog(ctx context.Context, runtime *gameEventBridgeRu
 	if err != nil {
 		return err
 	}
+	prefixHash, err := bridgeFilePrefixHash(path)
+	if err != nil {
+		return err
+	}
 	offsetRecord, found, err := service.BridgeOffset(ctx, path)
 	if err != nil {
 		return err
@@ -194,13 +214,36 @@ func (s Server) tailGameEventLog(ctx context.Context, runtime *gameEventBridgeRu
 	initialized := runtime.initialized
 	runtime.mu.RUnlock()
 	if !found && !initialized {
-		return service.SaveBridgeOffset(ctx, path, info.Size(), info.Size())
+		return service.SaveBridgeOffsetState(ctx, gameevents.BridgeOffset{Path: path, Offset: info.Size(), FileSize: info.Size(), PrefixHash: prefixHash})
 	}
 	offset := offsetRecord.Offset
-	if !found || offset > info.Size() {
+	resetReason := ""
+	if found && offsetRecord.PrefixHash != "" && prefixHash != "" && offsetRecord.PrefixHash != prefixHash {
+		offset = 0
+		resetReason = "log file identity changed"
+	} else if offset > info.Size() {
+		offset = 0
+		resetReason = "log file was truncated"
+	} else if !found {
 		offset = 0
 	}
+	if resetReason != "" {
+		offsetRecord.ResetCount++
+		offsetRecord.LastResetReason = resetReason
+		runtime.update(func(item *gameEventBridgeStatus) { item.RotationResets++ })
+		_ = service.AddBridgeObservation(ctx, gameevents.BridgeObservation{
+			SourcePath: path, Offset: 0, Status: "cursor_reset", Reason: resetReason,
+			Sample: filepath.Base(path),
+		})
+	}
 	if offset == info.Size() {
+		if found && (offsetRecord.PrefixHash != prefixHash || offsetRecord.FileSize != info.Size()) {
+			offsetRecord.Path = path
+			offsetRecord.Offset = offset
+			offsetRecord.FileSize = info.Size()
+			offsetRecord.PrefixHash = prefixHash
+			return service.SaveBridgeOffsetState(ctx, offsetRecord)
+		}
 		return nil
 	}
 	file, err := os.Open(path)
@@ -235,27 +278,63 @@ func (s Server) tailGameEventLog(ctx context.Context, runtime *gameEventBridgeRu
 			if err := s.processBridgedPalDefenderEvent(ctx, runtime, service, path, lineStart, line, parsed); err != nil {
 				runtime.update(func(item *gameEventBridgeStatus) { item.FailedEvents++ })
 			}
+		} else if looksLikeBridgeCandidate(line, commandConfig) {
+			eventID := bridgeEventID(path, lineStart, line)
+			_, _ = service.AddBridgeDeadLetter(ctx, gameevents.BridgeDeadLetter{
+				EventID: eventID, SourcePath: path, Offset: lineStart, EventType: "PARSE_FAILED",
+				RawLine: strings.TrimSpace(line), Sample: sanitizeBridgeSample(line),
+				Reason: "log line looked relevant but did not match a supported PalDefender event format",
+			})
+			_ = service.AddBridgeObservation(ctx, gameevents.BridgeObservation{
+				SourcePath: path, Offset: lineStart, EventType: "PARSE_FAILED", Status: "parse_failed",
+				Reason: "saved to dead letters for parser upgrade or manual replay", Sample: sanitizeBridgeSample(line),
+			})
+			runtime.update(func(item *gameEventBridgeStatus) {
+				item.FailedEvents++
+				item.PendingDeadLetters++
+			})
 		}
 		if readErr == io.EOF {
 			break
 		}
 	}
-	return service.SaveBridgeOffset(ctx, path, current, info.Size())
+	offsetRecord.Path = path
+	offsetRecord.Offset = current
+	offsetRecord.FileSize = info.Size()
+	offsetRecord.PrefixHash = prefixHash
+	return service.SaveBridgeOffsetState(ctx, offsetRecord)
 }
 
 func (s Server) processBridgedPalDefenderEvent(ctx context.Context, runtime *gameEventBridgeRuntime, service *gameevents.Service, path string, offset int64, raw string, parsed parsedPalDefenderEvent) error {
+	eventID := bridgeEventID(path, offset, raw)
+	deadLetter := gameevents.BridgeDeadLetter{
+		EventID: eventID, SourcePath: path, Offset: offset, EventType: parsed.Type,
+		PlayerHint: parsed.PlayerHint, Nickname: parsed.Nickname, Payload: parsed.Payload,
+		RawLine: strings.TrimSpace(raw), Sample: sanitizeBridgeSample(raw),
+	}
 	playerUID, steamID, nickname, err := s.resolveBridgePlayer(ctx, runtime, parsed.PlayerHint, parsed.Nickname, parsed.SourceText)
 	if err != nil {
+		deadLetter.Reason = err.Error()
+		_, _ = service.AddBridgeDeadLetter(ctx, deadLetter)
 		_ = service.AddBridgeObservation(ctx, gameevents.BridgeObservation{SourcePath: path, Offset: offset, EventType: parsed.Type, Nickname: parsed.Nickname, Status: "error", Reason: err.Error(), Sample: sanitizeBridgeSample(raw)})
+		runtime.update(func(item *gameEventBridgeStatus) { item.PendingDeadLetters++ })
 		return err
 	}
 	if playerUID == "" {
-		runtime.update(func(item *gameEventBridgeStatus) { item.UnmatchedPlayers++ })
-		_ = service.AddBridgeObservation(ctx, gameevents.BridgeObservation{SourcePath: path, Offset: offset, EventType: parsed.Type, Nickname: parsed.Nickname, Status: "unmatched_player", Reason: "PalDefender player catalog did not match the log identity", Sample: sanitizeBridgeSample(raw)})
+		runtime.update(func(item *gameEventBridgeStatus) {
+			item.UnmatchedPlayers++
+			item.PendingDeadLetters++
+		})
+		deadLetter.Reason = "PalDefender player catalog did not match the log identity"
+		_, _ = service.AddBridgeDeadLetter(ctx, deadLetter)
+		_ = service.AddBridgeObservation(ctx, gameevents.BridgeObservation{SourcePath: path, Offset: offset, EventType: parsed.Type, Nickname: parsed.Nickname, Status: "unmatched_player", Reason: deadLetter.Reason, Sample: sanitizeBridgeSample(raw)})
 		return nil
 	}
+	deadLetter.PlayerUID = playerUID
+	deadLetter.SteamID = steamID
+	deadLetter.Nickname = nickname
 	event := gameevents.Event{
-		EventID:    bridgeEventID(path, offset, raw),
+		EventID:    eventID,
 		Type:       parsed.Type,
 		PlayerUID:  playerUID,
 		Nickname:   nickname,
@@ -265,7 +344,10 @@ func (s Server) processBridgedPalDefenderEvent(ctx context.Context, runtime *gam
 	}
 	processingResult, err := s.processBridgeEvent(ctx, service, event)
 	if err != nil {
+		deadLetter.Reason = err.Error()
+		_, _ = service.AddBridgeDeadLetter(ctx, deadLetter)
 		_ = service.AddBridgeObservation(ctx, gameevents.BridgeObservation{SourcePath: path, Offset: offset, EventType: parsed.Type, PlayerUID: playerUID, Nickname: nickname, Status: "error", Reason: err.Error(), Sample: sanitizeBridgeSample(raw)})
+		runtime.update(func(item *gameEventBridgeStatus) { item.PendingDeadLetters++ })
 		return err
 	}
 	runtime.update(func(item *gameEventBridgeStatus) {
@@ -600,6 +682,47 @@ func stripBridgeLogPrefix(value string) string {
 	return value
 }
 
+func bridgeFilePrefixHash(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	buffer := make([]byte, 256)
+	count, err := io.ReadFull(file, buffer)
+	if err != nil {
+		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+			// A short file is still being written. Do not assign an unstable
+			// identity until the first 256 bytes are available.
+			return "", nil
+		}
+		return "", err
+	}
+	hash := sha256.Sum256(buffer[:count])
+	return hex.EncodeToString(hash[:16]), nil
+}
+
+func looksLikeBridgeCandidate(line string, config economy.DetailedConfig) bool {
+	lower := strings.ToLower(strings.TrimSpace(line))
+	if lower == "" {
+		return false
+	}
+	for _, keyword := range []string{"captur", "craft", "connected to the server", "has killed", " and died", "[chat]", "global chat", "guild chat"} {
+		if strings.Contains(lower, keyword) {
+			return true
+		}
+	}
+	aliases := append(append(append([]string{}, config.CheckinAliases...), config.PointsAliases...), config.HelpAliases...)
+	aliases = append(aliases, "商城", "商店", "兑换", "购买", "我的订单", "订单")
+	for _, alias := range aliases {
+		alias = strings.ToLower(strings.TrimSpace(alias))
+		if alias != "" && strings.Contains(lower, alias) && strings.ContainsAny(line, ":：>]") {
+			return true
+		}
+	}
+	return false
+}
+
 func bridgeEventID(path string, offset int64, line string) string {
 	hash := sha256.Sum256([]byte(path + "\x00" + strconv.FormatInt(offset, 10) + "\x00" + line))
 	return "pdlog_" + hex.EncodeToString(hash[:16])
@@ -675,7 +798,24 @@ func (s Server) gameEventBridgeStatusHandler(c *gin.Context) {
 	}
 	status := value.(*gameEventBridgeRuntime).snapshot()
 	status.Configuration = s.gameEventBridgeConfigFlags()
-	okResponse := gin.H{"bridge": status, "required_configuration": []string{"logChat", "logPlayerUID", "logPlayerCaptures", "logPlayerDeaths", "logPlayerLogins", "logCraftings"}}
+	service, serviceErr := s.gameEventService()
+	if serviceErr != nil {
+		fail(c, http.StatusInternalServerError, "game_event_service_failed", serviceErr.Error())
+		return
+	}
+	pending, pendingErr := service.CountBridgeDeadLetters(c.Request.Context(), "pending")
+	if pendingErr != nil {
+		fail(c, http.StatusInternalServerError, "game_event_bridge_dead_letter_count_failed", pendingErr.Error())
+		return
+	}
+	offsets, offsetErr := service.ListBridgeOffsets(c.Request.Context())
+	if offsetErr != nil {
+		fail(c, http.StatusInternalServerError, "game_event_bridge_offsets_failed", offsetErr.Error())
+		return
+	}
+	status.PendingDeadLetters = pending
+	status.CursorFiles = len(offsets)
+	okResponse := gin.H{"bridge": status, "offsets": offsets, "required_configuration": []string{"logChat", "logPlayerUID", "logPlayerCaptures", "logPlayerDeaths", "logPlayerLogins", "logCraftings"}}
 	ok(c, okResponse)
 }
 
@@ -715,4 +855,148 @@ func (s Server) listGameEventBridgeObservations(c *gin.Context) {
 		return
 	}
 	ok(c, gin.H{"items": items, "count": len(items)})
+}
+
+type replayBridgeDeadLetterRequest struct {
+	PlayerUID string `json:"player_uid"`
+}
+
+func (s Server) listGameEventBridgeDeadLetters(c *gin.Context) {
+	service, err := s.gameEventService()
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "game_event_service_failed", err.Error())
+		return
+	}
+	items, err := service.ListBridgeDeadLetters(c.Request.Context(), c.Query("status"), economyQueryInt(c, "limit", 50), economyQueryInt(c, "offset", 0))
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "game_event_bridge_dead_letters_failed", err.Error())
+		return
+	}
+	pending, err := service.CountBridgeDeadLetters(c.Request.Context(), "pending")
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "game_event_bridge_dead_letter_count_failed", err.Error())
+		return
+	}
+	ok(c, gin.H{"items": items, "count": len(items), "pending": pending})
+}
+
+func (s Server) replayGameEventBridgeDeadLetter(c *gin.Context) {
+	id, err := gameevents.ParseBridgeDeadLetterID(c.Param("id"))
+	if err != nil {
+		fail(c, http.StatusBadRequest, "game_event_bridge_dead_letter_id_invalid", err.Error())
+		return
+	}
+	var request replayBridgeDeadLetterRequest
+	if err := c.ShouldBindJSON(&request); err != nil && !errors.Is(err, io.EOF) {
+		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	service, err := s.gameEventService()
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "game_event_service_failed", err.Error())
+		return
+	}
+	item, err := service.GetBridgeDeadLetter(c.Request.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		fail(c, http.StatusNotFound, "game_event_bridge_dead_letter_not_found", "dead letter not found")
+		return
+	}
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "game_event_bridge_dead_letter_read_failed", err.Error())
+		return
+	}
+	if item.Status != "pending" {
+		fail(c, http.StatusConflict, "game_event_bridge_dead_letter_not_pending", "only pending dead letters can be replayed")
+		return
+	}
+	pointService, err := s.economyService()
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "economy_service_failed", err.Error())
+		return
+	}
+	commandConfig, err := pointService.DetailedConfig(c.Request.Context())
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "economy_config_failed", err.Error())
+		return
+	}
+	parsed := parsedPalDefenderEvent{
+		Type: item.EventType, Nickname: item.Nickname, PlayerHint: item.PlayerHint,
+		SourceText: item.RawLine, Payload: item.Payload,
+	}
+	if item.EventType == "PARSE_FAILED" || item.EventType == "UNKNOWN" {
+		var ok bool
+		parsed, ok = parsePalDefenderLogLine(item.RawLine, commandConfig)
+		if !ok {
+			message := "the current parser still does not recognize this log line"
+			_ = service.MarkBridgeDeadLetterAttempt(c.Request.Context(), id, message)
+			fail(c, http.StatusUnprocessableEntity, "game_event_bridge_dead_letter_parse_failed", message)
+			return
+		}
+	}
+	playerUID := strings.TrimSpace(request.PlayerUID)
+	steamID := item.SteamID
+	nickname := item.Nickname
+	if playerUID == "" {
+		playerUID = item.PlayerUID
+	}
+	if playerUID == "" {
+		s.startGameEventBridge()
+		value, found := gameEventBridges.Load(strings.TrimSpace(s.cfg.DBPath))
+		if !found {
+			fail(c, http.StatusServiceUnavailable, "game_event_bridge_unavailable", "game event bridge could not be started")
+			return
+		}
+		playerUID, steamID, nickname, err = s.resolveBridgePlayer(c.Request.Context(), value.(*gameEventBridgeRuntime), parsed.PlayerHint, parsed.Nickname, parsed.SourceText)
+		if err != nil {
+			_ = service.MarkBridgeDeadLetterAttempt(c.Request.Context(), id, err.Error())
+			fail(c, http.StatusBadGateway, "game_event_bridge_player_lookup_failed", err.Error())
+			return
+		}
+	}
+	if playerUID == "" {
+		message := "player is still unmatched; provide player_uid when replaying"
+		_ = service.MarkBridgeDeadLetterAttempt(c.Request.Context(), id, message)
+		fail(c, http.StatusUnprocessableEntity, "game_event_bridge_player_unmatched", message)
+		return
+	}
+	event := gameevents.Event{
+		EventID: item.EventID, Type: parsed.Type, PlayerUID: playerUID, SteamID: steamID,
+		Nickname: nickname, OccurredAt: time.Now().UTC().Format(time.RFC3339), Payload: parsed.Payload,
+	}
+	result, err := s.processBridgeEvent(c.Request.Context(), service, event)
+	if err != nil {
+		_ = service.MarkBridgeDeadLetterAttempt(c.Request.Context(), id, err.Error())
+		fail(c, http.StatusInternalServerError, "game_event_bridge_dead_letter_replay_failed", err.Error())
+		return
+	}
+	if err := service.CompleteBridgeDeadLetter(c.Request.Context(), id); err != nil {
+		fail(c, http.StatusConflict, "game_event_bridge_dead_letter_complete_failed", err.Error())
+		return
+	}
+	_ = service.AddBridgeObservation(c.Request.Context(), gameevents.BridgeObservation{
+		SourcePath: item.SourcePath, Offset: item.Offset, EventType: parsed.Type,
+		PlayerUID: playerUID, Nickname: nickname, Status: "replayed",
+		Reason: bridgeProcessingSummary(result), Sample: item.Sample,
+	})
+	setAuditSuccess(c, true)
+	ok(c, gin.H{"dead_letter_id": id, "event": event, "result": result})
+}
+
+func (s Server) dismissGameEventBridgeDeadLetter(c *gin.Context) {
+	id, err := gameevents.ParseBridgeDeadLetterID(c.Param("id"))
+	if err != nil {
+		fail(c, http.StatusBadRequest, "game_event_bridge_dead_letter_id_invalid", err.Error())
+		return
+	}
+	service, err := s.gameEventService()
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "game_event_service_failed", err.Error())
+		return
+	}
+	if err := service.DismissBridgeDeadLetter(c.Request.Context(), id); err != nil {
+		fail(c, http.StatusConflict, "game_event_bridge_dead_letter_dismiss_failed", err.Error())
+		return
+	}
+	setAuditSuccess(c, true)
+	ok(c, gin.H{"dead_letter_id": id, "status": "dismissed"})
 }

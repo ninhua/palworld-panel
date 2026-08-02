@@ -2167,10 +2167,36 @@ paths:
       tags: [events]
       x-palpanel-permission: read
       parameters:
-      - {name: status, in: query, required: false, schema: {type: string, enum: [processed, unmatched_player, error]}}
+      - {name: status, in: query, required: false, schema: {type: string, enum: [processed, replayed, unmatched_player, parse_failed, cursor_reset, error]}}
       - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 50}}
       - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
       responses: *readResponses
+  /game-events/bridge/dead-letters:
+    get:
+      operationId: listGameEventBridgeDeadLetters
+      tags: [events]
+      x-palpanel-permission: read
+      parameters:
+      - {name: status, in: query, required: false, schema: {type: string, enum: [pending, replayed, dismissed], default: pending}}
+      - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 50}}
+      - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+      responses: *readResponses
+  /game-events/bridge/dead-letters/{id}/replay:
+    parameters: [*idParameter]
+    post:
+      operationId: replayGameEventBridgeDeadLetter
+      description: Replays a pending bridge dead letter with its original idempotent event ID. An optional player_uid can resolve previously unmatched players.
+      tags: [events]
+      x-palpanel-permission: 'players:write'
+      requestBody: *jsonRequest
+      responses: {'200': *success, '400': *error, '404': *error, '409': *error, '422': *error, '500': *error, '502': *error}
+  /game-events/bridge/dead-letters/{id}/dismiss:
+    parameters: [*idParameter]
+    post:
+      operationId: dismissGameEventBridgeDeadLetter
+      tags: [events]
+      x-palpanel-permission: 'players:write'
+      responses: {'200': *success, '400': *error, '409': *error, '500': *error}
   /game-events/bridge/repair:
     post:
       operationId: repairGameEventBridge
@@ -4918,7 +4944,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.77}
+            version: {type: string, const: 0.8.78}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

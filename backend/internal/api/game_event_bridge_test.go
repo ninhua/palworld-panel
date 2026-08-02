@@ -1,6 +1,7 @@
 package api
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -96,5 +97,33 @@ func TestBridgeProcessingSummaryShowsTaskAndReplyOutcome(t *testing.T) {
 	})
 	if !strings.Contains(summary, "CHECKIN_COMPLETED") || !strings.Contains(summary, "匹配任务 1") || !strings.Contains(summary, "回复 sent") {
 		t.Fatalf("unexpected processing summary: %q", summary)
+	}
+}
+
+func TestLooksLikeBridgeCandidateCapturesUnparsedRelevantLine(t *testing.T) {
+	if !looksLikeBridgeCandidate("[Info] Alice captured something in an unsupported format", bridgeTestConfig()) {
+		t.Fatal("capture-like line should be retained for dead-letter diagnostics")
+	}
+	if looksLikeBridgeCandidate("[Info] autosave completed successfully", bridgeTestConfig()) {
+		t.Fatal("ordinary operational line must not be retained as a dead letter")
+	}
+}
+
+func TestBridgeFilePrefixHashIsStableAfterPrefixFilled(t *testing.T) {
+	path := t.TempDir() + "/PalDefender.log"
+	content := strings.Repeat("A", 256) + "first\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := bridgeFilePrefixHash(path)
+	if err != nil || first == "" {
+		t.Fatalf("first hash=%q err=%v", first, err)
+	}
+	if err := os.WriteFile(path, []byte(content+strings.Repeat("B", 1024)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := bridgeFilePrefixHash(path)
+	if err != nil || second != first {
+		t.Fatalf("prefix hash changed after append: first=%q second=%q err=%v", first, second, err)
 	}
 }
