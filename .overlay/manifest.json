@@ -1,50 +1,53 @@
 {
-  "name": "Palworld-Panel-overlay-v0.8.81-to-v0.8.81-boss-auto2",
+  "name": "Palworld-Panel-overlay-v0.8.81-boss-auto2-to-v0.8.81-boss-auto3",
   "repository": "ninhua/palworld-panel",
   "branch": "custom-stable",
-  "base_commit": "944c37c20cf499149eddc0f4ab453aaf19a95401",
+  "observed_head": "2cdb2dae27027bd743187c76e5df3a77aa46b7f1",
   "base_patch_version": "0.8.81",
+  "base_maintenance_revision": "boss-auto2",
   "target_patch_version": "0.8.81",
-  "maintenance_revision": "boss-auto2",
-  "requires": [
-    "boss-auto1"
-  ],
-  "source_preconditions": [
-    {
-      "path": "backend/internal/boss/auto_execution.go",
-      "git_blob_sha": "c371cf70ad4304e90f5d435b865a08e1ae87b671"
-    }
-  ],
+  "target_maintenance_revision": "boss-auto3",
   "overlay_mode": "copy_to_repository_root",
-  "created_at": "2026-08-03T00:38:00+08:00",
-  "features": [
+  "created_at": "2026-08-03T00:44:00+08:00",
+  "required_features": [
     "boss-auto-wave-database-lease",
     "boss-auto-wave-multi-process-deduplication",
-    "boss-auto-wave-crash-lease-expiry",
-    "boss-auto-wave-holder-safe-release",
-    "boss-auto-wave-fixed-width-lease-time"
+    "boss-auto-wave-crash-lease-expiry"
+  ],
+  "features": [
+    "boss-auto-wave-pause-control",
+    "boss-auto-wave-resume-control",
+    "boss-auto-wave-skip-current-control",
+    "boss-auto-wave-control-audit",
+    "boss-auto-wave-control-lease-serialization",
+    "boss-auto-wave-control-restart-persistence",
+    "boss-auto-wave-existing-transition-route"
   ],
   "files": [
     ".overlay/README.md",
     ".overlay/checksums.sha256",
     ".overlay/manifest.json",
+    "backend/internal/api/boss.go",
+    "backend/internal/api/boss_auto_execution_control.go",
     "backend/internal/api/boss_auto_execution_features.go",
-    "backend/internal/boss/auto_execution.go",
-    "backend/internal/boss/auto_execution_test.go",
-    "docs/releases/0.8.81-boss-auto2.md"
+    "backend/internal/boss/auto_execution_control.go",
+    "backend/internal/boss/auto_execution_control_test.go",
+    "docs/releases/0.8.81-boss-auto3.md"
   ],
   "verification": [
-    "Go formatting completed for all modified Go files",
-    "Auto execution policy, delay, blocking and lease timestamp tests passed in an isolated Go harness",
-    "Go vet passed for the isolated Boss and API feature harnesses",
-    "SQLite UPSERT lease exclusivity, expiry and holder-safe release behavior passed an in-memory integration test",
-    "UTF-8, LF, final-newline and trailing-whitespace checks passed",
-    "Internal SHA-256 manifest and ZIP extraction verification passed"
+    "Current custom-stable patch version verified as 0.8.81",
+    "Original backend/internal/api/boss.go reconstructed byte-for-byte from GitHub blob before the single control dispatch insertion",
+    "Boss automatic-control helpers passed isolated Go tests and go vet",
+    "API control handler and feature registration passed isolated Go compilation and go vet",
+    "Pause metadata and audit SQL shape executed against Python SQLite",
+    "Go formatting completed",
+    "UTF-8, LF, final-newline and trailing-whitespace checks",
+    "Internal SHA-256 manifest, ZIP integrity and extract-and-verify checks"
   ],
   "limitations": [
-    "Complete repository go test ./... was not run because a full repository checkout is unavailable in this environment",
-    "No live Palworld or PalDefender server was available",
-    "Pause, resume and skip control endpoints are not included in this maintenance increment",
-    "Boss death detection and participant reward settlement remain unimplemented"
+    "The complete repository go test ./... was not run without a full repository checkout",
+    "No live Palworld or PalDefender instance was available",
+    "Boss page pause, resume and skip buttons are not included",
+    "Active or uncertain waves require manual reconciliation and cannot be skipped"
   ]
 }

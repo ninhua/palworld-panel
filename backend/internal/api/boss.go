@@ -330,6 +330,9 @@ func (s Server) transitionBossSummon(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
 		return
 	}
+	if s.tryBossAutoExecutionControl(c, request) {
+		return
+	}
 	service, err := s.bossService()
 	if err != nil {
 		bossFailure(c, err)
