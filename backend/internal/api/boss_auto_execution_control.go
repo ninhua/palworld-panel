@@ -43,6 +43,7 @@ func bossAutoExecutionControlFailure(c *gin.Context, err error) {
 		fail(c, http.StatusNotFound, "boss_resource_not_found", err.Error())
 	case errors.Is(err, boss.ErrAutoExecutionDisabled),
 		errors.Is(err, boss.ErrAutoExecutionNoPendingWave),
+		errors.Is(err, boss.ErrAutoExecutionNoFailedWave),
 		errors.Is(err, boss.ErrInvalidTransition),
 		errors.Is(err, boss.ErrInvalidWaveTransition),
 		errors.Is(err, boss.ErrExecutionBusy),

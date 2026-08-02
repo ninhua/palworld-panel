@@ -73,6 +73,9 @@ func ensureAutoExecutionWorker(service *Service) {
 	if service == nil || service.db == nil {
 		return
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	_ = service.ensureAutoExecutionActivityGuardSchema(ctx)
+	cancel()
 	worker := &autoExecutionWorker{
 		stop:   make(chan struct{}),
 		done:   make(chan struct{}),
@@ -191,17 +194,41 @@ func (s *Service) runAutoExecutionCycle(ctx context.Context) error {
 	if err := s.ensureExecutionSchema(ctx); err != nil {
 		return err
 	}
+	ownerID, err := s.reconcileAutoExecutionActivityGuard(ctx)
+	if err != nil {
+		return err
+	}
 
 	candidates, err := s.listAutoExecutionCandidates(ctx, autoExecutionBatchSize)
 	if err != nil {
 		return err
 	}
+	if ownerID != "" {
+		owner, found, err := s.autoExecutionCandidateByID(ctx, ownerID)
+		if err != nil {
+			return err
+		}
+		if !found {
+			if err := s.releaseAutoExecutionActivityGuard(ctx, ownerID); err != nil {
+				return err
+			}
+			return nil
+		}
+		candidates = []autoExecutionCandidate{owner}
+	}
+
 	now := s.now()
 	for _, candidate := range candidates {
 		if !candidate.Policy.Enabled || candidate.Policy.Paused {
+			if ownerID != "" {
+				return nil
+			}
 			continue
 		}
 		if !candidate.Policy.NotBefore.IsZero() && now.Before(candidate.Policy.NotBefore) {
+			if ownerID != "" {
+				return nil
+			}
 			continue
 		}
 
@@ -210,6 +237,9 @@ func (s *Service) runAutoExecutionCycle(ctx context.Context) error {
 			return err
 		}
 		if blocked {
+			if ownerID != "" {
+				return nil
+			}
 			continue
 		}
 
@@ -226,21 +256,48 @@ func (s *Service) runAutoExecutionCycle(ctx context.Context) error {
 		}
 		due, runnable := autoExecutionDueAt(summon, waves)
 		if !runnable || now.Before(due) {
+			if ownerID != "" {
+				return nil
+			}
 			continue
+		}
+
+		if ownerID == "" {
+			claimed, _, err := s.claimAutoExecutionActivity(ctx, summon)
+			if err != nil {
+				return err
+			}
+			if !claimed {
+				// A same-plan leader only blocks this candidate. An actual global
+				// owner blocks the whole cycle. Reconcile distinguishes the two.
+				currentOwner, reconcileErr := s.reconcileAutoExecutionActivityGuard(ctx)
+				if reconcileErr != nil {
+					return reconcileErr
+				}
+				if currentOwner != "" {
+					return nil
+				}
+				continue
+			}
+			ownerID = summon.ID
 		}
 
 		_, err = s.ExecuteNextWave(ctx, candidate.SummonID, autoExecutionActor)
 		if err == nil {
-			// Execute at most one wave per cycle. This keeps ordering deterministic
-			// and gives persisted state a chance to settle before the next scan.
+			// A successful intermediate wave retains the activity guard across its
+			// configured delay. A terminal summon is released by reconciliation.
+			_, _ = s.reconcileAutoExecutionActivityGuard(ctx)
 			return nil
 		}
-		if errors.Is(err, ErrExecutionBusy) || errors.Is(err, ErrExecutionUnavailable) || errors.Is(err, ErrExecutionReconcileRequired) {
+		if autoExecutionErrorRetainsActivityGuard(err) {
+			// An active or uncertain result owns the server until an administrator
+			// reconciles it. Starting another activity would risk overlapping spawns.
 			return nil
 		}
-		// ExecuteNextWave persists failed or uncertain outcomes itself. Do not
-		// retry in the same cycle, because the command may already have reached
-		// the game server.
+		// Adapter unavailability, validation errors, and explicit failures do not
+		// retain a nonterminal owner. Failed terminal summons are safe to delete
+		// from the guard as well and may be re-queued by the retry control later.
+		_ = s.releaseAutoExecutionActivityGuard(ctx, candidate.SummonID)
 		return nil
 	}
 	return nil

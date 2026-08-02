@@ -1,53 +1,76 @@
 {
-  "name": "Palworld-Panel-overlay-v0.8.81-boss-auto2-to-v0.8.81-boss-auto3",
+  "name": "Palworld-Panel-overlay-v0.8.81-boss-retry1-to-v0.8.81-boss-guard1",
   "repository": "ninhua/palworld-panel",
   "branch": "custom-stable",
-  "observed_head": "2cdb2dae27027bd743187c76e5df3a77aa46b7f1",
+  "observed_head": "e0be246ff1fe8757d4b48b294e5e4b712d2cac0a",
+  "observed_head_message": "v0.8.81-boss-retry1: boss auto execution retry",
   "base_patch_version": "0.8.81",
-  "base_maintenance_revision": "boss-auto2",
+  "base_maintenance_revision": "boss-retry1",
   "target_patch_version": "0.8.81",
-  "target_maintenance_revision": "boss-auto3",
+  "target_maintenance_revision": "boss-guard1",
   "overlay_mode": "copy_to_repository_root",
-  "created_at": "2026-08-03T00:44:00+08:00",
+  "created_at": "2026-08-03T02:58:00+08:00",
   "required_features": [
+    "boss-auto-wave-execution-opt-in",
     "boss-auto-wave-database-lease",
-    "boss-auto-wave-multi-process-deduplication",
-    "boss-auto-wave-crash-lease-expiry"
-  ],
-  "features": [
     "boss-auto-wave-pause-control",
     "boss-auto-wave-resume-control",
     "boss-auto-wave-skip-current-control",
-    "boss-auto-wave-control-audit",
-    "boss-auto-wave-control-lease-serialization",
-    "boss-auto-wave-control-restart-persistence",
-    "boss-auto-wave-existing-transition-route"
+    "boss-auto-wave-confirmed-failure-retry"
+  ],
+  "independent_with": [
+    "player-identity-fix1",
+    "task-feedback1"
+  ],
+  "source_preconditions": [
+    {
+      "path": "backend/internal/boss/auto_execution.go",
+      "git_blob_sha": "03a4b4492c9b789e45381c08cc94d7114d9bb3d8"
+    },
+    {
+      "path": "backend/internal/boss/execution.go",
+      "git_blob_sha": "e6629536712bbc8819aae056711d0562387ea421"
+    }
+  ],
+  "features": [
+    "boss-global-activity-guard",
+    "boss-manual-and-auto-execution-serialization",
+    "boss-multi-process-activity-exclusion",
+    "boss-activity-restart-owner-recovery",
+    "boss-active-summon-backfill",
+    "boss-paused-activity-ownership",
+    "boss-uncertain-activity-blocking",
+    "boss-plan-order-serialization",
+    "boss-manual-pending-claim-timeout",
+    "boss-activity-lock-audit"
   ],
   "files": [
     ".overlay/README.md",
     ".overlay/checksums.sha256",
     ".overlay/manifest.json",
-    "backend/internal/api/boss.go",
-    "backend/internal/api/boss_auto_execution_control.go",
-    "backend/internal/api/boss_auto_execution_features.go",
-    "backend/internal/boss/auto_execution_control.go",
-    "backend/internal/boss/auto_execution_control_test.go",
-    "docs/releases/0.8.81-boss-auto3.md"
+    "backend/internal/api/boss_activity_guard_features.go",
+    "backend/internal/boss/activity_guard.go",
+    "backend/internal/boss/activity_guard_test.go",
+    "backend/internal/boss/auto_execution.go",
+    "backend/internal/boss/execution.go",
+    "docs/releases/0.8.81-boss-guard1.md"
   ],
   "verification": [
-    "Current custom-stable patch version verified as 0.8.81",
-    "Original backend/internal/api/boss.go reconstructed byte-for-byte from GitHub blob before the single control dispatch insertion",
-    "Boss automatic-control helpers passed isolated Go tests and go vet",
-    "API control handler and feature registration passed isolated Go compilation and go vet",
-    "Pause metadata and audit SQL shape executed against Python SQLite",
-    "Go formatting completed",
-    "UTF-8, LF, final-newline and trailing-whitespace checks",
-    "Internal SHA-256 manifest, ZIP integrity and extract-and-verify checks"
+    "Current custom-stable head and patch version checked before packaging",
+    "auto_execution.go Git blob precondition verified as 03a4b4492c9b789e45381c08cc94d7114d9bb3d8",
+    "execution.go Git blob precondition verified as e6629536712bbc8819aae056711d0562387ea421",
+    "Modified Boss automatic execution and execution adapter paths passed isolated Go compilation, unit tests and go vet",
+    "Compatibility compilation passed with boss-retry1 control and retry tests applied",
+    "API feature registration passed isolated Go compilation and go vet",
+    "SQLite guard uniqueness, terminal release and foreign-key cleanup integration checks passed",
+    "UTF-8, LF, final-newline and trailing-whitespace checks passed",
+    "Internal SHA-256 manifest, ZIP integrity and extract-and-verify checks passed"
   ],
   "limitations": [
-    "The complete repository go test ./... was not run without a full repository checkout",
-    "No live Palworld or PalDefender instance was available",
-    "Boss page pause, resume and skip buttons are not included",
-    "Active or uncertain waves require manual reconciliation and cannot be skipped"
+    "The complete repository go test ./... and frontend npm run check were not run in this environment",
+    "No live Palworld or PalDefender server was available for end-to-end execution testing",
+    "The current activity guard does not yet have a dedicated management UI",
+    "Paused, active, running or uncertain activities intentionally block all other Boss activity starts",
+    "Boss death detection and automatic encounter completion remain unimplemented"
   ]
 }
