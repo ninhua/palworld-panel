@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	panelauth "palpanel/internal/auth"
 )
 
 const (
@@ -81,6 +83,11 @@ func (s Server) runDiagnosticHTTP(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "diagnostic_method_invalid", "method must be GET, HEAD, POST, PUT, PATCH, or DELETE")
 		return
 	}
+	apiKey := CurrentPrincipal(c).Credential == panelauth.CredentialAPIKey
+	if apiKey && method != http.MethodGet && method != http.MethodHead && method != http.MethodPost {
+		fail(c, http.StatusForbidden, "diagnostic_api_key_method_restricted", "API key diagnostics only allow GET, HEAD, and POST")
+		return
+	}
 	if len(request.Body) > diagnosticMaxBodyBytes {
 		fail(c, http.StatusRequestEntityTooLarge, "diagnostic_body_too_large", "request body exceeds 64 KiB")
 		return
@@ -88,6 +95,10 @@ func (s Server) runDiagnosticHTTP(c *gin.Context) {
 	target, err := url.Parse(strings.TrimSpace(request.URL))
 	if err != nil || target.Hostname() == "" || (target.Scheme != "http" && target.Scheme != "https") || target.User != nil {
 		fail(c, http.StatusBadRequest, "diagnostic_url_invalid", "URL must be an http or https private-network address without user information")
+		return
+	}
+	if apiKey && target.Scheme != "http" {
+		fail(c, http.StatusForbidden, "diagnostic_api_key_scheme_restricted", "API key diagnostics only allow http targets")
 		return
 	}
 	if _, err := resolvePrivateHost(c.Request.Context(), target.Hostname()); err != nil {
@@ -127,6 +138,13 @@ func (s Server) runDiagnosticHTTP(c *gin.Context) {
 		CheckRedirect: func(request *http.Request, via []*http.Request) error {
 			if len(via) >= 3 {
 				return errors.New("too many redirects")
+			}
+			if apiKey {
+				if request.URL.Scheme != "http" {
+					return errors.New("API key diagnostics only allow http redirect targets")
+				}
+				request.Header.Del("Authorization")
+				request.Header.Del("Cookie")
 			}
 			if _, err := resolvePrivateHost(request.Context(), request.URL.Hostname()); err != nil {
 				return err

@@ -346,8 +346,8 @@ paths:
     get:
       operationId: getDiagnosticStatus
       tags: [system]
-      description: Requires an authenticated administrator browser session; API keys are rejected.
-      x-palpanel-permission: interactive-admin
+      description: Requires an authenticated administrator browser session or administrator API key. Operator and viewer API keys are rejected.
+      x-palpanel-permission: diagnostic-admin
       responses:
         '200':
           description: Diagnostic capability and execution limits.
@@ -360,8 +360,8 @@ paths:
     post:
       operationId: runDiagnosticHTTP
       tags: [system]
-      description: Sends a bounded HTTP request to a loopback or private-network target from the PalPanel host.
-      x-palpanel-permission: interactive-admin
+      description: Sends a bounded HTTP request to a loopback or private-network target from the PalPanel host. Administrator API keys are limited to http targets and GET, HEAD, or POST; administrator sessions retain http/https and the existing method set.
+      x-palpanel-permission: diagnostic-admin
       requestBody:
         required: true
         content:
@@ -2522,7 +2522,7 @@ components:
       required: [method, url]
       additionalProperties: false
       properties:
-        method: {type: string, enum: [GET, HEAD, POST, PUT, PATCH, DELETE]}
+        method: {type: string, enum: [GET, HEAD, POST, PUT, PATCH, DELETE], description: API-key requests allow only GET, HEAD, and POST; sessions may use all listed methods.}
         url: {type: string, format: uri}
         headers:
           type: object

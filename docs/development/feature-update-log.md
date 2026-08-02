@@ -1,5 +1,16 @@
 # 功能移植更新记录
 
+## 2026-08-03：诊断状态与内网 HTTP 的管理员 API Key 访问
+
+已完成：
+
+- 诊断状态和内网 HTTP 测试新增专用权限：管理员 session 或管理员 API Key 可用；operator/viewer API Key 拒绝。
+- 管理员 API Key 的 HTTP 测试仅允许 `http` 及 GET/HEAD/POST；管理员 session 保持原有 http/https 与方法兼容性。
+- Shell 和支持包继续保持管理员 session-only，未放宽其高风险能力。
+- 保留回环/私网目标、禁代理、重定向重检、15 秒超时、64 KiB 限制和 Header 校验。
+
+残余风险：管理员 API Key 仍可发起受限内网 HTTP 请求，应使用短期、可撤销的 Key，并避免通过公网明文传输。
+
 ## 2026-08-03：统一 PalPanelBridge 开发路线与交付流程
 
 已完成：

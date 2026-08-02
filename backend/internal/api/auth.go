@@ -142,6 +142,20 @@ func RequireInteractiveAdmin() gin.HandlerFunc {
 	}
 }
 
+// RequireDiagnosticHTTPAdmin allows bounded private-network HTTP diagnostics
+// for administrator sessions and API keys without opening host-level tools.
+func RequireDiagnosticHTTPAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		principal := CurrentPrincipal(c)
+		if principal.Role == RoleAdmin && (principal.Credential == panelauth.CredentialSession || principal.Credential == panelauth.CredentialAPIKey) {
+			c.Next()
+			return
+		}
+		fail(c, http.StatusForbidden, "diagnostic_admin_required", "an authenticated administrator session or API key is required")
+		c.Abort()
+	}
+}
+
 func CurrentPrincipal(c *gin.Context) Principal {
 	if value, ok := c.Get(principalKey); ok {
 		if principal, ok := value.(Principal); ok {
