@@ -1019,9 +1019,6 @@ paths:
       parameters: *modConfigFileQuery
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ModConfigWriteRequest'}}}}
       responses: {'200': *modConfigDocument, '400': *error, '401': *error, '403': *error, '404': *error, '409': *error, '413': *error}
-  /mods/configurations/{adapter}/actions:
-    parameters: [{name: adapter, in: path, required: true, schema: {type: string}}]
-    post: {operationId: runModConfigurationAction, tags: [content], x-palpanel-permission: 'mods:write', requestBody: *jsonRequest, responses: *writeResponses}
   /mods/configurations/{adapter}/backups:
     parameters: [{name: adapter, in: path, required: true, schema: {type: string}}]
     get:
@@ -1425,13 +1422,6 @@ paths:
     parameters: [*idParameter]
     patch: {operationId: renameSaveSource, tags: [world], x-palpanel-permission: 'server:control', requestBody: *jsonRequest, responses: *writeResponses}
     delete: {operationId: deleteSaveSource, tags: [world], x-palpanel-permission: 'server:control', responses: *writeResponses}
-  /save-sources/{id}/migration/players:
-    parameters: [*idParameter]
-    get: {operationId: getSaveMigrationPlayers, tags: [world], x-palpanel-permission: 'server:control', responses: *readResponses}
-  /save-migrations/preview:
-    post: {operationId: previewSaveMigration, tags: [world], x-palpanel-permission: 'server:control', requestBody: *jsonRequest, responses: *writeResponses}
-  /save-migrations:
-    post: {operationId: startSaveMigration, tags: [world], x-palpanel-permission: 'server:control', requestBody: *jsonRequest, responses: *writeResponses}
   /breeding/catalog:
     get: {operationId: getBreedingCatalog, tags: [world], x-palpanel-permission: read, responses: *readResponses}
   /breeding/status:
@@ -1844,9 +1834,6 @@ paths:
   /bases/{id}/feed-boxes:
     parameters: [*idParameter]
     get: {operationId: getBaseFeedBoxes, tags: [world], x-palpanel-permission: read, responses: *readResponses}
-  /bases/{id}/clean:
-    parameters: [*idParameter]
-    post: {operationId: cleanSaveBase, tags: [world], x-palpanel-permission: 'server:control', responses: *writeResponses}
   /inventory:
     get:
       operationId: listGlobalInventory
