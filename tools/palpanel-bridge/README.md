@@ -86,6 +86,17 @@ include whether the current object value exists, its runtime object identity,
 and filtered `nested_candidates` from that object. Traversal stops after this
 single metadata level and still does not read arrays or container contents.
 
+## Verified SFTP deployment
+
+After the dedicated Action completes, run the repository deployment helper with
+`uv run --with paramiko python tools/palpanel-bridge/deploy.py`. It checks the
+latest workflow result, downloads and verifies the artifact, pins the SFTP host
+key, uploads a temporary DLL, backs up the current DLL, atomically renames the
+new file, and downloads it again for SHA-256 verification. Set
+`PALPANEL_SFTP_HOST`, `PALPANEL_SFTP_USERNAME`, `PALPANEL_SFTP_PASSWORD`, and
+`PALPANEL_SFTP_HOSTKEY_SHA256`; optionally set `PALPANEL_SFTP_PORT` and
+`PALPANEL_SFTP_REMOTE_DIR`. Credentials are never stored in the repository.
+
 Calling `/v1/runtime` twice should show an increasing
 `game_thread_tick_count`. It also reports the last game-thread tick time and
 bridge uptime without modifying game state.

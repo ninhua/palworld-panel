@@ -1,5 +1,13 @@
 # 功能移植更新记录
 
+## 2026-08-03：PalPanelBridge 自动校验部署脚本
+
+已完成：
+
+- 增加 `tools/palpanel-bridge/deploy.py`，可自动检查最新插件 Action 是否成功。
+- 自动下载并校验 artifact、固定 SFTP 主机指纹、备份旧 DLL、原子替换并回读校验。
+- 仅部署 `dlls/main.dll`，保留远端 `config.ini`；凭据只从环境变量或交互输入读取。
+
 ## 2026-08-03：在线玩家对象候选单层展开
 
 已完成：
