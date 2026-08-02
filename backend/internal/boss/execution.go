@@ -261,6 +261,29 @@ func (s *Service) ExecuteNextWave(ctx context.Context, summonID, actor string) (
 	if terminalStatus(summon.Status) {
 		return ExecutionAttempt{}, ErrInvalidTransition
 	}
+
+	guardClaimed := false
+	retainActivityGuard := false
+	claimed, ownerID, err := s.claimBossExecutionActivity(ctx, summon, actor, metadataBool(summon.Metadata, "auto_execute"))
+	if err != nil {
+		return ExecutionAttempt{}, err
+	}
+	if !claimed {
+		if strings.TrimSpace(ownerID) == "" {
+			return ExecutionAttempt{}, ErrExecutionBusy
+		}
+		return ExecutionAttempt{}, fmt.Errorf("%w: Boss activity is owned by summon %s", ErrExecutionBusy, ownerID)
+	}
+	guardClaimed = true
+	defer func() {
+		if !guardClaimed || retainActivityGuard {
+			return
+		}
+		releaseCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.releaseAutoExecutionActivityGuard(releaseCtx, summonID)
+	}()
+
 	waves, err := s.ListSummonWaves(ctx, summonID)
 	if err != nil {
 		return ExecutionAttempt{}, err
@@ -268,6 +291,7 @@ func (s *Service) ExecuteNextWave(ctx context.Context, summonID, actor string) (
 	var selected *SummonWave
 	for index := range waves {
 		if waves[index].Status == WaveStatusActive {
+			retainActivityGuard = true
 			return ExecutionAttempt{}, ErrExecutionReconcileRequired
 		}
 		if selected == nil && waves[index].Status == WaveStatusPending {
@@ -299,6 +323,7 @@ func (s *Service) ExecuteNextWave(ctx context.Context, summonID, actor string) (
 		current, _ := s.GetExecutionAttempt(ctx, attempt.ID)
 		return current, err
 	}
+	retainActivityGuard = true
 
 	result, executeErr := adapter.ExecuteWave(ctx, summon, *selected)
 	if result.Adapter == "" {
@@ -321,6 +346,7 @@ func (s *Service) ExecuteNextWave(ctx context.Context, summonID, actor string) (
 		if transitionErr != nil {
 			return ExecutionAttempt{}, transitionErr
 		}
+		_, _ = s.reconcileAutoExecutionActivityGuard(ctx)
 		return s.GetExecutionAttempt(ctx, attempt.ID)
 	}
 
@@ -345,11 +371,14 @@ func (s *Service) ExecuteNextWave(ctx context.Context, summonID, actor string) (
 		current, _ := s.GetExecutionAttempt(ctx, attempt.ID)
 		return current, fmt.Errorf("%w: %v", wrapped, executeErr)
 	}
-	_, _ = s.TransitionSummonWave(ctx, summonID, selected.Position, WaveTransitionRequest{
+	_, transitionErr := s.TransitionSummonWave(ctx, summonID, selected.Position, WaveTransitionRequest{
 		Status:  WaveStatusFailed,
 		Message: executeErr.Error(),
 		Result:  map[string]any{"execution_attempt_id": attempt.ID, "adapter": result.Adapter},
 	}, actor)
+	if transitionErr == nil {
+		retainActivityGuard = false
+	}
 	current, _ := s.GetExecutionAttempt(ctx, attempt.ID)
 	return current, fmt.Errorf("%w: %v", wrapped, executeErr)
 }
