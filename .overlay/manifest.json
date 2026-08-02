@@ -1,53 +1,48 @@
 {
-  "name": "Palworld-Panel-overlay-v0.8.81-boss-auto2-to-v0.8.81-boss-auto3",
+  "name": "Palworld-Panel-overlay-v0.8.81-player-identity-fix1-to-v0.8.81-task-feedback1",
   "repository": "ninhua/palworld-panel",
   "branch": "custom-stable",
-  "observed_head": "2cdb2dae27027bd743187c76e5df3a77aa46b7f1",
+  "base_commit": "f16dff93a44741d24f1b92602aaea1ee87b68a54",
   "base_patch_version": "0.8.81",
-  "base_maintenance_revision": "boss-auto2",
+  "base_maintenance_revision": "player-identity-fix1",
   "target_patch_version": "0.8.81",
-  "target_maintenance_revision": "boss-auto3",
+  "maintenance_revision": "task-feedback1",
   "overlay_mode": "copy_to_repository_root",
-  "created_at": "2026-08-03T00:44:00+08:00",
-  "required_features": [
-    "boss-auto-wave-database-lease",
-    "boss-auto-wave-multi-process-deduplication",
-    "boss-auto-wave-crash-lease-expiry"
-  ],
+  "created_at": "2026-08-03T02:29:00+08:00",
   "features": [
-    "boss-auto-wave-pause-control",
-    "boss-auto-wave-resume-control",
-    "boss-auto-wave-skip-current-control",
-    "boss-auto-wave-control-audit",
-    "boss-auto-wave-control-lease-serialization",
-    "boss-auto-wave-control-restart-persistence",
-    "boss-auto-wave-existing-transition-route"
+    "task-completion-private-feedback",
+    "task-reward-confirmation-message",
+    "task-completion-notification-ledger",
+    "task-completion-notification-retry",
+    "task-completion-multi-process-claim",
+    "task-completion-offline-player-retry",
+    "task-completion-background-event-support",
+    "task-completion-historical-backfill-suppression"
   ],
   "files": [
     ".overlay/README.md",
-    ".overlay/checksums.sha256",
     ".overlay/manifest.json",
-    "backend/internal/api/boss.go",
-    "backend/internal/api/boss_auto_execution_control.go",
-    "backend/internal/api/boss_auto_execution_features.go",
-    "backend/internal/boss/auto_execution_control.go",
-    "backend/internal/boss/auto_execution_control_test.go",
-    "docs/releases/0.8.81-boss-auto3.md"
+    "backend/internal/api/tasks.go",
+    "backend/internal/tasks/completion_notifications.go",
+    "backend/internal/tasks/completion_notifications_test.go",
+    "docs/releases/0.8.81-task-feedback1.md"
   ],
   "verification": [
-    "Current custom-stable patch version verified as 0.8.81",
-    "Original backend/internal/api/boss.go reconstructed byte-for-byte from GitHub blob before the single control dispatch insertion",
-    "Boss automatic-control helpers passed isolated Go tests and go vet",
-    "API control handler and feature registration passed isolated Go compilation and go vet",
-    "Pause metadata and audit SQL shape executed against Python SQLite",
-    "Go formatting completed",
+    "Current custom-stable head and patch version checked before packaging",
+    "Go sources formatted with gofmt",
+    "Task completion notifier passed isolated Go compilation, unit test and go vet",
+    "Task API integration passed isolated Go compilation and go vet with application stubs",
+    "SQLite integration verified activation cutoff, reward-granted gating, identity fields and single-claim behavior",
+    "Pending rewards do not notify until the reward status becomes granted",
+    "Offline or failed private-message delivery remains queued for retry",
     "UTF-8, LF, final-newline and trailing-whitespace checks",
-    "Internal SHA-256 manifest, ZIP integrity and extract-and-verify checks"
+    "Internal SHA-256 manifest and ZIP integrity checks"
   ],
   "limitations": [
-    "The complete repository go test ./... was not run without a full repository checkout",
-    "No live Palworld or PalDefender instance was available",
-    "Boss page pause, resume and skip buttons are not included",
-    "Active or uncertain waves require manual reconciliation and cannot be skipped"
+    "The complete repository go test ./... and frontend npm run check were not run in this environment",
+    "No live Palworld or PalDefender server was available for end-to-end private-message verification",
+    "Notification queue status does not yet have a dedicated management UI",
+    "Players must come online for a pending private completion message to be delivered",
+    "Completions that occurred before this revision was activated are intentionally not backfilled"
   ]
 }

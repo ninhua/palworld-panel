@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"palpanel/internal/gameevents"
 	"palpanel/internal/tasks"
 )
 
@@ -19,10 +22,18 @@ func init() {
 		"daily-weekly-once-tasks",
 		"idempotent-task-rewards",
 		"task-operations-api",
+		"task-completion-private-feedback",
+		"task-completion-feedback-retry",
 	)
 }
 
 func (s Server) registerTaskRoutes(api *gin.RouterGroup) {
+	// Register the completion notifier during server startup so online-time and
+	// other background task completions can notify players without waiting for
+	// the first task API request or chat event. A later taskService call retries
+	// setup if the database is not ready yet.
+	_, _ = s.taskService()
+
 	group := api.Group("/tasks")
 	group.GET("", Require(PermRead), s.listTasks)
 	group.POST("", Require(PermConfigWrite), s.createTask)
@@ -36,7 +47,32 @@ func (s Server) registerTaskRoutes(api *gin.RouterGroup) {
 }
 
 func (s Server) taskService() (*tasks.Service, error) {
-	return tasks.ForPath(s.cfg.DBPath, strings.TrimSpace(os.Getenv("PALPANEL_OPERATIONS_TIMEZONE")))
+	service, err := tasks.ForPath(s.cfg.DBPath, strings.TrimSpace(os.Getenv("PALPANEL_OPERATIONS_TIMEZONE")))
+	if err != nil {
+		return nil, err
+	}
+	if err := service.SetCompletionNotifier(tasks.CompletionNotifierFunc(func(ctx context.Context, notice tasks.CompletionNotice) error {
+		deliveryIdentity := strings.TrimSpace(notice.SteamID)
+		if deliveryIdentity == "" {
+			deliveryIdentity = strings.TrimSpace(notice.PlayerUID)
+		}
+		delivery, deliveryErr := s.deliverGameEventReply(ctx, gameevents.Record{
+			EventID:   notice.EventID(),
+			PlayerUID: deliveryIdentity,
+			Nickname:  notice.Nickname,
+			SteamID:   notice.SteamID,
+		}, notice.Message())
+		if deliveryErr != nil {
+			return deliveryErr
+		}
+		if delivery != "sent" {
+			return fmt.Errorf("task completion feedback was not delivered: %s", delivery)
+		}
+		return nil
+	})); err != nil {
+		return nil, err
+	}
+	return service, nil
 }
 
 type gameTaskQueryRequest struct {
