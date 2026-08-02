@@ -10,7 +10,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.15`
+- PalPanelBridge：`0.1.16`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -58,7 +58,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.15",
+  "bridge_version": "0.1.16",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -149,6 +149,10 @@ PlayerState 和 Pawn 上名称含背包、容器、装备、物品、槽位、�
 粗粒度类型（`object`、`array`、`struct` 或 `other`），以及 UE4SS 可识别时的声明对象类、
 数组元素类或结构体名。此版本仍不读取背包、装备或帕鲁容器内容，也不修改游戏对象；
 这些类型信息用于确定下一步应安全读取的真实入口。
+
+`0.1.16` 对 `object` 类型候选执行一次受限展开，增加 `object_value_found`、
+`object_value` 和 `nested_candidates`。展开仅限一层且仍只读取反射元数据，主要用于确认
+`BP_OtomoPalHolderComponent`、`LoadoutItemSelector` 等对象的实际实例及内部入口。
 
 ## 响应与任务时间
 

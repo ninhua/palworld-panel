@@ -67,6 +67,9 @@ struct PropertyCandidateSnapshot
     std::string name{};
     std::string kind{};
     std::string declared_type{};
+    bool object_value_found{};
+    ObjectSnapshot object_value{};
+    std::vector<PropertyCandidateSnapshot> nested_candidates{};
 };
 
 struct OnlinePlayerSnapshot
@@ -192,7 +195,8 @@ PropertyCandidateSnapshot describe_property_candidate(RC::Unreal::FProperty* pro
     return snapshot;
 }
 
-std::vector<PropertyCandidateSnapshot> collect_player_data_property_candidates(RC::Unreal::UObject* object)
+std::vector<PropertyCandidateSnapshot> collect_player_data_property_candidates(
+    RC::Unreal::UObject* object, bool inspect_object_values = true)
 {
     std::vector<PropertyCandidateSnapshot> candidates;
     if (!object || !RC::Unreal::UObject::IsReal(object)) return candidates;
@@ -209,7 +213,22 @@ std::vector<PropertyCandidateSnapshot> collect_player_data_property_candidates(R
             });
             for (const auto keyword : keywords) {
                 if (lower.find(keyword) != std::string::npos) {
-                    if (seen.insert(name).second) candidates.emplace_back(describe_property_candidate(property));
+                    if (seen.insert(name).second) {
+                        auto candidate = describe_property_candidate(property);
+                        if (inspect_object_values && candidate.kind == "object") {
+                            auto* object_property = RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(property);
+                            auto* value = object_property
+                                              ? object_property->GetObjectPropertyValue(
+                                                    property->ContainerPtrToValuePtr<void>(object))
+                                              : nullptr;
+                            candidate.object_value_found = value && RC::Unreal::UObject::IsReal(value);
+                            if (candidate.object_value_found) {
+                                candidate.object_value = describe_object(value);
+                                candidate.nested_candidates = collect_player_data_property_candidates(value, false);
+                            }
+                        }
+                        candidates.emplace_back(std::move(candidate));
+                    }
                     break;
                 }
             }
@@ -505,6 +524,24 @@ std::string json_escape(const std::string& value)
     return escaped;
 }
 
+void append_property_candidate_json(
+    std::ostringstream& body, const PropertyCandidateSnapshot& candidate)
+{
+    body << "{\"name\":\"" << json_escape(candidate.name)
+         << "\",\"kind\":\"" << json_escape(candidate.kind)
+         << "\",\"declared_type\":\"" << json_escape(candidate.declared_type)
+         << "\",\"object_value_found\":" << (candidate.object_value_found ? "true" : "false")
+         << ",\"object_value\":{\"name\":\"" << json_escape(candidate.object_value.name)
+         << "\",\"full_name\":\"" << json_escape(candidate.object_value.full_name)
+         << "\",\"class_name\":\"" << json_escape(candidate.object_value.class_name)
+         << "\"},\"nested_candidates\":[";
+    for (size_t index = 0; index < candidate.nested_candidates.size(); ++index) {
+        if (index > 0) body << ',';
+        append_property_candidate_json(body, candidate.nested_candidates[index]);
+    }
+    body << "]}";
+}
+
 const char* job_kind_name(JobKind kind)
 {
     if (kind == JobKind::World) return "world";
@@ -546,7 +583,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.15");
+        ModVersion = STR("0.1.16");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -716,7 +753,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.15\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.16\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -729,7 +766,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.15\","
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.16\","
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -827,10 +864,7 @@ class PalPanelBridge final : public RC::CppUserModBase
                     body << '\"' << name << "\":[";
                     for (size_t candidate_index = 0; candidate_index < values.size(); ++candidate_index) {
                         if (candidate_index > 0) body << ',';
-                        const auto& candidate = values[candidate_index];
-                        body << "{\"name\":\"" << json_escape(candidate.name)
-                             << "\",\"kind\":\"" << json_escape(candidate.kind)
-                             << "\",\"declared_type\":\"" << json_escape(candidate.declared_type) << "\"}";
+                        append_property_candidate_json(body, values[candidate_index]);
                     }
                     body << ']';
                 };
