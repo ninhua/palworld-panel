@@ -1027,12 +1027,17 @@ func (s *Service) CreateSummon(ctx context.Context, request CreateSummonRequest,
 		return SummonResult{}, err
 	}
 	if len(waves) == 0 {
+		implicitMetadata := make(map[string]any, len(template.Metadata)+1)
+		for key, value := range template.Metadata {
+			implicitMetadata[key] = value
+		}
+		implicitMetadata["implicit"] = true
 		waves = []Wave{{
 			ID: "", TemplateID: template.ID, Position: 1, Name: template.Name, Kind: WaveKindMain,
 			PalID: template.PalID, Level: template.Level, Count: template.Count,
 			HPMultiplier: template.HPMultiplier, AttackMultiplier: template.AttackMultiplier,
 			DefenseMultiplier: template.DefenseMultiplier, SpawnRadius: template.SpawnRadius,
-			Capturable: template.Capturable, Metadata: map[string]any{"implicit": true},
+			Capturable: template.Capturable, Metadata: implicitMetadata,
 		}}
 	}
 	now := s.timestamp()

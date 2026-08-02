@@ -19,6 +19,9 @@ export type BossSummon = components['schemas']['BossSummon'];
 export type BossSummonResult = components['schemas']['BossSummonResult'];
 export type BossSummonEvent = components['schemas']['BossSummonEvent'];
 export type BossSummary = components['schemas']['BossSummary'];
+export type BossExecutionCapabilities = components['schemas']['BossExecutionCapabilities'];
+export type BossExecutionStatus = components['schemas']['BossExecutionStatus'];
+export type BossExecutionAttempt = components['schemas']['BossExecutionAttempt'];
 export type BossSummonStatus = BossSummon['status'];
 export type BossScheduleInput = components['schemas']['BossScheduleInput'];
 export type BossSchedule = components['schemas']['BossSchedule'];
@@ -93,6 +96,45 @@ const emptySummon: BossSummon = {
   updated_at: '',
 };
 
+const emptyExecutionStatus: BossExecutionStatus = {
+  adapter: 'record_only',
+  available: false,
+  state: 'not_configured',
+  message: '',
+  capabilities: {
+    fixed_coordinates: false,
+    multiple_spawns: false,
+    uncapturable: false,
+    custom_pal_template: false,
+    exact_multipliers: false,
+  },
+  limitations: [],
+  busy: false,
+  running_attempts: 0,
+  uncertain_attempts: 0,
+  active_waves: 0,
+  reconciliation_required: false,
+};
+
+const emptyExecutionAttempt: BossExecutionAttempt = {
+  id: '',
+  summon_id: '',
+  wave_position: 1,
+  adapter: 'record_only',
+  status: 'failed',
+  command_count: 0,
+  completed_commands: 0,
+  commands: [],
+  responses: [],
+  details: {},
+  failure: '',
+  actor: '',
+  started_at: '',
+  completed_at: '',
+  created_at: '',
+  updated_at: '',
+};
+
 const emptySummary: BossSummary = {
   rewards: 0,
   enabled_rewards: 0,
@@ -132,6 +174,12 @@ const emptySchedule: BossSchedule = {
 };
 
 export const bossApi = {
+  executionStatus: () => handleRequest<unknown, BossExecutionStatus>(
+    () => apiClient.get('/boss/execution/status'),
+    emptyExecutionStatus,
+    { fallbackOnError: false },
+  ),
+
   summary: () => handleRequest<unknown, BossSummary>(
     () => apiClient.get('/boss/summary'),
     emptySummary,
@@ -207,6 +255,18 @@ export const bossApi = {
   createSummon: (input: BossCreateSummonRequest) => handleRequest<unknown, BossSummonResult>(
     () => apiClient.post('/boss/summons', input),
     { summon: emptySummon, duplicate: false },
+    { fallbackOnError: false },
+  ),
+
+  executeNextWave: (id: string) => handleRequest<unknown, BossExecutionAttempt>(
+    () => apiClient.post(`/boss/summons/${encodeURIComponent(id)}/execute-next`),
+    { ...emptyExecutionAttempt, summon_id: id },
+    { fallbackOnError: false },
+  ),
+
+  executionAttempts: (id: string) => handleRequest<unknown, BossListResult<BossExecutionAttempt>>(
+    () => apiClient.get(`/boss/summons/${encodeURIComponent(id)}/executions`, { params: { limit: 500 } }),
+    { items: [], count: 0 },
     { fallbackOnError: false },
   ),
 
