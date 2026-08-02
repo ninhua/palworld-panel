@@ -25,6 +25,10 @@ func init() {
 		"economy-shop-delivery-reconciliation",
 		"economy-shop-delivery-audit",
 		"economy-shop-batch-delivery",
+		"economy-shop-player-catalog",
+		"economy-shop-player-orders",
+		"economy-shop-game-chat-commands",
+		"economy-shop-game-delivery-replies",
 	)
 }
 
@@ -301,7 +305,7 @@ func shopQueryBool(c *gin.Context, key string) bool {
 
 func shopFailure(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, shop.ErrInvalidProduct), errors.Is(err, shop.ErrInvalidQuantity), errors.Is(err, shop.ErrInvalidOrder), errors.Is(err, shop.ErrDeliveryNotAutomatic), errors.Is(err, shop.ErrInvalidBatch):
+	case errors.Is(err, shop.ErrInvalidProduct), errors.Is(err, shop.ErrInvalidQuantity), errors.Is(err, shop.ErrInvalidOrder), errors.Is(err, shop.ErrDeliveryNotAutomatic), errors.Is(err, shop.ErrInvalidBatch), errors.Is(err, shop.ErrProductAmbiguous):
 		fail(c, http.StatusBadRequest, "shop_request_invalid", err.Error())
 	case errors.Is(err, shop.ErrProductNotFound), errors.Is(err, shop.ErrOrderNotFound), errors.Is(err, sql.ErrNoRows):
 		fail(c, http.StatusNotFound, "shop_resource_not_found", err.Error())

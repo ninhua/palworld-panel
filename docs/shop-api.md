@@ -12,16 +12,6 @@
 
 自动交付商品创建订单后会立即尝试发放。订单仍使用 `player_uid + idempotency_key` 幂等去重；重复请求不会重复扣积分、占用库存或创建新订单。
 
-## Payload 是什么
-
-`payload` 是商品的机器可读 JSON 交付参数，不是给玩家显示的商品说明。后端会根据 `delivery_mode` 读取其中的字段并调用 PalDefender：
-
-- 物品商品读取 `items`，每项包含内部物品 ID 和数量。
-- 帕鲁模板商品读取 `pal_templates`，内容是 PalDefender 模板文件名。
-- 人工商品通常使用空对象 `{}`，也可以保存供管理员识别的附加元数据。
-
-`0.8.65` 起，面板商品编辑器会直接读取物品目录和帕鲁模板目录，并自动生成自动交付 Payload。管理员无需手写 JSON；最终内容仍可在编辑器中展开预览。
-
 ### 自动物品 Payload
 
 ```json
@@ -226,3 +216,83 @@ GET /api/shop/summary
 ## 数据库升级
 
 `0.8.63` 自动创建 `shop_delivery_events` 表和索引。现有商品、订单、积分预留、库存和 `0.8.62` 交付状态保持不变。
+
+## 玩家侧商城与游戏命令
+
+`0.8.77` 增加签名保护的玩家侧接口。它们与游戏事件入口使用相同的 `X-PalPanel-*` HMAC 请求头，不接受匿名公网调用。
+
+### 查询玩家目录
+
+```http
+POST /api/integrations/game/shop/catalog
+Content-Type: application/json
+```
+
+```json
+{
+  "player_uid": "00112233445566778899aabbccddeeff",
+  "nickname": "Player",
+  "steam_id": "steam_76561198000000000",
+  "query": "帕鲁球",
+  "limit": 5,
+  "offset": 0
+}
+```
+
+响应包含玩家当前积分、商品兑换码、库存、已购买数量和剩余个人限购。兑换码由商品 ID 的哈希部分生成，显示为 8 位大写字符；如果发生极低概率的兑换码冲突，购买时会要求使用完整商品 ID 或唯一商品名称。
+
+### 玩家创建订单
+
+```http
+POST /api/integrations/game/shop/orders
+Content-Type: application/json
+```
+
+```json
+{
+  "player_uid": "00112233445566778899aabbccddeeff",
+  "nickname": "Player",
+  "steam_id": "steam_76561198000000000",
+  "idempotency_key": "chat-message-or-external-event-id",
+  "product": "A1B2C3D4",
+  "quantity": 2
+}
+```
+
+`product` 可以是商城显示的 8 位兑换码、完整商品 ID，或唯一的完整商品名称。自动交付商品会立即调用 PalDefender；人工商品会保留为待管理员交付订单。
+
+### 查询玩家订单
+
+```http
+POST /api/integrations/game/shop/orders/query
+Content-Type: application/json
+```
+
+```json
+{
+  "player_uid": "00112233445566778899aabbccddeeff",
+  "status": "pending",
+  "limit": 20,
+  "offset": 0
+}
+```
+
+接口只返回请求中 `player_uid` 对应的订单，不能通过请求体读取其他玩家订单。
+
+### 游戏聊天命令
+
+游戏事件桥接支持以下命令，并遵循积分系统中的命令前缀和“允许无前缀命令”设置：
+
+```text
+商城
+商城 2
+商城 帕鲁球
+兑换 A1B2C3D4
+兑换 A1B2C3D4 2
+我的订单
+我的订单 2
+```
+
+也接受别名 `商店`、`购买` 和 `订单`。命令结果通过 PalDefender 私人聊天回复，包括余额、兑换码、库存/限购状态、订单状态以及自动交付结果。
+
+相同游戏事件 ID 会映射到同一订单幂等键。重复处理不会重复扣分、减库存或发放商品。

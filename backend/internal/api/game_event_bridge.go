@@ -72,6 +72,7 @@ var (
 	}
 	userIDPattern    = regexp.MustCompile(`(?i)\b(?:steam|gdk|ps5)_[A-Za-z0-9_-]+\b`)
 	playerUIDPattern = regexp.MustCompile(`(?i)PlayerUID\s*[:=]\s*([A-Za-z0-9_-]{4,128})`)
+	ipv4Pattern      = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
 )
 
 type parsedPalDefenderEvent struct {
@@ -286,21 +287,20 @@ func (s Server) processBridgeEvent(ctx context.Context, service *gameevents.Serv
 	result := map[string]any{"accepted": true, "source": "paldefender_log_bridge", "retry": claim.Retry}
 	var commandResult *economy.CommandResult
 	if claim.Record.Type == "PLAYER_CHAT" {
-		message, _ := claim.Record.Payload["message"].(string)
-		economyService, err := s.economyService()
-		if err != nil {
-			_, _ = service.Fail(ctx, claim.Record.EventID, err)
-			return nil, err
+		outcome, commandErr := s.executeGameChatCommand(ctx, claim.Record)
+		if commandErr != nil {
+			_, _ = service.Fail(ctx, claim.Record.EventID, commandErr)
+			return nil, commandErr
 		}
-		command, err := economyService.ExecuteCommandDetailed(ctx, economy.CommandRequest{EventID: claim.Record.EventID, PlayerUID: claim.Record.PlayerUID, Nickname: claim.Record.Nickname, SteamID: claim.Record.SteamID, Message: message})
-		if err != nil {
-			_, _ = service.Fail(ctx, claim.Record.EventID, err)
-			return nil, err
+		if outcome.Economy != nil {
+			result["command"] = outcome.Economy
+			commandResult = outcome.Economy
 		}
-		result["command"] = command
-		commandResult = &command
-		if command.Handled && command.Reply != "" && !command.Duplicate {
-			delivery, deliveryErr := s.deliverGameEventReply(ctx, claim.Record, command.Reply)
+		if outcome.Shop != nil && outcome.Shop.Handled {
+			result["shop_command"] = outcome.Shop
+		}
+		if outcome.Handled && outcome.Reply != "" && !outcome.Duplicate {
+			delivery, deliveryErr := s.deliverGameEventReply(ctx, claim.Record, outcome.Reply)
 			result["reply_delivery"] = delivery
 			if deliveryErr != nil {
 				result["reply_error"] = deliveryErr.Error()
@@ -487,6 +487,7 @@ func parsePalDefenderLogLine(line string, commandConfig economy.DetailedConfig) 
 func configuredCommandFromLogLine(line string, config economy.DetailedConfig) (string, string, bool) {
 	labels := make([]string, 0, len(config.CheckinAliases)+len(config.PointsAliases)+len(config.HelpAliases))
 	aliases := append(append(append([]string{}, config.CheckinAliases...), config.PointsAliases...), config.HelpAliases...)
+	aliases = append(aliases, "商城", "商店", "兑换", "购买", "我的订单", "订单")
 	for _, alias := range aliases {
 		alias = strings.TrimSpace(alias)
 		if alias == "" {
