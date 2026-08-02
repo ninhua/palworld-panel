@@ -174,6 +174,44 @@ export interface components {
       "request_key": string;
       "template_id": string;
     };
+    "BossExecutionAttempt": {
+      "actor"?: string;
+      "adapter": string;
+      "command_count": number;
+      "commands": Array<string>;
+      "completed_at"?: string;
+      "completed_commands": number;
+      "created_at": string;
+      "details": components["schemas"]["JsonObject"];
+      "failure"?: string;
+      "id": string;
+      "responses": Array<string>;
+      "started_at": string;
+      "status": "running" | "succeeded" | "failed" | "uncertain";
+      "summon_id": string;
+      "updated_at": string;
+      "wave_position": number;
+    };
+    "BossExecutionCapabilities": {
+      "custom_pal_template": boolean;
+      "exact_multipliers": boolean;
+      "fixed_coordinates": boolean;
+      "multiple_spawns": boolean;
+      "uncapturable": boolean;
+    };
+    "BossExecutionStatus": {
+      "active_waves": number;
+      "adapter": string;
+      "available": boolean;
+      "busy": boolean;
+      "capabilities": components["schemas"]["BossExecutionCapabilities"];
+      "limitations": Array<string>;
+      "message"?: string;
+      "reconciliation_required": boolean;
+      "running_attempts": number;
+      "state": string;
+      "uncertain_attempts": number;
+    };
     "BossLocation": {
       "label"?: string;
       "x": number;
@@ -260,44 +298,6 @@ export interface components {
       "warning_message": string;
       "warning_minutes": number;
       "warning_title": string;
-    };
-    "BossExecutionAttempt": {
-      "actor"?: string;
-      "adapter": string;
-      "command_count": number;
-      "commands": Array<string>;
-      "completed_at"?: string;
-      "completed_commands": number;
-      "created_at": string;
-      "details": components["schemas"]["JsonObject"];
-      "failure"?: string;
-      "id": string;
-      "responses": Array<string>;
-      "started_at": string;
-      "status": "running" | "succeeded" | "failed" | "uncertain";
-      "summon_id": string;
-      "updated_at": string;
-      "wave_position": number;
-    };
-    "BossExecutionCapabilities": {
-      "custom_pal_template": boolean;
-      "exact_multipliers": boolean;
-      "fixed_coordinates": boolean;
-      "multiple_spawns": boolean;
-      "uncapturable": boolean;
-    };
-    "BossExecutionStatus": {
-      "active_waves": number;
-      "adapter": string;
-      "available": boolean;
-      "busy": boolean;
-      "capabilities": components["schemas"]["BossExecutionCapabilities"];
-      "limitations": Array<string>;
-      "message"?: string;
-      "reconciliation_required": boolean;
-      "running_attempts": number;
-      "state": string;
-      "uncertain_attempts": number;
     };
     "BossSummary": {
       "active_summons": number;
