@@ -21,6 +21,7 @@ const Economy = lazyPage(() => import('./pages/Economy'), 'Economy');
 const EconomyShop = lazyPage(() => import('./pages/EconomyShop'), 'EconomyShop');
 const OperationsTasks = lazyPage(() => import('./pages/OperationsTasks'), 'OperationsTasks');
 const BossOperations = lazyPage(() => import('./pages/BossOperations'), 'BossOperations');
+const RaidOperations = lazyPage(() => import('./pages/RaidOperations'), 'RaidOperations');
 const Guilds = lazyPage(() => import('./pages/Guilds'), 'Guilds');
 const Mods = lazyPage(() => import('./pages/Mods'), 'Mods');
 const Monitor = lazyPage(() => import('./pages/Monitor'), 'Monitor');
@@ -63,7 +64,7 @@ export const appRoutes: AppRoute[] = [
   { id: 'economy', path: '/economy', title: '积分系统', navLabel: '积分账户', navGroup: 'world', icon: <Coins size={18} />, element: <Economy /> },
   { id: 'economy-shop', path: '/economy-shop', title: '积分商城', navLabel: '积分商城', navGroup: 'world', icon: <ShoppingBag size={18} />, element: <EconomyShop /> },
   { id: 'operations-tasks', path: '/operations-tasks', title: '任务系统', navLabel: '任务系统', navGroup: 'world', icon: <Target size={18} />, element: <OperationsTasks /> },
-  { id: 'boss-operations', path: '/boss', title: 'Boss 管理', navLabel: 'Boss 管理', navGroup: 'world', icon: <Sword size={18} />, element: <BossOperations /> },
+  { id: 'raid-operations', path: '/raids', title: '袭击管理', navLabel: '袭击管理', navGroup: 'world', activePaths: ['/boss'], icon: <Sword size={18} />, element: <RaidOperations /> },
   { id: 'starter-gift', path: '/starter-gift', title: '新玩家礼包', navLabel: '新玩家礼包', titleKey: 'route.starterGift', navGroup: 'world', icon: <Gift size={18} />, element: <StarterGift /> },
   { id: 'save-sources', path: '/save-sources', title: '存档中心', navLabel: '存档中心', titleKey: 'route.saveSources', navGroup: 'world', icon: <FolderArchive size={18} />, element: <SaveSources /> },
   { id: 'save-history', path: '/save-history', title: '存档差异', navLabel: '存档差异', titleKey: 'route.saveHistory', navGroup: 'world', icon: <FileDiff size={18} />, element: <SaveHistory /> },
@@ -82,7 +83,9 @@ export const appRoutes: AppRoute[] = [
   { id: 'diagnostics', path: '/diagnostics', title: '诊断控制台', navLabel: '诊断控制台', titleKey: 'route.diagnostics', navGroup: 'system', icon: <SquareTerminal size={18} />, element: <Diagnostics /> },
   { id: 'settings', path: '/settings', title: '系统设置', navLabel: '系统设置', titleKey: 'route.settings', navGroup: 'system', icon: <SettingsIcon size={18} />, element: <Settings /> },
 
-  // Legacy routes remain directly addressable and are highlighted under their new parent entries.
+  // Legacy and compatibility routes remain directly addressable.
+  { id: 'raid-boss-alias', path: '/boss', title: '袭击管理', navLabel: '袭击管理', navGroup: 'world', navVisible: false, icon: <Sword size={18} />, element: <RaidOperations /> },
+  { id: 'raid-legacy', path: '/raid-legacy', title: '袭击高级管理', navLabel: '袭击高级管理', navGroup: 'world', navVisible: false, icon: <Sword size={18} />, element: <BossOperations /> },
   { id: 'legacy-gm', path: '/gm', title: '玩家中心', navLabel: '玩家中心', titleKey: 'route.playerCenter', navGroup: 'world', navVisible: false, icon: <UserCog size={18} />, element: <PalDefenderGM /> },
   { id: 'player-summary', path: '/player-summary', title: '世界档案 · 玩家概览', navLabel: '玩家概览', titleKey: 'route.worldArchive', navGroup: 'world', navVisible: false, icon: <ClipboardList size={18} />, element: <PlayerSummary /> },
   { id: 'legacy-players', path: '/players', title: '世界档案 · 玩家', navLabel: '玩家', titleKey: 'route.worldArchive', navGroup: 'world', navVisible: false, icon: <Users size={18} />, element: <Players /> },

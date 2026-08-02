@@ -82,10 +82,14 @@ func (s Server) bossService() (*boss.Service, error) {
 		enabled := strings.EqualFold(strings.TrimSpace(settings["RCONEnabled"]), "True")
 		rconEnabled = &enabled
 	}
-	service.SetExecutionAdapter(boss.NewPalDefenderRCONExecutor(boss.PalDefenderRCONOptions{
+	palDefenderExecutor := boss.NewPalDefenderRCONExecutor(boss.PalDefenderRCONOptions{
 		Host: s.cfg.EffectiveRCONHost(), Port: s.cfg.EffectiveRCONPort(), Password: password, RCONEnabled: rconEnabled,
 		PalDefenderDir: s.cfg.PalDefenderDir(), Timeout: 8 * time.Second,
-	}))
+	})
+	service.SetExecutionAdapter(boss.NewRaidExecutionAdapter(
+		palDefenderExecutor,
+		boss.RaidBaseResolverFunc(s.resolveRaidBaseLocation),
+	))
 	return service, nil
 }
 
