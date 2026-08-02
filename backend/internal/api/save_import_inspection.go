@@ -652,7 +652,10 @@ func removeNestedSaveImportCandidates(destination, selectedRelative string, cand
 
 func cleanupSaveImportInspections(cfg appconfig.Config) error {
 	root := filepath.Join(cfg.SaveSourcesDir, ".inspections")
-	if cfg.SaveSourcesDir == "" || !pathWithin(cfg.SaveSourcesDir, root) {
+	if cfg.SaveSourcesDir == "" {
+		return nil
+	}
+	if !pathWithin(cfg.SaveSourcesDir, root) {
 		return errors.New("save inspection cleanup path is invalid")
 	}
 	return os.RemoveAll(root)
