@@ -94,6 +94,11 @@ struct Job
     std::string pal_utility_error{};
     ObjectSnapshot query_world{};
     bool query_world_found{};
+    bool game_state_found{};
+    ObjectSnapshot game_state{};
+    bool game_state_player_array_available{};
+    size_t game_state_player_state_count{};
+    std::string game_state_error{};
     std::vector<OnlinePlayerSnapshot> online_players{};
 };
 
@@ -257,6 +262,67 @@ void append_pal_utility_player_states(
     }
 }
 
+void append_game_state_player_states(
+    RC::Unreal::UObject* world,
+    std::vector<RC::Unreal::UObject*>& output,
+    std::unordered_set<RC::Unreal::UObject*>& seen,
+    bool& game_state_found,
+    ObjectSnapshot& game_state_snapshot,
+    bool& available,
+    size_t& state_count,
+    std::string& error)
+{
+    using namespace RC::Unreal;
+    game_state_found = false;
+    game_state_snapshot = {};
+    available = false;
+    state_count = 0;
+    error.clear();
+    try {
+        if (!world || !UObject::IsReal(world)) {
+            error = "World context is unavailable";
+            return;
+        }
+        auto* game_state = read_object_property(world, {STR("GameState")});
+        if (!game_state) {
+            error = "World.GameState is unavailable";
+            return;
+        }
+        game_state_found = true;
+        game_state_snapshot = describe_object(game_state);
+        auto* states_property = find_property(game_state, {STR("PlayerArray")});
+        auto* states_array_property = CastField<FArrayProperty>(states_property);
+        auto* inner_object_property = states_array_property
+                                          ? CastField<FObjectPropertyBase>(states_array_property->GetInner())
+                                          : nullptr;
+        auto* player_state_class = inner_object_property
+                                       ? inner_object_property->GetPropertyClass().Get()
+                                       : nullptr;
+        if (!states_property || !states_array_property || !player_state_class ||
+            states_property->GetSize() < static_cast<std::int32_t>(sizeof(TArray<UObject*>))) {
+            error = "GameState.PlayerArray does not match this game build";
+            return;
+        }
+        auto* states = static_cast<TArray<UObject*>*>(
+            states_property->ContainerPtrToValuePtr<void>(game_state));
+        const auto count = states->Num();
+        if (count < 0 || count > 1024) {
+            error = "GameState.PlayerArray returned an invalid array size";
+            return;
+        }
+        available = true;
+        state_count = static_cast<size_t>(count);
+        for (TArray<UObject*>::SizeType index = 0; index < count; ++index) {
+            auto* state = (*states)[index];
+            if (state && UObject::IsReal(state) && state->IsA(player_state_class) && seen.insert(state).second) {
+                output.emplace_back(state);
+            }
+        }
+    } catch (...) {
+        error = "GameState.PlayerArray read failed";
+    }
+}
+
 void populate_player_state(RC::Unreal::UObject* player_state, OnlinePlayerSnapshot& player)
 {
     player.player_state_found = player_state != nullptr;
@@ -413,7 +479,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.11");
+        ModVersion = STR("0.1.12");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -498,6 +564,25 @@ class PalPanelBridge final : public RC::CppUserModBase
                     auto* world = RC::Unreal::UObjectGlobals::FindFirstOf(STR("World"));
                     job.query_world_found = world && RC::Unreal::UObject::IsReal(world);
                     if (job.query_world_found) job.query_world = describe_object(world);
+                    std::vector<RC::Unreal::UObject*> game_state_player_states;
+                    std::unordered_set<RC::Unreal::UObject*> game_state_seen;
+                    append_game_state_player_states(
+                        world,
+                        game_state_player_states,
+                        game_state_seen,
+                        job.game_state_found,
+                        job.game_state,
+                        job.game_state_player_array_available,
+                        job.game_state_player_state_count,
+                        job.game_state_error);
+                    for (auto* player_state : game_state_player_states) {
+                        if (job.online_players.size() >= max_results) break;
+                        if (!seen_player_states.insert(player_state).second) continue;
+                        OnlinePlayerSnapshot player;
+                        player.source = "game_state_player_array";
+                        populate_player_state(player_state, player);
+                        job.online_players.emplace_back(std::move(player));
+                    }
                     std::vector<RC::Unreal::UObject*> utility_player_states;
                     std::unordered_set<RC::Unreal::UObject*> utility_seen;
                     append_pal_utility_player_states(
@@ -560,7 +645,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.11\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.12\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -573,7 +658,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.11\","
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.12\","
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -623,10 +708,18 @@ class PalPanelBridge final : public RC::CppUserModBase
                  << ",\"pal_utility_player_state_count\":" << job.pal_utility_player_state_count
                  << ",\"pal_utility_error\":\"" << json_escape(job.pal_utility_error) << '"'
                  << ",\"query_world_found\":" << (job.query_world_found ? "true" : "false")
-                 << ",\"query_world\":{\"name\":\"" << json_escape(job.query_world.name)
-                 << "\",\"full_name\":\"" << json_escape(job.query_world.full_name)
-                 << "\",\"class_name\":\"" << json_escape(job.query_world.class_name) << "\"}"
-                 << ",\"online_player_count\":" << job.online_players.size() << ",\"players\":[";
+                  << ",\"query_world\":{\"name\":\"" << json_escape(job.query_world.name)
+                  << "\",\"full_name\":\"" << json_escape(job.query_world.full_name)
+                  << "\",\"class_name\":\"" << json_escape(job.query_world.class_name) << "\"}"
+                  << ",\"game_state_found\":" << (job.game_state_found ? "true" : "false")
+                  << ",\"game_state\":{\"name\":\"" << json_escape(job.game_state.name)
+                  << "\",\"full_name\":\"" << json_escape(job.game_state.full_name)
+                  << "\",\"class_name\":\"" << json_escape(job.game_state.class_name) << "\"}"
+                  << ",\"game_state_player_array_available\":"
+                  << (job.game_state_player_array_available ? "true" : "false")
+                  << ",\"game_state_player_state_count\":" << job.game_state_player_state_count
+                  << ",\"game_state_error\":\"" << json_escape(job.game_state_error) << '"'
+                  << ",\"online_player_count\":" << job.online_players.size() << ",\"players\":[";
             for (size_t index = 0; index < job.online_players.size(); ++index) {
                 if (index > 0) body << ',';
                 const auto& player = job.online_players[index];

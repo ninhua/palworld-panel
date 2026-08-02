@@ -1,5 +1,15 @@
 # 功能移植更新记录
 
+## 2026-08-02：PalPanelBridge 从 GameState 权威数组读取在线玩家
+
+已完成：
+
+- PalPanelBridge 升级至 `0.1.12`，在线查询优先读取当前 World 的 `GameState.PlayerArray`。
+- 返回 GameState 对象信息、PlayerArray 可用状态、原始玩家数量和反射错误，便于实机核对。
+- 由权威数组发现的玩家以 `game_state_player_array` 标记，原 PalUtility 与对象扫描继续作为诊断回退。
+- 保留 `0.1.11` 的响应、排队、执行时间及 Tick 计数，确保每次结果可验证是否变化。
+- 全过程只读，不修改玩家、背包、帕鲁或存档。
+
 ## 2026-08-02：PalPanelBridge 全响应时间与在线查询上下文
 
 已完成：

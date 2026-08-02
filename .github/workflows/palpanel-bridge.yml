@@ -72,7 +72,7 @@ jobs:
           $artifact = "$env:RUNNER_TEMP\palpanel-bridge-build\artifact\PalPanelBridge"
           $packageRoot = "$env:RUNNER_TEMP\palpanel-bridge-package"
           $package = Join-Path $packageRoot "PalPanelBridge"
-          $zip = "$env:RUNNER_TEMP\PalPanelBridge-v0.1.11-ue4ss-c838a8ac.zip"
+          $zip = "$env:RUNNER_TEMP\PalPanelBridge-v0.1.12-ue4ss-c838a8ac.zip"
           New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
           Copy-Item -LiteralPath $artifact -Destination $package -Recurse
           Copy-Item -LiteralPath "$package\config.ini.example" -Destination "$package\config.ini"
@@ -103,7 +103,7 @@ jobs:
 
       - uses: actions/upload-artifact@v6
         with:
-          name: PalPanelBridge-v0.1.11-ue4ss-c838a8ac-server-package
+          name: PalPanelBridge-v0.1.12-ue4ss-c838a8ac-server-package
           if-no-files-found: error
           retention-days: 14
-          path: ${{ runner.temp }}/PalPanelBridge-v0.1.11-ue4ss-c838a8ac.zip
+          path: ${{ runner.temp }}/PalPanelBridge-v0.1.12-ue4ss-c838a8ac.zip
