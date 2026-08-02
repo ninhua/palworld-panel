@@ -1,19 +1,28 @@
 {
-  "name": "Palworld-Panel-overlay-v0.8.81-to-v0.8.81-boss-auto1",
+  "name": "Palworld-Panel-overlay-v0.8.81-to-v0.8.81-boss-auto2",
   "repository": "ninhua/palworld-panel",
   "branch": "custom-stable",
-  "base_commit": "a890aa9b14cb2cb64b9edf252726cd8ab4905133",
+  "base_commit": "944c37c20cf499149eddc0f4ab453aaf19a95401",
   "base_patch_version": "0.8.81",
   "target_patch_version": "0.8.81",
-  "maintenance_revision": "boss-auto1",
+  "maintenance_revision": "boss-auto2",
+  "requires": [
+    "boss-auto1"
+  ],
+  "source_preconditions": [
+    {
+      "path": "backend/internal/boss/auto_execution.go",
+      "git_blob_sha": "c371cf70ad4304e90f5d435b865a08e1ae87b671"
+    }
+  ],
   "overlay_mode": "copy_to_repository_root",
-  "created_at": "2026-08-02T23:02:00+08:00",
+  "created_at": "2026-08-03T00:38:00+08:00",
   "features": [
-    "boss-auto-wave-execution-opt-in",
-    "boss-auto-wave-delay-scheduling",
-    "boss-auto-wave-restart-resume",
-    "boss-auto-wave-uncertain-stop",
-    "boss-auto-wave-single-step-cycle"
+    "boss-auto-wave-database-lease",
+    "boss-auto-wave-multi-process-deduplication",
+    "boss-auto-wave-crash-lease-expiry",
+    "boss-auto-wave-holder-safe-release",
+    "boss-auto-wave-fixed-width-lease-time"
   ],
   "files": [
     ".overlay/README.md",
@@ -22,21 +31,20 @@
     "backend/internal/api/boss_auto_execution_features.go",
     "backend/internal/boss/auto_execution.go",
     "backend/internal/boss/auto_execution_test.go",
-    "docs/releases/0.8.81-boss-auto1.md"
+    "docs/releases/0.8.81-boss-auto2.md"
   ],
   "verification": [
-    "Go formatting completed",
-    "Scheduler helper tests passed in an isolated compile harness",
-    "Metadata opt-in and pause parsing tested",
-    "Delay calculation and active/failed safety stops tested",
-    "UTF-8, LF, final-newline and trailing-whitespace checks",
-    "Internal SHA-256 manifest and ZIP integrity checks"
+    "Go formatting completed for all modified Go files",
+    "Auto execution policy, delay, blocking and lease timestamp tests passed in an isolated Go harness",
+    "Go vet passed for the isolated Boss and API feature harnesses",
+    "SQLite UPSERT lease exclusivity, expiry and holder-safe release behavior passed an in-memory integration test",
+    "UTF-8, LF, final-newline and trailing-whitespace checks passed",
+    "Internal SHA-256 manifest and ZIP extraction verification passed"
   ],
   "limitations": [
-    "No GitHub Actions run logs were exposed for the custom-stable head commit",
-    "Complete repository go test ./... and frontend npm run check could not be run without a repository checkout",
+    "Complete repository go test ./... was not run because a full repository checkout is unavailable in this environment",
     "No live Palworld or PalDefender server was available",
-    "Pause/resume UI and persisted control endpoint are not included",
-    "Boss death detection and participant settlement remain unimplemented"
+    "Pause, resume and skip control endpoints are not included in this maintenance increment",
+    "Boss death detection and participant reward settlement remain unimplemented"
   ]
 }

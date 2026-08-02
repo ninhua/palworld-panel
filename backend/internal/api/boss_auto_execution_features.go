@@ -7,5 +7,8 @@ func init() {
 		"boss-auto-wave-restart-resume",
 		"boss-auto-wave-uncertain-stop",
 		"boss-auto-wave-single-step-cycle",
+		"boss-auto-wave-database-lease",
+		"boss-auto-wave-multi-process-deduplication",
+		"boss-auto-wave-crash-lease-expiry",
 	)
 }
