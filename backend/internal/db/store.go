@@ -276,6 +276,10 @@ func configureSQLite(d *sql.DB) error {
 }
 
 func (s *Store) Close() error {
+	// Checkpoint WAL to release file locks on Windows before closing.
+	if _, err := s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		// ignore: best-effort cleanup
+	}
 	return s.db.Close()
 }
 
