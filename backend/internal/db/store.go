@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -251,6 +250,8 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	d.SetMaxOpenConns(1)
+	d.SetMaxIdleConns(0)
+	d.SetConnMaxIdleTime(0)
 	if err := configureSQLite(d); err != nil {
 		_ = d.Close()
 		return nil, err
@@ -264,13 +265,9 @@ func Open(path string) (*Store, error) {
 }
 
 func configureSQLite(d *sql.DB) error {
-	journalMode := "WAL"
-	if isWindows() {
-		journalMode = "DELETE"
-	}
 	for _, stmt := range []string{
 		`PRAGMA busy_timeout = 5000`,
-		fmt.Sprintf(`PRAGMA journal_mode = %s`, journalMode),
+		`PRAGMA journal_mode = WAL`,
 		`PRAGMA foreign_keys = ON`,
 	} {
 		if _, err := d.Exec(stmt); err != nil {
@@ -279,12 +276,6 @@ func configureSQLite(d *sql.DB) error {
 	}
 	return nil
 }
-
-func isWindows() bool {
-	return goos() == "windows"
-}
-
-var goos = func() string { return runtime.GOOS }
 
 func (s *Store) Close() error {
 	return s.db.Close()
