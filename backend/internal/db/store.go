@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -250,8 +251,6 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	d.SetMaxOpenConns(1)
-	d.SetMaxIdleConns(0)
-	d.SetConnMaxIdleTime(0)
 	if err := configureSQLite(d); err != nil {
 		_ = d.Close()
 		return nil, err
@@ -278,7 +277,16 @@ func configureSQLite(d *sql.DB) error {
 }
 
 func (s *Store) Close() error {
-	return s.db.Close()
+	err := s.db.Close()
+	if err != nil {
+		return err
+	}
+	// On Windows, the pure-Go SQLite driver may not release OS file
+	// handles synchronously.  Yield the OS thread and let the runtime
+	// finalise pending handles so that test TempDir cleanup can succeed.
+	runtime.GC()
+	runtime.Gosched()
+	return nil
 }
 
 func (s *Store) Ping(ctx context.Context) error {
