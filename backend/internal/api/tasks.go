@@ -28,12 +28,6 @@ func init() {
 }
 
 func (s Server) registerTaskRoutes(api *gin.RouterGroup) {
-	// Register the completion notifier during server startup so online-time and
-	// other background task completions can notify players without waiting for
-	// the first task API request or chat event. A later taskService call retries
-	// setup if the database is not ready yet.
-	_, _ = s.taskService()
-
 	group := api.Group("/tasks")
 	group.GET("", Require(PermRead), s.listTasks)
 	group.POST("", Require(PermConfigWrite), s.createTask)

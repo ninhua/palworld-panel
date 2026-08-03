@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -277,16 +276,7 @@ func configureSQLite(d *sql.DB) error {
 }
 
 func (s *Store) Close() error {
-	err := s.db.Close()
-	if err != nil {
-		return err
-	}
-	// On Windows, the pure-Go SQLite driver may not release OS file
-	// handles synchronously.  Yield the OS thread and let the runtime
-	// finalise pending handles so that test TempDir cleanup can succeed.
-	runtime.GC()
-	runtime.Gosched()
-	return nil
+	return s.db.Close()
 }
 
 func (s *Store) Ping(ctx context.Context) error {
