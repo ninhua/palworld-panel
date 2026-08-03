@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -263,9 +264,13 @@ func Open(path string) (*Store, error) {
 }
 
 func configureSQLite(d *sql.DB) error {
+	journalMode := "WAL"
+	if isWindows() {
+		journalMode = "DELETE"
+	}
 	for _, stmt := range []string{
 		`PRAGMA busy_timeout = 5000`,
-		`PRAGMA journal_mode = WAL`,
+		fmt.Sprintf(`PRAGMA journal_mode = %s`, journalMode),
 		`PRAGMA foreign_keys = ON`,
 	} {
 		if _, err := d.Exec(stmt); err != nil {
@@ -275,11 +280,13 @@ func configureSQLite(d *sql.DB) error {
 	return nil
 }
 
+func isWindows() bool {
+	return goos() == "windows"
+}
+
+var goos = func() string { return runtime.GOOS }
+
 func (s *Store) Close() error {
-	// Checkpoint WAL to release file locks on Windows before closing.
-	if _, err := s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
-		// ignore: best-effort cleanup
-	}
 	return s.db.Close()
 }
 
