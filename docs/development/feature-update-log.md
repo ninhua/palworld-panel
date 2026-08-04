@@ -1,5 +1,12 @@
 # 功能移植更新记录
 
+## 2026-08-04：PalPanelBridge 在线玩家只读查询脚本
+
+- 新增仅使用 Python 标准库的 `tools/palpanel-bridge/query_online_players.py`。
+- 通过 PalPanel HTTP 诊断接口提交并轮询在线玩家任务，完成、失败和超时状态均可由退出码区分。
+- 凭据优先从环境变量读取，缺失时使用隐藏输入；进度写入 stderr，玩家摘要 JSON 写入 stdout。
+- 默认只保留 UID、名称、Controller、PlayerState、Pawn、任务时间和 tick，减少日志与模型 token 消耗；`--full` 可按需输出完整诊断树。
+
 ## 2026-08-03：PalPanelBridge 在线任务阻塞修复
 
 问题与证据：

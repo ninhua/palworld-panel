@@ -151,3 +151,33 @@ Every JSON response includes `response_time_unix_ms` and `response_time_china`.
 Jobs also preserve their queue time, game-thread execution time, and tick count
 at execution. Online-player results identify the exact World object used for
 the PalUtility query.
+
+## 通过 PalPanel 诊断接口查询在线玩家
+
+只读脚本 [`query_online_players.py`](query_online_players.py) 会提交
+`POST /v1/players/online`，然后按任务返回的安全 `job_id` 轮询
+`GET /v1/jobs/<job_id>`，直到任务完成。进度写入 stderr，完成或失败时的玩家摘要
+JSON 写入 stdout；失败、超时、HTTP 错误和 JSON 错误均以非零状态退出。摘要保留
+UID、名称、Controller、PlayerState、Pawn、来源、计数、任务时间和游戏线程 tick，
+不会输出庞大的属性诊断树；需要完整响应时显式增加 `--full`。
+
+推荐先在 PowerShell 中设置凭据（也可不设置，脚本会改用隐藏输入）：
+
+```powershell
+$env:PALPANEL_API_KEY = "<Panel API Key>"
+$env:PALPANEL_BRIDGE_TOKEN = "<Bridge Token>"
+python tools/palpanel-bridge/query_online_players.py --pretty
+```
+
+使用隐藏输入：
+
+```powershell
+Remove-Item Env:PALPANEL_API_KEY, Env:PALPANEL_BRIDGE_TOKEN -ErrorAction SilentlyContinue
+python tools/palpanel-bridge/query_online_players.py --panel-url http://play.simpfun.cn:12559
+```
+
+可用 `--interval` 和 `--timeout` 覆盖默认的 3 秒轮询间隔与 60 秒总超时，
+用 `--full` 输出完整属性与函数候选。
+脚本仅使用 Python 标准库，不接受命令行 secret 参数，也不会把凭据写入日志。
+默认 Panel URL 是 `http://play.simpfun.cn:12559`。该地址使用公网 HTTP 明文传输，
+API Key 可能被窃听；生产使用应改用受保护的 HTTPS/内网通道，并在使用后撤销或轮换凭据。
