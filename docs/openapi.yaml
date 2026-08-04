@@ -1581,6 +1581,12 @@ paths:
       - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
       - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
       responses: {'200': *success, '400': *error, '401': *error, '500': *error}
+  /shop/redemption-attempts:
+    get:
+      operationId: listShopRedemptionAttempts
+      tags: [economy]
+      x-palpanel-permission: read
+      responses: {'200': *success, '401': *error, '500': *error}
   /shop/maintenance/deliver:
     post:
       operationId: deliverShopOrdersBatch
