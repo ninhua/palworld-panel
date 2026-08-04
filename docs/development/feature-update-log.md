@@ -1,5 +1,17 @@
 # 功能移植更新记录
 
+## 2026-08-05：PalPanelBridge 0.1.24 首批玩家详细字段
+
+已完成：
+
+- PlayerState 只读返回 `CachedPlayerLocation` 与 `GuildBelongTo` 对象引用，新增字段为 additive：`cached_location_found`、`cached_location`、`cached_location_error`、`guild_found`、`guild`。
+- 位置读取执行属性查找、`FStructProperty`、完整类型名、12/24 字节尺寸和 finite 三重防护；公会对象仅在 `IsReal` 成功时返回。
+- 普通在线玩家查询与 metadata 查询均填充这些字段，紧凑脚本保留五项字段。
+
+上一版实机记录：`0.1.23` Action `30930148809`，SHA `a2b1f73b802acbdf0212db3e2dae2ad9a24bfbe41d108e894bd92aa388204ed8`；部署备份成功，重启后任务 `players_1785862619310_1` 于 `2026-08-05T00:56:59.314+08:00` 完成，父类字段修复生效。
+
+本版尚未运行验证。
+
 ## 2026-08-05：PalPanelBridge 0.1.23 元数据继承链修复
 
 - 基于 `0.1.22` 的运行验证：`metadata_probe=true` 时，PlayerState 仅返回 6 项、Pawn 仅返回 24 项当前蓝图字段，缺少已知继承字段。

@@ -136,6 +136,11 @@ def compact_job(job: dict[str, Any]) -> dict[str, Any]:
             "player_state": player.get("player_state"),
             "pawn_found": player.get("pawn_found"),
             "pawn": player.get("pawn"),
+            "cached_location_found": player.get("cached_location_found"),
+            "cached_location": player.get("cached_location"),
+            "cached_location_error": player.get("cached_location_error"),
+            "guild_found": player.get("guild_found"),
+            "guild": player.get("guild"),
         }
         if "top_level_property_metadata" in player:
             compact_player["top_level_property_metadata"] = player.get("top_level_property_metadata")

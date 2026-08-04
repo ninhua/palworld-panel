@@ -18,6 +18,7 @@
 #include <array>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
@@ -62,6 +63,13 @@ struct ObjectSnapshot
     std::string class_name{};
 };
 
+struct CachedLocationSnapshot
+{
+    bool found{};
+    std::array<double, 3> value{};
+    std::string error{};
+};
+
 struct FunctionCandidateSnapshot
 {
     std::string name{};
@@ -102,6 +110,9 @@ struct OnlinePlayerSnapshot
     std::string account_name{};
     std::string player_uid{};
     std::string identity_error{};
+    CachedLocationSnapshot cached_location{};
+    bool guild_found{};
+    ObjectSnapshot guild{};
     std::vector<PropertyCandidateSnapshot> controller_property_candidates{};
     std::vector<PropertyCandidateSnapshot> player_state_property_candidates{};
     std::vector<PropertyCandidateSnapshot> pawn_property_candidates{};
@@ -187,7 +198,9 @@ RC::Unreal::UObject* read_object_property(
     auto* property = find_property(object, names);
     auto* object_property = RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(property);
     if (!object_property) return nullptr;
-    auto* value = object_property->GetObjectPropertyValue(property->ContainerPtrToValuePtr<void>(object));
+    auto* address = property->ContainerPtrToValuePtr<void>(object);
+    if (!address) return nullptr;
+    auto* value = object_property->GetObjectPropertyValue(address);
     return value && RC::Unreal::UObject::IsReal(value) ? value : nullptr;
 }
 
@@ -383,6 +396,46 @@ bool read_account_name(RC::Unreal::UObject* object, std::string& output)
     return true;
 }
 
+void read_cached_player_details(RC::Unreal::UObject* player_state, OnlinePlayerSnapshot& player)
+{
+    auto* property = find_property(player_state, {STR("CachedPlayerLocation")});
+    auto* struct_property = RC::Unreal::CastField<RC::Unreal::FStructProperty>(property);
+    auto* structure = struct_property ? struct_property->GetStruct().Get() : nullptr;
+    const auto type_name = structure ? RC::to_utf8_string(structure->GetFullName()) : std::string{};
+    if (!property || !struct_property || !structure ||
+        type_name != "ScriptStruct /Script/CoreUObject.Vector") {
+        player.cached_location.error = "CachedPlayerLocation is unavailable";
+    } else if (property->GetSize() != 12 && property->GetSize() != 24) {
+        player.cached_location.error = "CachedPlayerLocation has an unsupported size";
+    } else {
+        const auto* raw = property->ContainerPtrToValuePtr<void>(player_state);
+        if (!raw) {
+            player.cached_location.error = "CachedPlayerLocation has no value address";
+        } else if (property->GetSize() == 12) {
+            std::array<float, 3> values{};
+            std::memcpy(values.data(), raw, sizeof(values));
+            for (size_t index = 0; index < values.size(); ++index) {
+                player.cached_location.value[index] = static_cast<double>(values[index]);
+            }
+        } else {
+            std::array<double, 3> values{};
+            std::memcpy(values.data(), raw, sizeof(values));
+            player.cached_location.value = values;
+        }
+        if (raw && std::all_of(player.cached_location.value.begin(), player.cached_location.value.end(),
+                               [](const double value) { return std::isfinite(value); })) {
+            player.cached_location.found = true;
+        } else if (raw) {
+            player.cached_location.value = {};
+            player.cached_location.error = "CachedPlayerLocation contains non-finite values";
+        }
+    }
+
+    auto* guild = read_object_property(player_state, {STR("GuildBelongTo")});
+    player.guild_found = guild && RC::Unreal::UObject::IsReal(guild);
+    if (player.guild_found) player.guild = describe_object(guild);
+}
+
 void append_instances(
     std::string_view class_name,
     std::vector<RC::Unreal::UObject*>& output,
@@ -542,6 +595,7 @@ void populate_player_state(
     }
     const auto uid_ok = read_player_guid(player_state, player.player_uid);
     const auto name_ok = read_account_name(player_state, player.account_name);
+    read_cached_player_details(player_state, player);
     if (!uid_ok || !name_ok) {
         player.identity_error = !uid_ok && !name_ok
                                     ? "PlayerUId and AccountName are unavailable"
@@ -742,7 +796,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.23");
+        ModVersion = STR("0.1.24");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -945,7 +999,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.23\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.24\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -958,7 +1012,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.23\","
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.24\","
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -1053,7 +1107,25 @@ class PalPanelBridge final : public RC::CppUserModBase
                      << (player.pawn_found ? "true" : "false") << ",\"pawn\":{\"name\":\""
                       << json_escape(player.pawn.name) << "\",\"full_name\":\""
                       << json_escape(player.pawn.full_name) << "\",\"class_name\":\""
-                     << json_escape(player.pawn.class_name) << "\"}";
+                      << json_escape(player.pawn.class_name) << "\"},\"cached_location_found\":"
+                      << (player.cached_location.found ? "true" : "false") << ",\"cached_location\":";
+                 if (player.cached_location.found) {
+                     body << "{\"x\":" << player.cached_location.value[0]
+                          << ",\"y\":" << player.cached_location.value[1]
+                          << ",\"z\":" << player.cached_location.value[2] << '}';
+                 } else {
+                     body << "null";
+                 }
+                 body << ",\"cached_location_error\":\""
+                      << json_escape(player.cached_location.error) << "\",\"guild_found\":"
+                      << (player.guild_found ? "true" : "false") << ",\"guild\":";
+                 if (player.guild_found) {
+                     body << "{\"name\":\"" << json_escape(player.guild.name)
+                          << "\",\"full_name\":\"" << json_escape(player.guild.full_name)
+                          << "\",\"class_name\":\"" << json_escape(player.guild.class_name) << "\"}";
+                 } else {
+                     body << "null";
+                 }
                 if (job.metadata_probe) {
                     body << ",\"top_level_property_metadata\":{\"player_state\":";
                     append_property_metadata_json(body, player.player_state_property_metadata);

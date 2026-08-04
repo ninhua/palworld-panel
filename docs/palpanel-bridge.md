@@ -13,7 +13,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.23`
+- PalPanelBridge：`0.1.24`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.23",
+  "bridge_version": "0.1.24",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -191,6 +191,11 @@ PlayerState 和 Pawn 上名称含背包、容器、装备、物品、槽位、�
 元数据；每个对象最多描述 96 个属性，仅返回 `name`、`kind` 和 `declared_type`。
 该接口不读取未知属性值、数组/Map 内容、嵌套结构，也不调用未知 UE 函数；它不是
 位置、等级、公会等详细信息完成接口。
+
+`0.1.24` 在 PlayerState 上只读返回 `CachedPlayerLocation` 与 `GuildBelongTo`。
+位置字段仅接受完整类型名 `ScriptStruct /Script/CoreUObject.Vector`、12 或 24
+字节属性，并对三个坐标执行有限值校验；失败时不输出伪位置值并返回
+`cached_location_error`。公会对象仅在 `UObject::IsReal` 成功时返回。
 
 `0.1.23` 修复元数据探针只看到蓝图当前类属性的问题：先枚举当前类，再用
 UE4SS 已验证的 `TSuperStructRange` 逐层枚举父类，每层使用
