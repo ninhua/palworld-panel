@@ -25,6 +25,11 @@ func init() {
 		"economy-shop-delivery-reconciliation",
 		"economy-shop-delivery-audit",
 		"economy-shop-batch-delivery",
+		"economy-shop-catalog-product-editor",
+		"economy-shop-pal-template-category-filter",
+		"economy-shop-account-alias-resolution",
+		"economy-shop-redemption-diagnostics",
+		"economy-shop-detailed-game-failure-reply",
 	)
 }
 
@@ -37,6 +42,7 @@ func (s Server) registerShopRoutes(api *gin.RouterGroup) {
 	group.DELETE("/products/:id", Require(PermConfigWrite), s.archiveShopProduct)
 	group.GET("/orders", Require(PermRead), s.shopOrders)
 	group.GET("/delivery-events", Require(PermRead), s.shopDeliveryEvents)
+	group.GET("/redemption-attempts", Require(PermRead), s.shopRedemptionAttempts)
 	group.POST("/maintenance/deliver", Require(PermPlayersWrite), s.deliverShopOrdersBatch)
 	group.POST("/orders", Require(PermPlayersWrite), s.createShopOrder)
 	group.POST("/orders/:id/deliver", Require(PermPlayersWrite), s.deliverShopOrder)
@@ -161,6 +167,23 @@ func (s Server) shopDeliveryEvents(c *gin.Context) {
 	ok(c, gin.H{"items": items, "count": len(items)})
 }
 
+func (s Server) shopRedemptionAttempts(c *gin.Context) {
+	service, err := s.shopService()
+	if err != nil {
+		shopFailure(c, err)
+		return
+	}
+	items, err := service.ListRedemptionAttempts(c.Request.Context(), shop.RedemptionAttemptFilter{
+		Result: c.Query("result"), PlayerUID: c.Query("player_uid"),
+		Limit: economyQueryInt(c, "limit", 200), Offset: economyQueryInt(c, "offset", 0),
+	})
+	if err != nil {
+		shopFailure(c, err)
+		return
+	}
+	ok(c, gin.H{"items": items, "count": len(items)})
+}
+
 func (s Server) deliverShopOrdersBatch(c *gin.Context) {
 	var request shop.BatchDeliveryRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -201,7 +224,7 @@ func (s Server) createShopOrder(c *gin.Context) {
 		economyFailure(c, err)
 		return
 	}
-	result, err := service.CreateOrder(c.Request.Context(), ledger, request, CurrentPrincipal(c).Name)
+	result, _, err := service.CreateOrderWithDiagnostics(c.Request.Context(), ledger, request, "panel", request.IdempotencyKey, CurrentPrincipal(c).Name)
 	if err != nil {
 		shopFailure(c, err)
 		return
@@ -301,11 +324,11 @@ func shopQueryBool(c *gin.Context, key string) bool {
 
 func shopFailure(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, shop.ErrInvalidProduct), errors.Is(err, shop.ErrInvalidQuantity), errors.Is(err, shop.ErrInvalidOrder), errors.Is(err, shop.ErrDeliveryNotAutomatic), errors.Is(err, shop.ErrInvalidBatch):
+	case errors.Is(err, shop.ErrInvalidProduct), errors.Is(err, shop.ErrInvalidQuantity), errors.Is(err, shop.ErrInvalidOrder), errors.Is(err, shop.ErrDeliveryNotAutomatic), errors.Is(err, shop.ErrInvalidBatch), errors.Is(err, shop.ErrProductAmbiguous):
 		fail(c, http.StatusBadRequest, "shop_request_invalid", err.Error())
 	case errors.Is(err, shop.ErrProductNotFound), errors.Is(err, shop.ErrOrderNotFound), errors.Is(err, sql.ErrNoRows):
 		fail(c, http.StatusNotFound, "shop_resource_not_found", err.Error())
-	case errors.Is(err, shop.ErrProductDisabled), errors.Is(err, shop.ErrInsufficientStock), errors.Is(err, shop.ErrPlayerLimit), errors.Is(err, shop.ErrOrderSettled), errors.Is(err, shop.ErrReservationConflict), errors.Is(err, shop.ErrDeliveryInProgress), errors.Is(err, shop.ErrDeliveryUncertain), errors.Is(err, shop.ErrDeliveryUnsafeCancel), errors.Is(err, shop.ErrDeliveryResetInvalid), errors.Is(err, shop.ErrDeliveryPlayerMissing), errors.Is(err, economy.ErrInsufficientBalance), errors.Is(err, economy.ErrReservationSettled):
+	case errors.Is(err, shop.ErrProductDisabled), errors.Is(err, shop.ErrInsufficientStock), errors.Is(err, shop.ErrPlayerLimit), errors.Is(err, shop.ErrOrderSettled), errors.Is(err, shop.ErrReservationConflict), errors.Is(err, shop.ErrDeliveryInProgress), errors.Is(err, shop.ErrDeliveryUncertain), errors.Is(err, shop.ErrDeliveryUnsafeCancel), errors.Is(err, shop.ErrDeliveryResetInvalid), errors.Is(err, shop.ErrDeliveryPlayerMissing), errors.Is(err, economy.ErrInsufficientBalance), errors.Is(err, economy.ErrReservationSettled), errors.Is(err, economy.ErrShopAccountIdentityAmbiguous):
 		fail(c, http.StatusConflict, "shop_order_conflict", err.Error())
 	case errors.Is(err, shop.ErrDeliveryFailed):
 		fail(c, http.StatusBadGateway, "shop_delivery_failed", err.Error())

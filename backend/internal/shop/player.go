@@ -56,18 +56,25 @@ type PlayerCommandRequest struct {
 }
 
 type PlayerCommandResult struct {
-	EventID       string `json:"event_id,omitempty"`
-	PlayerUID     string `json:"player_uid,omitempty"`
-	Handled       bool   `json:"handled"`
-	Duplicate     bool   `json:"duplicate"`
-	Command       string `json:"command,omitempty"`
-	Reply         string `json:"reply,omitempty"`
-	ProductCode   string `json:"product_code,omitempty"`
-	OrderID       string `json:"order_id,omitempty"`
-	OrderStatus   string `json:"order_status,omitempty"`
-	DeliveryState string `json:"delivery_state,omitempty"`
-	Balance       int64  `json:"balance,omitempty"`
-	Order         *Order `json:"order,omitempty"`
+	EventID            string `json:"event_id,omitempty"`
+	RequestedPlayerUID string `json:"requested_player_uid,omitempty"`
+	PlayerUID          string `json:"player_uid,omitempty"`
+	SteamID            string `json:"steam_id,omitempty"`
+	AccountMatch       string `json:"account_match,omitempty"`
+	AccountWarning     string `json:"account_warning,omitempty"`
+	Handled            bool   `json:"handled"`
+	Duplicate          bool   `json:"duplicate"`
+	Command            string `json:"command,omitempty"`
+	Reply              string `json:"reply,omitempty"`
+	ProductCode        string `json:"product_code,omitempty"`
+	OrderID            string `json:"order_id,omitempty"`
+	OrderStatus        string `json:"order_status,omitempty"`
+	DeliveryState      string `json:"delivery_state,omitempty"`
+	Balance            int64  `json:"balance,omitempty"`
+	ReservedPoints     int64  `json:"reserved_points,omitempty"`
+	RequiredPoints     int64  `json:"required_points,omitempty"`
+	DiagnosticID       string `json:"diagnostic_id,omitempty"`
+	Order              *Order `json:"order,omitempty"`
 }
 
 func PublicProductCode(id string) string {
@@ -169,17 +176,34 @@ func (s *Service) ExecutePlayerCommand(ctx context.Context, ledger Economy, disp
 	request.EventID = strings.TrimSpace(request.EventID)
 	request.PlayerUID = normalizePlayerUID(request.PlayerUID)
 	request.Message = strings.TrimSpace(request.Message)
-	result := PlayerCommandResult{EventID: request.EventID, PlayerUID: request.PlayerUID}
+	result := PlayerCommandResult{
+		EventID: request.EventID, RequestedPlayerUID: request.PlayerUID, PlayerUID: request.PlayerUID, SteamID: request.SteamID,
+	}
 	command, arguments, handled := parsePlayerShopCommand(request.Message, request.CommandPrefix, request.AllowBareCommand)
 	if !handled {
 		return result, nil
 	}
 	result.Handled = true
 	result.Command = command
-	if request.PlayerUID == "" {
+	if request.PlayerUID == "" && strings.TrimSpace(request.SteamID) == "" {
 		result.Reply = "无法识别玩家身份，暂时不能使用积分商城。"
 		return result, nil
 	}
+
+	resolution, err := ResolvePlayerAccount(ctx, ledger, request.PlayerUID, request.Nickname, request.SteamID)
+	if err != nil {
+		if errors.Is(err, economy.ErrShopAccountIdentityAmbiguous) {
+			result.Reply = "积分账户身份不唯一，无法安全兑换。请管理员在面板“积分商城→兑换诊断”核对 PlayerUID 与 SteamID。"
+			return result, nil
+		}
+		return PlayerCommandResult{}, err
+	}
+	request.PlayerUID = resolution.Account.PlayerUID
+	result.PlayerUID = resolution.Account.PlayerUID
+	result.AccountMatch = resolution.MatchStrategy
+	result.AccountWarning = resolution.Warning
+	result.Balance = resolution.Account.Balance
+	result.ReservedPoints = resolution.ReservedPoints
 
 	switch command {
 	case "catalog":
@@ -190,6 +214,9 @@ func (s *Service) ExecutePlayerCommand(ctx context.Context, ledger Economy, disp
 		}
 		result.Balance = catalog.Balance
 		result.Reply = formatPlayerCatalog(catalog, page)
+		if resolution.Warning != "" {
+			result.Reply += "\n账户提示：" + resolution.Warning
+		}
 		return result, nil
 	case "orders":
 		page := parsePositivePage(arguments)
@@ -203,6 +230,9 @@ func (s *Service) ExecutePlayerCommand(ctx context.Context, ledger Economy, disp
 		}
 		result.Balance = account.Balance
 		result.Reply = formatPlayerOrders(orders, page, account.Balance)
+		if resolution.Warning != "" {
+			result.Reply += "\n账户提示：" + resolution.Warning
+		}
 		return result, nil
 	case "redeem":
 		selector, quantity, valid := parseRedeemArguments(arguments)
@@ -219,24 +249,29 @@ func (s *Service) ExecutePlayerCommand(ctx context.Context, ledger Economy, disp
 			return PlayerCommandResult{}, err
 		}
 		result.ProductCode = PublicProductCode(product.ID)
+		result.RequiredPoints = product.Price * quantity
 		idempotencyKey := request.EventID
 		if idempotencyKey == "" {
 			idempotencyKey = newID("chat", request.PlayerUID+product.ID)
 		}
-		orderResult, err := s.CreateOrder(ctx, ledger, CreateOrderRequest{
+		orderResult, attempt, err := s.CreateOrderWithDiagnostics(ctx, ledger, CreateOrderRequest{
 			IdempotencyKey: playerOrderIdempotencyKey(idempotencyKey),
 			ProductID:      product.ID,
-			PlayerUID:      request.PlayerUID,
+			PlayerUID:      result.RequestedPlayerUID,
 			Nickname:       request.Nickname,
 			SteamID:        request.SteamID,
 			Quantity:       quantity,
-		}, actor)
+		}, "game", request.EventID, actor)
+		result.DiagnosticID = attempt.ID
+		result.RequiredPoints = attempt.RequiredPoints
+		result.Balance = attempt.AvailablePoints
+		result.ReservedPoints = attempt.ReservedPoints
+		result.PlayerUID = shopFirstNonEmpty(attempt.ResolvedPlayerUID, result.PlayerUID)
+		result.AccountMatch = shopFirstNonEmpty(attempt.AccountMatch, result.AccountMatch)
+		result.AccountWarning = shopFirstNonEmpty(attempt.AccountWarning, result.AccountWarning)
 		if err != nil {
-			if message, ok := playerPurchaseError(err); ok {
-				result.Reply = message
-				return result, nil
-			}
-			return PlayerCommandResult{}, err
+			result.Reply = formatRedemptionFailure(attempt, err, result.ProductCode)
+			return result, nil
 		}
 		result.Duplicate = orderResult.Duplicate
 		result.Balance = orderResult.Account.Balance
@@ -256,6 +291,9 @@ func (s *Service) ExecutePlayerCommand(ctx context.Context, ledger Economy, disp
 		result.DeliveryState = order.DeliveryState
 		result.Order = &order
 		result.Reply = formatPurchaseReply(order, result.Balance, result.ProductCode)
+		if result.AccountWarning != "" {
+			result.Reply += "\n账户提示：" + result.AccountWarning
+		}
 		return result, nil
 	default:
 		return result, nil
@@ -400,6 +438,35 @@ func formatPurchaseReply(order Order, balance int64, code string) string {
 	}
 }
 
+func formatRedemptionFailure(attempt RedemptionAttempt, err error, code string) string {
+	product := attempt.ProductName
+	if product == "" {
+		product = attempt.ProductID
+	}
+	if product == "" {
+		product = "未知商品"
+	}
+	if code != "" {
+		product = fmt.Sprintf("[%s] %s", code, product)
+	}
+	base := fmt.Sprintf("兑换失败（诊断编号 %s）：%s ×%d，单价%d，需要%d积分；匹配账户可用%d积分，另有%d积分被未结订单预留。",
+		attempt.ID, product, attempt.Quantity, attempt.UnitPrice, attempt.RequiredPoints, attempt.AvailablePoints, attempt.ReservedPoints)
+	if attempt.ResolvedPlayerUID != "" {
+		base += fmt.Sprintf(" 请求身份%s，实际账户%s（%s）。", attempt.RequestedPlayerUID, attempt.ResolvedPlayerUID, attempt.AccountMatch)
+	}
+	if attempt.AccountWarning != "" {
+		base += " " + attempt.AccountWarning
+	}
+	switch {
+	case errors.Is(err, economy.ErrInsufficientBalance):
+		return base + " 积分不足；请管理员按诊断编号在面板核对账户和预留记录。"
+	case errors.Is(err, economy.ErrShopAccountIdentityAmbiguous):
+		return base + " 身份匹配不唯一，已阻止扣款。"
+	default:
+		return base + " 原因：" + strings.TrimSpace(err.Error())
+	}
+}
+
 func playerPurchaseError(err error) (string, bool) {
 	switch {
 	case errors.Is(err, ErrProductNotFound):
@@ -414,8 +481,6 @@ func playerPurchaseError(err error) (string, bool) {
 		return "已达到该商品的个人限购数量。", true
 	case errors.Is(err, ErrInvalidQuantity), errors.Is(err, ErrInvalidOrder), errors.Is(err, ErrInvalidProduct):
 		return "兑换数量或商品配置无效。", true
-	case errors.Is(err, economy.ErrInsufficientBalance):
-		return "积分不足，无法兑换该商品。", true
 	case errors.Is(err, ErrDeliveryInProgress), errors.Is(err, ErrDeliveryUncertain):
 		return "已有订单正在核对交付结果，请勿重复兑换。", true
 	default:
@@ -464,4 +529,13 @@ func normalizePlayerPage(limit, offset, fallback int) (int, int) {
 		offset = 0
 	}
 	return limit, offset
+}
+
+func shopFirstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

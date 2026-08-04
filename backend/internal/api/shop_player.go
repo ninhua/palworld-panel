@@ -48,22 +48,22 @@ func (s Server) gameShopCatalog(c *gin.Context) {
 		economyFailure(c, err)
 		return
 	}
-	account, err := points.EnsureAccount(c.Request.Context(), request.PlayerUID, request.Nickname, request.SteamID)
-	if err != nil {
-		economyFailure(c, err)
-		return
-	}
 	service, err := s.shopService()
 	if err != nil {
 		shopFailure(c, err)
 		return
 	}
-	catalog, err := service.PlayerCatalog(c.Request.Context(), points, account.PlayerUID, request.Query, request.Limit, request.Offset)
+	resolution, err := shop.ResolvePlayerAccount(c.Request.Context(), points, request.PlayerUID, request.Nickname, request.SteamID)
 	if err != nil {
 		shopFailure(c, err)
 		return
 	}
-	ok(c, catalog)
+	catalog, err := service.PlayerCatalog(c.Request.Context(), points, resolution.Account.PlayerUID, request.Query, request.Limit, request.Offset)
+	if err != nil {
+		shopFailure(c, err)
+		return
+	}
+	ok(c, gin.H{"player_uid": catalog.PlayerUID, "balance": catalog.Balance, "query": catalog.Query, "items": catalog.Items, "count": catalog.Count, "total": catalog.Total, "limit": catalog.Limit, "offset": catalog.Offset, "account_resolution": resolution})
 }
 
 func (s Server) gameShopCreateOrder(c *gin.Context) {
@@ -86,26 +86,21 @@ func (s Server) gameShopCreateOrder(c *gin.Context) {
 		economyFailure(c, err)
 		return
 	}
-	account, err := points.EnsureAccount(c.Request.Context(), request.PlayerUID, request.Nickname, request.SteamID)
-	if err != nil {
-		economyFailure(c, err)
-		return
-	}
 	service, err := s.shopService()
 	if err != nil {
 		shopFailure(c, err)
 		return
 	}
 	command, err := service.ExecutePlayerCommand(c.Request.Context(), points, shop.NewPalDefenderDispatcher(s.defender), shop.PlayerCommandRequest{
-		EventID: request.IdempotencyKey, PlayerUID: account.PlayerUID, Nickname: request.Nickname, SteamID: request.SteamID,
+		EventID: request.IdempotencyKey, PlayerUID: request.PlayerUID, Nickname: request.Nickname, SteamID: request.SteamID,
 		Message: fmt.Sprintf("兑换 %s %d", request.Product, request.Quantity), AllowBareCommand: true,
-	}, "game-integration:"+account.PlayerUID)
+	}, "game-integration:"+strings.TrimSpace(request.PlayerUID))
 	if err != nil {
 		shopFailure(c, err)
 		return
 	}
 	if !command.Handled || command.Order == nil {
-		fail(c, http.StatusBadRequest, "shop_request_invalid", command.Reply)
+		fail(c, http.StatusConflict, "shop_redemption_rejected", command.Reply)
 		return
 	}
 	if command.OrderStatus == "delivered" {
@@ -126,12 +121,12 @@ func (s Server) gameShopOrders(c *gin.Context) {
 		economyFailure(c, err)
 		return
 	}
-	account, err := points.EnsureAccount(c.Request.Context(), request.PlayerUID, request.Nickname, request.SteamID)
+	service, err := s.shopService()
 	if err != nil {
-		economyFailure(c, err)
+		shopFailure(c, err)
 		return
 	}
-	service, err := s.shopService()
+	resolution, err := shop.ResolvePlayerAccount(c.Request.Context(), points, request.PlayerUID, request.Nickname, request.SteamID)
 	if err != nil {
 		shopFailure(c, err)
 		return
@@ -147,11 +142,12 @@ func (s Server) gameShopOrders(c *gin.Context) {
 		request.Offset = 0
 	}
 	items, err := service.ListOrdersFiltered(c.Request.Context(), shop.OrderFilter{
-		Status: request.Status, PlayerUID: account.PlayerUID, Limit: limit, Offset: request.Offset,
+		Status: request.Status, PlayerUID: resolution.Account.PlayerUID, Limit: limit, Offset: request.Offset,
 	})
 	if err != nil {
 		shopFailure(c, err)
 		return
 	}
-	ok(c, gin.H{"player_uid": account.PlayerUID, "balance": account.Balance, "items": items, "count": len(items), "limit": limit, "offset": request.Offset})
+	ok(c, gin.H{"player_uid": resolution.Account.PlayerUID, "balance": resolution.Account.Balance, "reserved_points": resolution.ReservedPoints,
+		"account_resolution": resolution, "items": items, "count": len(items), "limit": limit, "offset": request.Offset})
 }
