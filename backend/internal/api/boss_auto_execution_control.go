@@ -10,9 +10,12 @@ import (
 )
 
 // tryBossAutoExecutionControl reuses the existing summon transition endpoint
-// for maintenance controls without adding new runtime routes. It returns true
-// only when request.status is a supported automatic-execution control action.
+// for maintenance controls without adding new runtime routes. Registration and
+// participant controls are dispatched first, then automatic-execution actions.
 func (s Server) tryBossAutoExecutionControl(c *gin.Context, request boss.TransitionRequest) bool {
+	if s.tryBossRegistrationControl(c, request) {
+		return true
+	}
 	if !boss.IsAutoExecutionControlAction(request.Status) {
 		return false
 	}
