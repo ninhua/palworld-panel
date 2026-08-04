@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Activity, Archive, BellRing, ClipboardList, Coins, Database, Dna, FileDiff, FolderArchive, Globe2, LayoutDashboard,
+  Activity, Archive, BellRing, ClipboardList, Coins, Crown, Database, Dna, FileDiff, FolderArchive, Globe2, LayoutDashboard,
   Gift, ListTodo, Map as MapIcon, PackageSearch, Puzzle, Settings as SettingsIcon, Shield, ShoppingBag, Sparkles, Target,
   SquareTerminal, Sword, UserCog, UserX, Users,
 } from 'lucide-react';
@@ -22,6 +22,7 @@ const EconomyShop = lazyPage(() => import('./pages/EconomyShop'), 'EconomyShop')
 const OperationsTasks = lazyPage(() => import('./pages/OperationsTasks'), 'OperationsTasks');
 const BossOperations = lazyPage(() => import('./pages/BossOperations'), 'BossOperations');
 const RaidOperations = lazyPage(() => import('./pages/RaidOperations'), 'RaidOperations');
+const FixedBossOperations = lazyPage(() => import('./pages/FixedBossOperations'), 'FixedBossOperations');
 const Guilds = lazyPage(() => import('./pages/Guilds'), 'Guilds');
 const Mods = lazyPage(() => import('./pages/Mods'), 'Mods');
 const Monitor = lazyPage(() => import('./pages/Monitor'), 'Monitor');
@@ -65,6 +66,7 @@ export const appRoutes: AppRoute[] = [
   { id: 'economy-shop', path: '/economy-shop', title: '积分商城', navLabel: '积分商城', navGroup: 'world', icon: <ShoppingBag size={18} />, element: <EconomyShop /> },
   { id: 'operations-tasks', path: '/operations-tasks', title: '任务系统', navLabel: '任务系统', navGroup: 'world', icon: <Target size={18} />, element: <OperationsTasks /> },
   { id: 'raid-operations', path: '/raids', title: '袭击管理', navLabel: '袭击管理', navGroup: 'world', activePaths: ['/boss'], icon: <Sword size={18} />, element: <RaidOperations /> },
+  { id: 'fixed-boss-operations', path: '/bosses', title: 'Boss 管理', navLabel: 'Boss 管理', navGroup: 'world', icon: <Crown size={18} />, element: <FixedBossOperations /> },
   { id: 'starter-gift', path: '/starter-gift', title: '新玩家礼包', navLabel: '新玩家礼包', titleKey: 'route.starterGift', navGroup: 'world', icon: <Gift size={18} />, element: <StarterGift /> },
   { id: 'save-sources', path: '/save-sources', title: '存档中心', navLabel: '存档中心', titleKey: 'route.saveSources', navGroup: 'world', icon: <FolderArchive size={18} />, element: <SaveSources /> },
   { id: 'save-history', path: '/save-history', title: '存档差异', navLabel: '存档差异', titleKey: 'route.saveHistory', navGroup: 'world', icon: <FileDiff size={18} />, element: <SaveHistory /> },
