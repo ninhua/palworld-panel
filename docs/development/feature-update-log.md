@@ -1,5 +1,13 @@
 # 功能移植更新记录
 
+## 2026-08-04：PalPanelBridge 0.1.21 在线玩家顶层属性元数据诊断
+
+- 新增 `POST /v1/players/online/metadata`，独立创建带 `metadata_probe` 标志的在线玩家 job。
+- 复用在线玩家枚举和身份读取，只对首名玩家的 PlayerState/Pawn 描述最多 96 个顶层属性，避免超过诊断响应上限。
+- 只返回属性名、粗粒度 kind 和声明类型；不读取未知值、集合内容、嵌套结构，也不调用未知 UE 函数。
+- 普通 `POST /v1/players/online` 的响应与既有属性诊断行为保持不变。
+- `query_online_players.py --metadata` 保留元数据计数、截断状态和玩家元数据列表；未存储任何凭据。
+
 ## 2026-08-04：PalPanelBridge 在线玩家只读查询脚本
 
 - 新增仅使用 Python 标准库的 `tools/palpanel-bridge/query_online_players.py`。

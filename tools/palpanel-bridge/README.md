@@ -23,7 +23,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.20-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.21-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -49,7 +49,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.20-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.21-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -75,6 +75,7 @@ curl -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/health
 curl -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/runtime
 curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/world
 curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/players/online
+curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/players/online/metadata
 curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/probe/game-thread
 curl -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/jobs/<job_id>
 ```
@@ -114,6 +115,12 @@ HTTP requests. Function-parameter traversal is temporarily disabled after the
 wire compatibility. When all 64 job slots are queued or running, new jobs return
 `503 job_queue_full` instead of evicting an active job.
 
+Version `0.1.21` adds `POST /v1/players/online/metadata`, a bounded field-discovery
+probe for top-level PlayerState and Pawn properties. It describes at most 96 reflected
+properties per object for the first online player, without reading property values,
+collection contents, nested structures, or invoking functions. This is not a detailed
+player-information endpoint.
+
 ## Verified SFTP deployment
 
 After the dedicated Action completes, run the repository deployment helper with
@@ -147,6 +154,11 @@ read-only fallback. The primary fallback calls Palworld's reflected
 `PalUtility.GetAllPlayerStates` with the current World context. It does not read
 inventory or Pal data and never modifies the objects.
 
+`POST /v1/players/online/metadata` reuses the same enumeration and identity reads, but
+only returns top-level metadata under `top_level_property_metadata.player_state` and
+`.pawn`. Use it to discover candidate field names before a separately reviewed
+value-reading change.
+
 Every JSON response includes `response_time_unix_ms` and `response_time_china`.
 Jobs also preserve their queue time, game-thread execution time, and tick count
 at execution. Online-player results identify the exact World object used for
@@ -160,6 +172,9 @@ the PalUtility query.
 JSON 写入 stdout；失败、超时、HTTP 错误和 JSON 错误均以非零状态退出。摘要保留
 UID、名称、Controller、PlayerState、Pawn、来源、计数、任务时间和游戏线程 tick，
 不会输出庞大的属性诊断树；需要完整响应时显式增加 `--full`。
+增加 `--metadata` 可提交顶层属性元数据任务；默认紧凑输出会保留元数据计数、截断状态
+以及每个已收集玩家的 PlayerState/Pawn 属性元数据。该模式只用于字段发现，不代表已经
+读取位置、等级或公会等详细信息。
 
 推荐先在 PowerShell 中设置凭据（也可不设置，脚本会改用隐藏输入）：
 

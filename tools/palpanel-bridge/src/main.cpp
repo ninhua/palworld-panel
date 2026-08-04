@@ -105,6 +105,8 @@ struct OnlinePlayerSnapshot
     std::vector<PropertyCandidateSnapshot> controller_property_candidates{};
     std::vector<PropertyCandidateSnapshot> player_state_property_candidates{};
     std::vector<PropertyCandidateSnapshot> pawn_property_candidates{};
+    std::vector<PropertyCandidateSnapshot> player_state_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> pawn_property_metadata{};
 };
 
 struct Job
@@ -134,6 +136,9 @@ struct Job
     size_t game_state_player_state_count{};
     std::string game_state_error{};
     std::vector<OnlinePlayerSnapshot> online_players{};
+    bool metadata_probe{false};
+    size_t metadata_player_count{};
+    bool metadata_truncated{false};
 };
 
 struct PlayerGuid
@@ -322,6 +327,23 @@ std::vector<PropertyCandidateSnapshot> collect_player_data_property_candidates(
     return candidates;
 }
 
+std::vector<PropertyCandidateSnapshot> collect_top_level_property_metadata(
+    RC::Unreal::UObject* object)
+{
+    std::vector<PropertyCandidateSnapshot> metadata;
+    if (!object || !RC::Unreal::UObject::IsReal(object)) return metadata;
+    auto* object_class = object->GetClassPrivate();
+    if (!object_class) return metadata;
+    try {
+        for (auto* property : object_class->ForEachProperty()) {
+            if (!property || metadata.size() >= 96) continue;
+            metadata.emplace_back(describe_property_candidate(property));
+        }
+    } catch (...) {
+    }
+    return metadata;
+}
+
 bool read_player_guid(RC::Unreal::UObject* object, std::string& output)
 {
     auto* property = find_property(object, {STR("PlayerUId"), STR("PlayerUID")});
@@ -492,7 +514,9 @@ void append_game_state_player_states(
     }
 }
 
-void populate_player_state(RC::Unreal::UObject* player_state, OnlinePlayerSnapshot& player)
+void populate_player_state(
+    RC::Unreal::UObject* player_state, OnlinePlayerSnapshot& player,
+    bool metadata_probe = false, bool collect_metadata = false)
 {
     player.player_state_found = player_state != nullptr;
     if (!player_state) {
@@ -500,7 +524,11 @@ void populate_player_state(RC::Unreal::UObject* player_state, OnlinePlayerSnapsh
         return;
     }
     player.player_state = describe_object(player_state);
-    player.player_state_property_candidates = collect_player_data_property_candidates(player_state);
+    if (metadata_probe && collect_metadata) {
+        player.player_state_property_metadata = collect_top_level_property_metadata(player_state);
+    } else if (!metadata_probe) {
+        player.player_state_property_candidates = collect_player_data_property_candidates(player_state);
+    }
     const auto uid_ok = read_player_guid(player_state, player.player_uid);
     const auto name_ok = read_account_name(player_state, player.account_name);
     if (!uid_ok || !name_ok) {
@@ -648,6 +676,20 @@ void append_property_candidate_json(
     body << "]}";
 }
 
+void append_property_metadata_json(
+    std::ostringstream& body, const std::vector<PropertyCandidateSnapshot>& metadata)
+{
+    body << '[';
+    for (size_t index = 0; index < metadata.size(); ++index) {
+        if (index > 0) body << ',';
+        const auto& candidate = metadata[index];
+        body << "{\"name\":\"" << json_escape(candidate.name)
+             << "\",\"kind\":\"" << json_escape(candidate.kind)
+             << "\",\"declared_type\":\"" << json_escape(candidate.declared_type) << "\"}";
+    }
+    body << ']';
+}
+
 const char* job_kind_name(JobKind kind)
 {
     if (kind == JobKind::World) return "world";
@@ -689,7 +731,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.20");
+        ModVersion = STR("0.1.21");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -765,23 +807,33 @@ class PalPanelBridge final : public RC::CppUserModBase
                 job.controller_object_count = controllers.size();
                 std::unordered_set<RC::Unreal::UObject*> seen_player_states;
                 constexpr size_t max_results = 64;
+                constexpr size_t metadata_player_limit = 1;
                 for (auto* controller : controllers) {
                     if (!controller || job.online_players.size() >= max_results) continue;
                     OnlinePlayerSnapshot player;
                     player.source = "controller";
                     player.controller = describe_object(controller);
-                    player.controller_property_candidates = collect_player_data_property_candidates(controller);
+                    if (!job.metadata_probe) {
+                        player.controller_property_candidates = collect_player_data_property_candidates(controller);
+                    }
+                    const auto collect_metadata = job.metadata_probe &&
+                                                  job.metadata_player_count < metadata_player_limit;
                     auto* player_state = read_object_property(controller, {STR("PlayerState")});
                     if (player_state) seen_player_states.insert(player_state);
-                    populate_player_state(player_state, player);
+                    populate_player_state(player_state, player, job.metadata_probe, collect_metadata);
                     auto* pawn = read_object_property(controller, {STR("AcknowledgedPawn")});
                     if (!pawn) pawn = read_object_property(controller, {STR("Pawn")});
                     player.pawn_found = pawn != nullptr;
                     if (pawn) {
                         player.pawn = describe_object(pawn);
-                        player.pawn_property_candidates = collect_player_data_property_candidates(pawn);
+                        if (collect_metadata) {
+                            player.pawn_property_metadata = collect_top_level_property_metadata(pawn);
+                        } else if (!job.metadata_probe) {
+                            player.pawn_property_candidates = collect_player_data_property_candidates(pawn);
+                        }
                     }
                     job.online_players.emplace_back(std::move(player));
+                    if (collect_metadata) ++job.metadata_player_count;
                 }
                 std::vector<RC::Unreal::UObject*> player_states;
                 std::unordered_set<RC::Unreal::UObject*> all_player_states;
@@ -804,8 +856,11 @@ class PalPanelBridge final : public RC::CppUserModBase
                     if (!seen_player_states.insert(player_state).second) continue;
                     OnlinePlayerSnapshot player;
                     player.source = "game_state_player_array";
-                    populate_player_state(player_state, player);
+                    const auto collect_metadata = job.metadata_probe &&
+                                                  job.metadata_player_count < metadata_player_limit;
+                    populate_player_state(player_state, player, job.metadata_probe, collect_metadata);
                     job.online_players.emplace_back(std::move(player));
+                    if (collect_metadata) ++job.metadata_player_count;
                 }
                 std::vector<RC::Unreal::UObject*> utility_player_states;
                 std::unordered_set<RC::Unreal::UObject*> utility_seen;
@@ -821,8 +876,11 @@ class PalPanelBridge final : public RC::CppUserModBase
                     if (!seen_player_states.insert(player_state).second) continue;
                     OnlinePlayerSnapshot player;
                     player.source = "pal_utility";
-                    populate_player_state(player_state, player);
+                    const auto collect_metadata = job.metadata_probe &&
+                                                  job.metadata_player_count < metadata_player_limit;
+                    populate_player_state(player_state, player, job.metadata_probe, collect_metadata);
                     job.online_players.emplace_back(std::move(player));
+                    if (collect_metadata) ++job.metadata_player_count;
                 }
                 append_instances("PalPlayerState", player_states, all_player_states);
                 append_instances("BP_PalPlayerState_C", player_states, all_player_states);
@@ -832,9 +890,13 @@ class PalPanelBridge final : public RC::CppUserModBase
                     if (!seen_player_states.insert(player_state).second) continue;
                     OnlinePlayerSnapshot player;
                     player.source = "player_state_fallback";
-                    populate_player_state(player_state, player);
+                    const auto collect_metadata = job.metadata_probe &&
+                                                  job.metadata_player_count < metadata_player_limit;
+                    populate_player_state(player_state, player, job.metadata_probe, collect_metadata);
                     job.online_players.emplace_back(std::move(player));
+                    if (collect_metadata) ++job.metadata_player_count;
                 }
+                job.metadata_truncated = job.metadata_probe && job.online_players.size() > metadata_player_limit;
             } catch (...) {
                 job.status = "failed";
             }
@@ -872,7 +934,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.20\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.21\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -885,7 +947,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.20\","
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.21\","
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -894,7 +956,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         return body.str();
     }
 
-    std::string enqueue(JobKind kind)
+    std::string enqueue(JobKind kind, bool metadata_probe = false)
     {
         const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::system_clock::now().time_since_epoch())
@@ -911,7 +973,8 @@ class PalPanelBridge final : public RC::CppUserModBase
             if (removable == jobs_.end()) return {};
             jobs_.erase(removable);
         }
-        jobs_.emplace(id, Job{.id = id, .kind = kind, .queued_at_unix_ms = static_cast<unsigned long long>(now)});
+        jobs_.emplace(id, Job{.id = id, .kind = kind, .queued_at_unix_ms = static_cast<unsigned long long>(now),
+                              .metadata_probe = metadata_probe});
         return id;
     }
 
@@ -955,7 +1018,13 @@ class PalPanelBridge final : public RC::CppUserModBase
                   << (job.game_state_player_array_available ? "true" : "false")
                   << ",\"game_state_player_state_count\":" << job.game_state_player_state_count
                   << ",\"game_state_error\":\"" << json_escape(job.game_state_error) << '"'
-                  << ",\"online_player_count\":" << job.online_players.size() << ",\"players\":[";
+                 << ",\"online_player_count\":" << job.online_players.size();
+            if (job.metadata_probe) {
+                body << ",\"metadata_probe\":true,\"metadata_player_limit\":1,\"metadata_player_count\":"
+                     << job.metadata_player_count << ",\"metadata_truncated\":"
+                     << (job.metadata_truncated ? "true" : "false");
+            }
+            body << ",\"players\":[";
             for (size_t index = 0; index < job.online_players.size(); ++index) {
                 if (index > 0) body << ',';
                 const auto& player = job.online_players[index];
@@ -973,35 +1042,45 @@ class PalPanelBridge final : public RC::CppUserModBase
                      << (player.pawn_found ? "true" : "false") << ",\"pawn\":{\"name\":\""
                       << json_escape(player.pawn.name) << "\",\"full_name\":\""
                       << json_escape(player.pawn.full_name) << "\",\"class_name\":\""
-                      << json_escape(player.pawn.class_name) << "\"},\"property_candidates\":{";
-                const auto append_candidates = [&](const char* name, const std::vector<PropertyCandidateSnapshot>& values) {
-                    body << '\"' << name << "\":[";
-                    for (size_t candidate_index = 0; candidate_index < values.size(); ++candidate_index) {
-                        if (candidate_index > 0) body << ',';
-                        body << '\"' << json_escape(values[candidate_index].name) << '\"';
-                    }
-                    body << ']';
-                };
-                append_candidates("controller", player.controller_property_candidates);
-                body << ',';
-                append_candidates("player_state", player.player_state_property_candidates);
-                body << ',';
-                append_candidates("pawn", player.pawn_property_candidates);
-                body << "},\"property_details\":{";
-                const auto append_details = [&](const char* name, const std::vector<PropertyCandidateSnapshot>& values) {
-                    body << '\"' << name << "\":[";
-                    for (size_t candidate_index = 0; candidate_index < values.size(); ++candidate_index) {
-                        if (candidate_index > 0) body << ',';
-                        append_property_candidate_json(body, values[candidate_index]);
-                    }
-                    body << ']';
-                };
-                append_details("controller", player.controller_property_candidates);
-                body << ',';
-                append_details("player_state", player.player_state_property_candidates);
-                body << ',';
-                append_details("pawn", player.pawn_property_candidates);
-                body << "}}";
+                     << json_escape(player.pawn.class_name) << "\"}";
+                if (job.metadata_probe) {
+                    body << ",\"top_level_property_metadata\":{\"player_state\":";
+                    append_property_metadata_json(body, player.player_state_property_metadata);
+                    body << ",\"pawn\":";
+                    append_property_metadata_json(body, player.pawn_property_metadata);
+                    body << '}';
+                } else {
+                    body << ",\"property_candidates\":{";
+                    const auto append_candidates = [&](const char* name, const std::vector<PropertyCandidateSnapshot>& values) {
+                        body << '\"' << name << "\":[";
+                        for (size_t candidate_index = 0; candidate_index < values.size(); ++candidate_index) {
+                            if (candidate_index > 0) body << ',';
+                            body << '\"' << json_escape(values[candidate_index].name) << '\"';
+                        }
+                        body << ']';
+                    };
+                    append_candidates("controller", player.controller_property_candidates);
+                    body << ',';
+                    append_candidates("player_state", player.player_state_property_candidates);
+                    body << ',';
+                    append_candidates("pawn", player.pawn_property_candidates);
+                    body << "},\"property_details\":{";
+                    const auto append_details = [&](const char* name, const std::vector<PropertyCandidateSnapshot>& values) {
+                        body << '\"' << name << "\":[";
+                        for (size_t candidate_index = 0; candidate_index < values.size(); ++candidate_index) {
+                            if (candidate_index > 0) body << ',';
+                            append_property_candidate_json(body, values[candidate_index]);
+                        }
+                        body << ']';
+                    };
+                    append_details("controller", player.controller_property_candidates);
+                    body << ',';
+                    append_details("player_state", player.player_state_property_candidates);
+                    body << ',';
+                    append_details("pawn", player.pawn_property_candidates);
+                    body << "}";
+                }
+                body << '}';
             }
             body << ']';
         }
@@ -1043,6 +1122,12 @@ class PalPanelBridge final : public RC::CppUserModBase
                        : "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
         } else if (first == "POST /v1/players/online HTTP/1.1") {
             const auto id = enqueue(JobKind::OnlinePlayers);
+            status = id.empty() ? 503 : 202;
+            body = id.empty()
+                       ? "{\"ok\":false,\"error\":{\"code\":\"job_queue_full\",\"message\":\"all job slots are queued or running\"}}"
+                       : "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
+        } else if (first == "POST /v1/players/online/metadata HTTP/1.1") {
+            const auto id = enqueue(JobKind::OnlinePlayers, true);
             status = id.empty() ? 503 : 202;
             body = id.empty()
                        ? "{\"ok\":false,\"error\":{\"code\":\"job_queue_full\",\"message\":\"all job slots are queued or running\"}}"

@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 DEFAULT_PANEL_URL = "http://play.simpfun.cn:12559"
 DIAGNOSTIC_PATH = "/api/system/diagnostics/http"
 BRIDGE_PLAYERS_URL = "http://127.0.0.1:18083/v1/players/online"
+BRIDGE_METADATA_URL = "http://127.0.0.1:18083/v1/players/online/metadata"
 BRIDGE_JOB_URL_PREFIX = "http://127.0.0.1:18083/v1/jobs/"
 JOB_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
@@ -121,21 +122,48 @@ def compact_job(job: dict[str, Any]) -> dict[str, Any]:
     for player in players:
         if not isinstance(player, dict):
             continue
-        compact_players.append(
+        compact_player = {
+            "source": player.get("source"),
+            "account_name": player.get("account_name"),
+            "player_uid": player.get("player_uid"),
+            "identity_error": player.get("identity_error"),
+            "controller": {
+                "name": player.get("name"),
+                "full_name": player.get("full_name"),
+                "class_name": player.get("class_name"),
+            },
+            "player_state_found": player.get("player_state_found"),
+            "player_state": player.get("player_state"),
+            "pawn_found": player.get("pawn_found"),
+            "pawn": player.get("pawn"),
+        }
+        if "top_level_property_metadata" in player:
+            compact_player["top_level_property_metadata"] = player.get("top_level_property_metadata")
+        compact_players.append(compact_player)
+    compact_result = {
+        "unreal_initialized": result.get("unreal_initialized"),
+        "game_thread_tick_seen": result.get("game_thread_tick_seen"),
+        "controller_object_count": result.get("controller_object_count"),
+        "player_state_object_count": result.get("player_state_object_count"),
+        "pal_utility_available": result.get("pal_utility_available"),
+        "pal_utility_player_state_count": result.get("pal_utility_player_state_count"),
+        "pal_utility_error": result.get("pal_utility_error"),
+        "query_world_found": result.get("query_world_found"),
+        "query_world": result.get("query_world"),
+        "game_state_found": result.get("game_state_found"),
+        "game_state_player_array_available": result.get("game_state_player_array_available"),
+        "game_state_player_state_count": result.get("game_state_player_state_count"),
+        "game_state_error": result.get("game_state_error"),
+        "online_player_count": result.get("online_player_count"),
+        "players": compact_players,
+    }
+    if result.get("metadata_probe") is True:
+        compact_result.update(
             {
-                "source": player.get("source"),
-                "account_name": player.get("account_name"),
-                "player_uid": player.get("player_uid"),
-                "identity_error": player.get("identity_error"),
-                "controller": {
-                    "name": player.get("name"),
-                    "full_name": player.get("full_name"),
-                    "class_name": player.get("class_name"),
-                },
-                "player_state_found": player.get("player_state_found"),
-                "player_state": player.get("player_state"),
-                "pawn_found": player.get("pawn_found"),
-                "pawn": player.get("pawn"),
+                "metadata_probe": True,
+                "metadata_player_limit": result.get("metadata_player_limit"),
+                "metadata_player_count": result.get("metadata_player_count"),
+                "metadata_truncated": result.get("metadata_truncated"),
             }
         )
     return {
@@ -147,23 +175,7 @@ def compact_job(job: dict[str, Any]) -> dict[str, Any]:
         "executed_at_unix_ms": job.get("executed_at_unix_ms"),
         "executed_at_china": job.get("executed_at_china"),
         "game_thread_tick_count_at_execution": job.get("game_thread_tick_count_at_execution"),
-        "result": {
-            "unreal_initialized": result.get("unreal_initialized"),
-            "game_thread_tick_seen": result.get("game_thread_tick_seen"),
-            "controller_object_count": result.get("controller_object_count"),
-            "player_state_object_count": result.get("player_state_object_count"),
-            "pal_utility_available": result.get("pal_utility_available"),
-            "pal_utility_player_state_count": result.get("pal_utility_player_state_count"),
-            "pal_utility_error": result.get("pal_utility_error"),
-            "query_world_found": result.get("query_world_found"),
-            "query_world": result.get("query_world"),
-            "game_state_found": result.get("game_state_found"),
-            "game_state_player_array_available": result.get("game_state_player_array_available"),
-            "game_state_player_state_count": result.get("game_state_player_state_count"),
-            "game_state_error": result.get("game_state_error"),
-            "online_player_count": result.get("online_player_count"),
-            "players": compact_players,
-        },
+        "result": compact_result,
     }
 
 
@@ -174,6 +186,7 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=60.0, help="总超时秒数（默认：60）")
     parser.add_argument("--pretty", action="store_true", help="格式化最终 JSON")
     parser.add_argument("--full", action="store_true", help="输出完整属性诊断树，而不是默认玩家摘要")
+    parser.add_argument("--metadata", action="store_true", help="查询在线玩家顶层属性元数据")
     args = parser.parse_args()
     if args.interval <= 0 or args.timeout <= 0:
         parser.error("--interval 和 --timeout 必须大于 0")
@@ -181,8 +194,9 @@ def main() -> int:
     try:
         panel_key = read_secret("PALPANEL_API_KEY", "Panel API Key（隐藏输入）：")
         bridge_token = read_secret("PALPANEL_BRIDGE_TOKEN", "Bridge Token（隐藏输入）：")
-        report_progress("提交在线玩家查询任务…")
-        submission = diagnostic_request(args.panel_url, panel_key, "POST", BRIDGE_PLAYERS_URL, bridge_token)
+        report_progress("提交在线玩家元数据查询任务…" if args.metadata else "提交在线玩家查询任务…")
+        bridge_url = BRIDGE_METADATA_URL if args.metadata else BRIDGE_PLAYERS_URL
+        submission = diagnostic_request(args.panel_url, panel_key, "POST", bridge_url, bridge_token)
         job_id = get_job_id(submission)
         report_progress(f"任务已提交：{job_id}；等待完成…")
         deadline = time.monotonic() + args.timeout

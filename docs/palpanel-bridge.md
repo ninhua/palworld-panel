@@ -13,7 +13,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.20`
+- PalPanelBridge：`0.1.21`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.20",
+  "bridge_version": "0.1.21",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -134,6 +134,16 @@ GET http://127.0.0.1:18083/v1/jobs/<job_id>
 `pal_utility_player_state_count` 和 `pal_utility_error`。当前阶段不读取 SteamID、
 背包或帕鲁数据，也不修改对象。
 
+字段发现接口：
+
+```text
+POST http://127.0.0.1:18083/v1/players/online/metadata
+```
+
+任务结果带有 `metadata_probe: true`，每个已收集玩家可带有
+`top_level_property_metadata: {"player_state": [...], "pawn": [...]}`；普通在线
+任务不返回该大列表。
+
 `0.1.13` 从当前 World 的 `GameState.PlayerArray` 读取服务端维护的权威
 PlayerState 数组，并返回 `game_state_found`、`game_state`、
 `game_state_player_array_available`、`game_state_player_state_count` 和
@@ -175,6 +185,12 @@ PlayerState 和 Pawn 上名称含背包、容器、装备、物品、槽位、�
 所有函数候选保留空 `parameters` 数组以兼容响应结构。job 表满 64 条时只淘汰已完成
 或失败的任务；若全部任务仍在排队或执行，新请求返回 `503 job_queue_full`，不会删除
 运行中的任务。
+
+`0.1.21` 新增独立的 `POST /v1/players/online/metadata` 字段发现接口。它复用在线
+玩家枚举和身份读取，只对首名玩家的 PlayerState 与 Pawn 读取顶层 `FProperty`
+元数据；每个对象最多描述 96 个属性，仅返回 `name`、`kind` 和 `declared_type`。
+该接口不读取未知属性值、数组/Map 内容、嵌套结构，也不调用未知 UE 函数；它不是
+位置、等级、公会等详细信息完成接口。
 
 ## 响应与任务时间
 
