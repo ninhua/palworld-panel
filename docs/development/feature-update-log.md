@@ -1,5 +1,12 @@
 # 功能移植更新记录
 
+## 2026-08-05：PalPanelBridge 0.1.23 元数据继承链修复
+
+- 基于 `0.1.22` 的运行验证：`metadata_probe=true` 时，PlayerState 仅返回 6 项、Pawn 仅返回 24 项当前蓝图字段，缺少已知继承字段。
+- 修复目的：让 `/v1/players/online/metadata` 按 UE4SS 自身范式先枚举当前类，再用 `TSuperStructRange` 显式逐层枚举父类；每层使用 `TFieldRange` 的 `IncludeDeprecated`。
+- 每个对象最多收集 96 项，达到上限后立即停止后续枚举；不读取属性值，普通 `/v1/players/online` 响应与业务行为不变。
+- 本次 `0.1.23` 修复尚未进行运行时验证。
+
 ## 2026-08-05：PalPanelBridge 0.1.22 继承属性元数据修复
 
 - `0.1.21` 已由 GitHub Actions `30925986780` 成功构建并经 `deploy.py` 完成 SHA256 校验、远程备份和原子替换；`config.ini` 保持不变，服务器未自动重启。

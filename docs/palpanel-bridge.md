@@ -13,7 +13,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.22`
+- PalPanelBridge：`0.1.23`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.22",
+  "bridge_version": "0.1.23",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -192,9 +192,11 @@ PlayerState 和 Pawn 上名称含背包、容器、装备、物品、槽位、�
 该接口不读取未知属性值、数组/Map 内容、嵌套结构，也不调用未知 UE 函数；它不是
 位置、等级、公会等详细信息完成接口。
 
-`0.1.22` 修复元数据探针只看到蓝图当前类属性的问题，改用 UE4SS 已验证的
-`TFieldRange<FProperty>` 与 `IncludeSuper | IncludeDeprecated` 遍历父类属性。
-该修复仍只返回属性元数据，不读取属性值，并继续限制每个对象最多 96 项。
+`0.1.23` 修复元数据探针只看到蓝图当前类属性的问题：先枚举当前类，再用
+UE4SS 已验证的 `TSuperStructRange` 逐层枚举父类，每层使用
+`TFieldRange<FProperty>` 与 `IncludeDeprecated`。该修复仍只返回属性元数据，
+不读取属性值，并在达到每个对象 96 项上限后立即停止；`metadata_truncated`
+仍只表示玩家数截断，不表示字段截断。
 
 ## 响应与任务时间
 
