@@ -55,6 +55,7 @@ func (s Server) registerBossRoutes(api *gin.RouterGroup) {
 	group.GET("/summons/:id/events", Require(PermRead), s.bossSummonEvents)
 	group.POST("/summons/:id/execute-next", Require(PermServerControl), s.executeBossNextWave)
 	group.GET("/summons/:id/executions", Require(PermRead), s.bossSummonExecutions)
+	group.GET("/summons/:id/lifecycle", Require(PermRead), s.bossLifecycleStatus)
 	group.GET("/schedules", Require(PermRead), s.bossSchedules)
 	group.POST("/schedules", Require(PermConfigWrite), s.createBossSchedule)
 	group.PUT("/schedules/:id", Require(PermConfigWrite), s.updateBossSchedule)
@@ -63,6 +64,8 @@ func (s Server) registerBossRoutes(api *gin.RouterGroup) {
 	group.POST("/schedules/:id/test-warning", Require(PermServerControl), s.testBossScheduleWarning)
 	group.GET("/schedule-events", Require(PermRead), s.bossScheduleEvents)
 	group.POST("/maintenance/run-due", Require(PermServerControl), s.runDueBossSchedules)
+	api.GET("/security/paldefender/starter-gift/history", Require(PermRead), s.starterGiftHistory)
+	api.POST("/security/paldefender/starter-gift/grants/:id/reissue-preserve", Require(PermSecurityWrite), s.preserveStarterGiftAction)
 }
 
 func (s Server) bossService() (*boss.Service, error) {
@@ -86,10 +89,17 @@ func (s Server) bossService() (*boss.Service, error) {
 		Host: s.cfg.EffectiveRCONHost(), Port: s.cfg.EffectiveRCONPort(), Password: password, RCONEnabled: rconEnabled,
 		PalDefenderDir: s.cfg.PalDefenderDir(), Timeout: 8 * time.Second,
 	})
-	service.SetExecutionAdapter(boss.NewRaidExecutionAdapter(
+	raidExecutor := boss.NewRaidExecutionAdapter(
 		palDefenderExecutor,
 		boss.RaidBaseResolverFunc(s.resolveRaidBaseLocation),
-	))
+	)
+	if err := service.ConfigureBossLifecycle(context.Background(), boss.BossLifecycleOptions{
+		LogDirectory: boss.BossLifecycleLogDirectory(s.cfg.PalDefenderDir()),
+		PollInterval: 2 * time.Second, DefaultTimeout: time.Hour, MaxReadBytes: 2 << 20,
+	}); err != nil {
+		return nil, err
+	}
+	service.SetExecutionAdapter(boss.NewBossLifecycleExecutionAdapter(service, raidExecutor))
 	return service, nil
 }
 

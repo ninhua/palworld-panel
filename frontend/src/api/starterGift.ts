@@ -50,6 +50,14 @@ export interface StarterGiftGrant {
   last_error?: string;
   events: StarterGiftGrantEvent[];
 }
+export interface StarterGiftHistoryEntry extends StarterGiftGrant {
+  id: string;
+  scope_id: string;
+  archive_action: string;
+  archive_reason: string;
+  archived_at: string;
+  cycle_fingerprint: string;
+}
 export interface StarterGiftPlayerDecision {
   player_id: string;
   player_uid?: string;
@@ -104,6 +112,11 @@ export interface StarterGiftSnapshot {
   players_error?: string;
   save_index_state?: string;
 }
+export interface StarterGiftHistoryResult {
+  items: StarterGiftHistoryEntry[];
+  count: number;
+  scope?: StarterGiftScope;
+}
 
 export type StarterGiftPlayerAction = 'retry' | 'supplement' | 'reissue' | 'next_login' | 'cancel_next_login';
 
@@ -121,11 +134,50 @@ const emptyConfig: StarterGiftConfig = {
 
 const strings = (value: unknown) => (Array.isArray(value) ? value : []).map(String).filter(Boolean);
 const optionalString = (value: unknown) => value ? String(value) : undefined;
+const asRecord = (raw: unknown): Record<string, unknown> => raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+
+const mapGrant = (rawGrant: unknown): StarterGiftGrant => {
+  const grant = asRecord(rawGrant);
+  return {
+    player_id: String(grant.player_id || ''),
+    player_uid: optionalString(grant.player_uid),
+    steam_id: optionalString(grant.steam_id),
+    nickname: optionalString(grant.nickname),
+    status: String(grant.status || 'pending'),
+    phase: optionalString(grant.phase),
+    detection_source: optionalString(grant.detection_source),
+    detection_reason: optionalString(grant.detection_reason),
+    manual: Boolean(grant.manual),
+    resolved_player_id: optionalString(grant.resolved_player_id),
+    next_item: Number(grant.next_item || 0),
+    next_template: Number(grant.next_template || 0),
+    technology_done: Boolean(grant.technology_done),
+    technology_mode: String(grant.technology_mode || 'none'),
+    technology_points: Number(grant.technology_points || 0),
+    ancient_technology_points: Number(grant.ancient_technology_points || 0),
+    item_total: Number(grant.item_total || 0),
+    template_total: Number(grant.template_total || 0),
+    progress_percent: Number(grant.progress_percent || 0),
+    attempts: Number(grant.attempts || 0),
+    first_seen_at: String(grant.first_seen_at || ''),
+    updated_at: String(grant.updated_at || ''),
+    completed_at: optionalString(grant.completed_at),
+    last_error: optionalString(grant.last_error),
+    events: (Array.isArray(grant.events) ? grant.events : []).map((rawEvent) => {
+      const event = asRecord(rawEvent);
+      return {
+        at: String(event.at || ''), phase: String(event.phase || ''), level: String(event.level || ''), message: String(event.message || ''),
+        item_from: event.item_from == null ? undefined : Number(event.item_from), item_to: event.item_to == null ? undefined : Number(event.item_to),
+        template_from: event.template_from == null ? undefined : Number(event.template_from), template_to: event.template_to == null ? undefined : Number(event.template_to),
+      };
+    }),
+  };
+};
 
 const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
-  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  const config = (data.config && typeof data.config === 'object' ? data.config : {}) as Record<string, unknown>;
-  const scope = (data.scope && typeof data.scope === 'object' ? data.scope : {}) as Record<string, unknown>;
+  const data = asRecord(raw);
+  const config = asRecord(data.config);
+  const scope = asRecord(data.scope);
   return {
     scope: {
       id: String(scope.id || ''),
@@ -135,7 +187,7 @@ const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
     config: {
       enabled: Boolean(config.enabled),
       items: (Array.isArray(config.items) ? config.items : []).map((rawItem) => {
-        const item = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
+        const item = asRecord(rawItem);
         return { item_id: String(item.item_id || ''), count: Number(item.count || 0) };
       }),
       pal_templates: strings(config.pal_templates),
@@ -146,45 +198,9 @@ const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
       template_batch_size: Number(config.template_batch_size || emptyConfig.template_batch_size),
       batch_delay_ms: Number(config.batch_delay_ms || emptyConfig.batch_delay_ms),
     },
-    grants: (Array.isArray(data.grants) ? data.grants : []).map((rawGrant) => {
-      const grant = (rawGrant && typeof rawGrant === 'object' ? rawGrant : {}) as Record<string, unknown>;
-      return {
-        player_id: String(grant.player_id || ''),
-        player_uid: optionalString(grant.player_uid),
-        steam_id: optionalString(grant.steam_id),
-        nickname: optionalString(grant.nickname),
-        status: String(grant.status || 'pending'),
-        phase: optionalString(grant.phase),
-        detection_source: optionalString(grant.detection_source),
-        detection_reason: optionalString(grant.detection_reason),
-        manual: Boolean(grant.manual),
-        resolved_player_id: optionalString(grant.resolved_player_id),
-        next_item: Number(grant.next_item || 0),
-        next_template: Number(grant.next_template || 0),
-        technology_done: Boolean(grant.technology_done),
-        technology_mode: String(grant.technology_mode || 'none'),
-        technology_points: Number(grant.technology_points || 0),
-        ancient_technology_points: Number(grant.ancient_technology_points || 0),
-        item_total: Number(grant.item_total || 0),
-        template_total: Number(grant.template_total || 0),
-        progress_percent: Number(grant.progress_percent || 0),
-        attempts: Number(grant.attempts || 0),
-        first_seen_at: String(grant.first_seen_at || ''),
-        updated_at: String(grant.updated_at || ''),
-        completed_at: optionalString(grant.completed_at),
-        last_error: optionalString(grant.last_error),
-        events: (Array.isArray(grant.events) ? grant.events : []).map((rawEvent) => {
-          const event = (rawEvent && typeof rawEvent === 'object' ? rawEvent : {}) as Record<string, unknown>;
-          return {
-            at: String(event.at || ''), phase: String(event.phase || ''), level: String(event.level || ''), message: String(event.message || ''),
-            item_from: event.item_from == null ? undefined : Number(event.item_from), item_to: event.item_to == null ? undefined : Number(event.item_to),
-            template_from: event.template_from == null ? undefined : Number(event.template_from), template_to: event.template_to == null ? undefined : Number(event.template_to),
-          };
-        }),
-      };
-    }),
+    grants: (Array.isArray(data.grants) ? data.grants : []).map(mapGrant),
     players: (Array.isArray(data.players) ? data.players : []).map((rawPlayer) => {
-      const player = (rawPlayer && typeof rawPlayer === 'object' ? rawPlayer : {}) as Record<string, unknown>;
+      const player = asRecord(rawPlayer);
       return {
         player_id: String(player.player_id || ''), player_uid: optionalString(player.player_uid), steam_id: optionalString(player.steam_id), nickname: optionalString(player.nickname),
         online: Boolean(player.online), seen: Boolean(player.seen), rearmed: Boolean(player.rearmed), is_new: Boolean(player.is_new), eligible: Boolean(player.eligible),
@@ -194,7 +210,7 @@ const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
     }).filter((player) => player.player_id),
     worker_running: Boolean(data.worker_running),
     templates: (Array.isArray(data.templates) ? data.templates : []).map((rawTemplate) => {
-      const template = (rawTemplate && typeof rawTemplate === 'object' ? rawTemplate : {}) as Record<string, unknown>;
+      const template = asRecord(rawTemplate);
       return {
         name: String(template.name || ''), pal_id: optionalString(template.pal_id), pal_name: optionalString(template.pal_name), english_name: optionalString(template.english_name),
         category: optionalString(template.category), usage_category: optionalString(template.usage_category), overall_grade: optionalString(template.overall_grade),
@@ -205,16 +221,38 @@ const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
       };
     }).filter((template) => template.name),
     template_indexes: (Array.isArray(data.template_indexes) ? data.template_indexes : []).map((rawIndex) => {
-      const index = (rawIndex && typeof rawIndex === 'object' ? rawIndex : {}) as Record<string, unknown>;
+      const index = asRecord(rawIndex);
       return { name: String(index.name || ''), label: String(index.label || index.name || ''), count: Number(index.count || 0) };
     }).filter((index) => index.name),
     item_catalog: (Array.isArray(data.item_catalog) ? data.item_catalog : []).map((rawItem) => {
-      const item = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
+      const item = asRecord(rawItem);
       return { id: String(item.id || ''), name: String(item.name || item.id || ''), icon: optionalString(item.icon) };
     }).filter((item) => item.id),
     template_error: optionalString(data.template_error),
     players_error: optionalString(data.players_error),
     save_index_state: optionalString(data.save_index_state),
+  };
+};
+
+const mapHistory = (raw: unknown): StarterGiftHistoryResult => {
+  const data = asRecord(raw);
+  const scope = asRecord(data.scope);
+  const items = (Array.isArray(data.items) ? data.items : []).map((rawItem): StarterGiftHistoryEntry => {
+    const item = asRecord(rawItem);
+    return {
+      ...mapGrant(item),
+      id: String(item.id || ''),
+      scope_id: String(item.scope_id || ''),
+      archive_action: String(item.archive_action || ''),
+      archive_reason: String(item.archive_reason || ''),
+      archived_at: String(item.archived_at || ''),
+      cycle_fingerprint: String(item.cycle_fingerprint || ''),
+    };
+  }).filter((item) => item.id);
+  return {
+    items,
+    count: Number(data.count ?? items.length),
+    scope: Object.keys(scope).length ? { id: String(scope.id || ''), world_id: String(scope.world_id || ''), world_path: optionalString(scope.world_path) } : undefined,
   };
 };
 
@@ -225,8 +263,16 @@ export const starterGiftApi = {
   save: (config: StarterGiftConfig) => handleRequest<unknown, StarterGiftSnapshot>(
     () => apiClient.put('/security/paldefender/starter-gift', config), mapSnapshot({}), { fallbackOnError: false, map: mapSnapshot },
   ),
+  history: () => handleRequest<unknown, StarterGiftHistoryResult>(
+    () => apiClient.get('/security/paldefender/starter-gift/history'), { items: [], count: 0 }, { fallbackOnError: false, map: mapHistory },
+  ),
   action: (id: string, action: StarterGiftPlayerAction) => handleRequest(
-    () => apiClient.post(`/security/paldefender/starter-gift/grants/${encodeURIComponent(id)}/retry`, { action }), {}, { fallbackOnError: false },
+    () => apiClient.post(
+      action === 'reissue' || action === 'next_login' || action === 'cancel_next_login'
+        ? `/security/paldefender/starter-gift/grants/${encodeURIComponent(id)}/reissue-preserve`
+        : `/security/paldefender/starter-gift/grants/${encodeURIComponent(id)}/retry`,
+      { action },
+    ), {}, { fallbackOnError: false },
   ),
   retry: (id: string) => starterGiftApi.action(id, 'retry'),
   forget: (id: string) => handleRequest(
