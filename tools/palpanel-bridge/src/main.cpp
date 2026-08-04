@@ -335,7 +335,10 @@ std::vector<PropertyCandidateSnapshot> collect_top_level_property_metadata(
     auto* object_class = object->GetClassPrivate();
     if (!object_class) return metadata;
     try {
-        for (auto* property : object_class->ForEachProperty()) {
+        for (auto* property : RC::Unreal::TFieldRange<RC::Unreal::FProperty>(
+                 object_class,
+                 RC::Unreal::EFieldIterationFlags::IncludeSuper |
+                     RC::Unreal::EFieldIterationFlags::IncludeDeprecated)) {
             if (!property || metadata.size() >= 96) continue;
             metadata.emplace_back(describe_property_candidate(property));
         }
@@ -731,7 +734,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.21");
+        ModVersion = STR("0.1.22");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -934,7 +937,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.21\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.22\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -947,7 +950,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.21\","
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.22\","
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','

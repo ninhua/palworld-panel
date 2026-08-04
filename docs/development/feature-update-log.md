@@ -1,5 +1,12 @@
 # 功能移植更新记录
 
+## 2026-08-05：PalPanelBridge 0.1.22 继承属性元数据修复
+
+- `0.1.21` 已由 GitHub Actions `30925986780` 成功构建并经 `deploy.py` 完成 SHA256 校验、远程备份和原子替换；`config.ini` 保持不变，服务器未自动重启。
+- 重启后实机元数据任务 `players_1785859837829_1` 已从队列进入 `completed`，但 PlayerState 仅返回 6 项、Pawn 仅返回 24 项，且缺少已知继承字段，证明原实现只遍历当前蓝图类。
+- 元数据枚举改用 UE4SS SDK 已验证的 `TFieldRange<FProperty>` 与 `IncludeSuper | IncludeDeprecated`，继续只返回 `name`、`kind`、`declared_type`，不读取未知值。
+- 版本升级至 `0.1.22`；仍保持首名玩家、每对象最多 96 项和普通在线接口零扩容。
+
 ## 2026-08-04：PalPanelBridge 0.1.21 在线玩家顶层属性元数据诊断
 
 - 新增 `POST /v1/players/online/metadata`，独立创建带 `metadata_probe` 标志的在线玩家 job。
