@@ -44,6 +44,7 @@ interface BossDraft {
   spawnRadius: number;
   capturable: boolean;
   cooldownSeconds: number;
+  lifecycleTimeoutSeconds: number;
   location: { x: number; y: number; z: number; label: string };
   enabled: boolean;
 }
@@ -56,6 +57,7 @@ const emptyDraft = (): BossDraft => ({
   spawnRadius: 0,
   capturable: false,
   cooldownSeconds: 300,
+  lifecycleTimeoutSeconds: 3600,
   location: { x: 0, y: 0, z: 0, label: '' },
   enabled: true,
 });
@@ -92,6 +94,24 @@ const summonStatusLabel: Record<BossSummon['status'], string> = {
   cancelled: '已取消',
 };
 
+const summonLifecycle = (summon: BossSummon) => asRecord(asRecord(summon.result).boss_lifecycle);
+const lifecycleNumber = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
+const summonDisplayStatus = (summon: BossSummon) => {
+  const lifecycle = summonLifecycle(summon);
+  const state = String(lifecycle.state || '');
+  if (summon.status === 'active' && state === 'monitoring') return `存活检测中 ${lifecycleNumber(lifecycle.observed_count)}/${lifecycleNumber(lifecycle.expected_count)}`;
+  if (summon.status === 'active' && state === 'timed_out') return '检测超时 · 待人工核对';
+  if (summon.status === 'completed' && state === 'completed') return '已确认击败';
+  return summonStatusLabel[summon.status];
+};
+const summonResultText = (summon: BossSummon) => {
+  const lifecycle = summonLifecycle(summon);
+  const state = String(lifecycle.state || '');
+  if (state === 'monitoring') return `已检测死亡 ${lifecycleNumber(lifecycle.observed_count)}/${lifecycleNumber(lifecycle.expected_count)}，截止 ${formatTime(String(lifecycle.deadline_at || ''))}`;
+  if (state === 'completed') return `PalDefender 已确认 ${lifecycleNumber(lifecycle.observed_count)}/${lifecycleNumber(lifecycle.expected_count)} 只目标死亡`;
+  if (state === 'timed_out') return String(lifecycle.last_error || '检测超时，需要人工核对游戏状态');
+  return summon.failure || (summon.status === 'completed' ? '召唤命令已完成' : '—');
+};
 const statusClass = (status: BossSummon['status']) => ({
   pending: 'border-amber-200 bg-amber-50 text-amber-700',
   active: 'border-sky-200 bg-sky-50 text-sky-700',
@@ -221,6 +241,8 @@ export const FixedBossOperations: React.FC = () => {
         metadata: {
           activity_kind: 'fixed_boss',
           fixed_coordinate: true,
+          boss_lifecycle_enabled: true,
+          boss_lifecycle_timeout_seconds: Math.max(60, Math.min(86400, Math.trunc(draft.lifecycleTimeoutSeconds || 3600))),
           pal_template_file: selectedTemplate.name,
           pal_template_snapshot: {
             pal_id: selectedTemplate.pal_id,
@@ -266,6 +288,8 @@ export const FixedBossOperations: React.FC = () => {
         metadata: {
           activity_kind: 'fixed_boss',
           fixed_boss_definition_id: item.id,
+          boss_lifecycle_enabled: true,
+          boss_lifecycle_timeout_seconds: Number(asRecord(item.metadata).boss_lifecycle_timeout_seconds || 3600),
           pal_template_file: palTemplateFile,
         },
       });
@@ -277,7 +301,7 @@ export const FixedBossOperations: React.FC = () => {
       setNotice({
         type: attempt.status === 'succeeded' ? 'success' : 'error',
         text: attempt.status === 'succeeded'
-          ? `Boss“${result.summon.template_name}”已在固定坐标召唤，成功执行 ${attempt.completed_commands}/${attempt.command_count} 条命令。`
+          ? `Boss“${result.summon.template_name}”已召唤，成功执行 ${attempt.completed_commands}/${attempt.command_count} 条命令，正在通过 PalDefender 日志检测死亡状态。`
           : `${attemptLabel[attempt.status]}：${attempt.failure || '请查看执行记录。'}`,
       });
       await refresh();
@@ -303,6 +327,7 @@ export const FixedBossOperations: React.FC = () => {
       spawnRadius: item.spawn_radius,
       capturable: item.capturable,
       cooldownSeconds: item.cooldown_seconds,
+      lifecycleTimeoutSeconds: Number(asRecord(item.metadata).boss_lifecycle_timeout_seconds || 3600),
       location: {
         x: item.location.x,
         y: item.location.y,
@@ -402,7 +427,7 @@ export const FixedBossOperations: React.FC = () => {
                     <span className="rounded-xl bg-slate-50 px-3 py-2">数量 {item.count}</span>
                     <span className="rounded-xl bg-slate-50 px-3 py-2">半径 {number.format(item.spawn_radius)}</span>
                     <span className="rounded-xl bg-slate-50 px-3 py-2">{item.capturable ? '允许捕捉' : '禁止捕捉'}</span>
-                    <span className="rounded-xl bg-slate-50 px-3 py-2">冷却 {item.cooldown_seconds}s</span>
+                    <span className="rounded-xl bg-slate-50 px-3 py-2">检测 {Number(asRecord(item.metadata).boss_lifecycle_timeout_seconds || 3600)}s</span>
                   </div>
                   <div className="mt-3 flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
                     <MapPin className="mt-0.5 shrink-0 text-rose-500" size={14} />
@@ -434,9 +459,9 @@ export const FixedBossOperations: React.FC = () => {
                 <tr key={item.id} className="border-b border-slate-100 last:border-0">
                   <td className="px-3 py-3"><strong className="block text-slate-800">{item.template_name}</strong><span className="text-[10px] font-mono text-slate-400">{item.id}</span></td>
                   <td className="px-3 py-3 font-mono text-slate-600">{item.location.x}, {item.location.y}, {item.location.z}</td>
-                  <td className="px-3 py-3"><span className={`rounded-full border px-2 py-1 text-[10px] font-black ${statusClass(item.status)}`}>{summonStatusLabel[item.status]}</span></td>
+                  <td className="px-3 py-3"><span className={`rounded-full border px-2 py-1 text-[10px] font-black ${statusClass(item.status)}`}>{summonDisplayStatus(item)}</span></td>
                   <td className="px-3 py-3 text-slate-500">{formatTime(item.requested_at)}</td>
-                  <td className="max-w-xs px-3 py-3 text-slate-500">{item.failure || (item.status === 'completed' ? '召唤命令已完成' : '—')}</td>
+                  <td className="max-w-xs px-3 py-3 text-slate-500">{summonResultText(item)}</td>
                 </tr>
               ))}
               {summons.length === 0 && <tr><td colSpan={5} className="py-12 text-center text-xs font-bold text-slate-400">暂无 Boss 召唤记录</td></tr>}
@@ -468,6 +493,7 @@ export const FixedBossOperations: React.FC = () => {
                     <label><FieldLabel>生成半径</FieldLabel><input type="number" min={0} max={10000} value={draft.spawnRadius} onChange={(event) => setDraft((current) => ({ ...current, spawnRadius: Number(event.target.value) }))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold outline-none focus:border-rose-400" /></label>
                   </div>
                   <label><FieldLabel>冷却秒数</FieldLabel><input type="number" min={0} max={86400} value={draft.cooldownSeconds} onChange={(event) => setDraft((current) => ({ ...current, cooldownSeconds: Number(event.target.value) }))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold outline-none focus:border-rose-400" /></label>
+                  <label><FieldLabel>死亡检测超时（秒）</FieldLabel><input type="number" min={60} max={86400} value={draft.lifecycleTimeoutSeconds} onChange={(event) => setDraft((current) => ({ ...current, lifecycleTimeoutSeconds: Number(event.target.value) }))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold outline-none focus:border-rose-400" /><span className="mt-1 block text-[10px] font-semibold text-slate-400">超时后保持进行中并要求人工核对，不会误判死亡。</span></label>
                   <div className="rounded-2xl border border-slate-200 p-3">
                     <FieldLabel>固定世界坐标</FieldLabel>
                     <div className="grid grid-cols-3 gap-2">

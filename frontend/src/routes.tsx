@@ -35,6 +35,7 @@ const SaveHistory = lazyPage(() => import('./pages/SaveHistory'), 'SaveHistory')
 const Incidents = lazyPage(() => import('./pages/Incidents'), 'Incidents');
 const Inventory = lazyPage(() => import('./pages/Inventory'), 'Inventory');
 const StarterGift = lazyPage(() => import('./pages/StarterGift'), 'StarterGift');
+const StarterGiftHistory = lazyPage(() => import('./pages/StarterGiftHistory'), 'StarterGiftHistory');
 const PlayerSummary = lazyPage(() => import('./pages/PlayerSummary'), 'PlayerSummary');
 const Security = lazyPage(() => import('./pages/Security'), 'Security');
 const Settings = lazyPage(() => import('./pages/Settings'), 'Settings');
@@ -68,6 +69,7 @@ export const appRoutes: AppRoute[] = [
   { id: 'raid-operations', path: '/raids', title: '袭击管理', navLabel: '袭击管理', navGroup: 'world', activePaths: ['/boss'], icon: <Sword size={18} />, element: <RaidOperations /> },
   { id: 'fixed-boss-operations', path: '/bosses', title: 'Boss 管理', navLabel: 'Boss 管理', navGroup: 'world', icon: <Crown size={18} />, element: <FixedBossOperations /> },
   { id: 'starter-gift', path: '/starter-gift', title: '新玩家礼包', navLabel: '新玩家礼包', titleKey: 'route.starterGift', navGroup: 'world', icon: <Gift size={18} />, element: <StarterGift /> },
+  { id: 'starter-gift-history', path: '/starter-gift-history', title: '礼包发放历史', navLabel: '礼包发放历史', navGroup: 'world', icon: <Gift size={18} />, element: <StarterGiftHistory /> },
   { id: 'save-sources', path: '/save-sources', title: '存档中心', navLabel: '存档中心', titleKey: 'route.saveSources', navGroup: 'world', icon: <FolderArchive size={18} />, element: <SaveSources /> },
   { id: 'save-history', path: '/save-history', title: '存档差异', navLabel: '存档差异', titleKey: 'route.saveHistory', navGroup: 'world', icon: <FileDiff size={18} />, element: <SaveHistory /> },
   { id: 'global-inventory', path: '/inventory', title: '库存管理', navLabel: '库存管理', titleKey: 'route.inventory', navGroup: 'world', icon: <PackageSearch size={18} />, element: <Inventory /> },

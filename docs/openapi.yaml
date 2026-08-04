@@ -1811,6 +1811,13 @@ paths:
       - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
       - {name: offset, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
       responses: {'200': *success, '400': *error, '401': *error, '404': *error, '500': *error}
+  /boss/summons/{id}/lifecycle:
+    parameters: [*idParameter]
+    get:
+      operationId: getBossSummonLifecycle
+      tags: [boss]
+      x-palpanel-permission: read
+      responses: {'200': *success, '401': *error, '404': *error, '500': *error}
   /players:
     get:
       operationId: listSavePlayers
@@ -1916,9 +1923,14 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/StarterGiftConfig'}
       responses: *writeResponses
+  /security/paldefender/starter-gift/history:
+    get: {operationId: getStarterGiftHistory, tags: [security], x-palpanel-permission: read, responses: *readResponses}
   /security/paldefender/starter-gift/grants/{id}/retry:
     parameters: [*idParameter]
     post: {operationId: retryStarterGift, tags: [security], x-palpanel-permission: 'security:write', responses: *writeResponses}
+  /security/paldefender/starter-gift/grants/{id}/reissue-preserve:
+    parameters: [*idParameter]
+    post: {operationId: reissuePreserveStarterGift, tags: [security], x-palpanel-permission: 'security:write', responses: *writeResponses}
   /security/paldefender/starter-gift/grants/{id}:
     parameters: [*idParameter]
     delete: {operationId: forgetStarterGift, tags: [security], x-palpanel-permission: 'security:write', responses: *writeResponses}
@@ -5030,7 +5042,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.84}
+            version: {type: string, const: 0.8.85}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

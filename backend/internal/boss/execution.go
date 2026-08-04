@@ -333,6 +333,13 @@ func (s *Service) ExecuteNextWave(ctx context.Context, summonID, actor string) (
 		if err := s.finishExecutionAttempt(ctx, attempt.ID, ExecutionAttemptSucceeded, result, ""); err != nil {
 			return ExecutionAttempt{}, err
 		}
+		if bossLifecycleMonitoring(result.Details) {
+			// Fixed-coordinate Bosses remain active until PalDefender logs confirm
+			// the configured death count. The activity guard is intentionally
+			// retained so another raid or Boss cannot start while this encounter
+			// is alive or awaiting manual reconciliation.
+			return s.GetExecutionAttempt(ctx, attempt.ID)
+		}
 		_, transitionErr := s.TransitionSummonWave(ctx, summonID, selected.Position, WaveTransitionRequest{
 			Status:  WaveStatusCompleted,
 			Message: fmt.Sprintf("wave %d executed successfully via %s", selected.Position, result.Adapter),
