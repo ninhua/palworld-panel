@@ -1,5 +1,19 @@
 # 功能移植更新记录
 
+## 2026-08-06：PalPanelBridge 0.1.27 据点/重量/帕鲁容器数值读取
+
+已完成：
+
+- `base_camp_count` 改为读取公会 `BaseCampIds` 数组长度；新增 `base_camp_level_found`/`base_camp_level` 读取数值 `BaseCampLevel`。
+- 背包新增 `inventory_weight_found`、`now_item_weight`、`max_inventory_weight`（数值属性存在时读取）。
+- 帕鲁存储新增 `pal_container_found`/`pal_container`（`PalStorage.TargetContainer` → `PalIndividualCharacterContainer` 对象引用）。
+- metadata 探针新增 `detail_property_metadata.pal_container`（关键词：pal/character/slot/handle/container/individual/otomo），为下一步读取帕鲁槽位做准备。
+- 版本统一为 `0.1.27`；`query_online_players.py` 紧凑输出保留新字段。
+
+验证：
+
+- 尚未进行运行时验证；等待 PalPanelBridge build 成功后部署并用 Panel 诊断中转实测。
+
 ## 2026-08-06：PalPanelBridge 0.1.26 玩家详细对象引用与背包/帕鲁元数据探针
 
 已完成：
@@ -11,7 +25,7 @@
 
 验证：
 
-- 尚未进行运行时验证；等待 PalPanelBridge build 成功后部署并用 Panel 诊断中转实测。
+- 实机验证完成（2026-08-06）：Action `31036005059`、SHA `e18a575db8bfaa7d08a41fd3ad8cda467ba34f14246cb2be4a0495ed52f3e36b` 已部署；服务器进程重新加载后 `bridge_version=0.1.26`。任务 `players_1785956478968_1`：`inventory_found=true`（`BP_PalPlayerInventoryData_C`）、`pal_storage_found=true`（`PalPlayerDataPalStorage`）、`otomo_found=true`（`PalPlayerOtomoData`）、`guild_name` 与 `guild_admin_player_uid`（=玩家自身 UID，会长）读取成功。`base_camp_count` 与 `inventory_container_count` 为 -1：实机 metadata 确认据点真实字段是 `BaseCampIds`（数组）与 `BaseCampLevel`（数值），背包容器属性名未出现在关键词枚举中，重量字段 `NowItemWeight`/`MaxInventoryWeight` 可用；帕鲁真实入口是 `PalStorage.TargetContainer`（`PalIndividualCharacterContainer`）。据此推进 0.1.27。
 
 ## 2026-08-06：PalPanelBridge 构建加速缓存
 

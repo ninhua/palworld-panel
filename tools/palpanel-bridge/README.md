@@ -23,7 +23,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.26-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.27-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -49,7 +49,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.26-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.27-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -151,6 +151,16 @@ property lists (up to 64 per object) and broadens the guild keyword list with
 `base`, `camp`, `territory`, and `map` so base-camp fields can be discovered.
 As before, matched values, arrays, maps, nested contents, and functions are
 never read.
+
+Version `0.1.27` turns the confirmed field names into values. `base_camp_count`
+reads the guild's `BaseCampIds` array length and `base_camp_level` reads the
+numeric `BaseCampLevel`. Inventory weight is reported as `now_item_weight` and
+`max_inventory_weight` when both numeric properties exist. The pal-storage
+object reference `pal_container` points at `TargetContainer`
+(`PalIndividualCharacterContainer`), and the metadata probe adds
+`detail_property_metadata.pal_container` so the container's pal slots can be
+discovered next. Only identity, strings, GUIDs, numeric scalars, and bounded
+collection sizes are read; pal or item slot contents are still not enumerated.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with

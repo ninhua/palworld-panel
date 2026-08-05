@@ -116,11 +116,18 @@ struct OnlinePlayerSnapshot
     std::string guild_name{};
     std::string guild_admin_player_uid{};
     std::int32_t base_camp_count{-1};
+    bool base_camp_level_found{};
+    double base_camp_level{};
     bool inventory_found{};
     ObjectSnapshot inventory{};
     std::int32_t inventory_container_count{-1};
+    bool inventory_weight_found{};
+    double now_item_weight{};
+    double max_inventory_weight{};
     bool pal_storage_found{};
     ObjectSnapshot pal_storage{};
+    bool pal_container_found{};
+    ObjectSnapshot pal_container{};
     bool otomo_found{};
     ObjectSnapshot otomo{};
     bool character_parameter_found{};
@@ -134,6 +141,7 @@ struct OnlinePlayerSnapshot
     std::vector<PropertyCandidateSnapshot> character_parameter_property_metadata{};
     std::vector<PropertyCandidateSnapshot> inventory_property_metadata{};
     std::vector<PropertyCandidateSnapshot> pal_storage_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> pal_container_property_metadata{};
     std::vector<PropertyCandidateSnapshot> otomo_property_metadata{};
     bool detail_property_metadata_collected{};
 };
@@ -487,6 +495,34 @@ std::int32_t read_map_property_count(
     return count >= 0 && count <= 100000 ? count : -1;
 }
 
+bool read_number_property(
+    RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names, double& output)
+{
+    auto* property = find_property(object, names);
+    if (!property) return false;
+    if (auto* int_property = RC::Unreal::CastField<RC::Unreal::FIntProperty>(property)) {
+        output = static_cast<double>(int_property->GetPropertyValueInContainer(object));
+        return true;
+    }
+    if (auto* float_property = RC::Unreal::CastField<RC::Unreal::FFloatProperty>(property)) {
+        output = static_cast<double>(float_property->GetPropertyValueInContainer(object));
+        return true;
+    }
+    if (auto* double_property = RC::Unreal::CastField<RC::Unreal::FDoubleProperty>(property)) {
+        output = double_property->GetPropertyValueInContainer(object);
+        return true;
+    }
+    if (auto* byte_property = RC::Unreal::CastField<RC::Unreal::FByteProperty>(property)) {
+        output = static_cast<double>(byte_property->GetPropertyValueInContainer(object));
+        return true;
+    }
+    if (auto* int64_property = RC::Unreal::CastField<RC::Unreal::FInt64Property>(property)) {
+        output = static_cast<double>(int64_property->GetPropertyValueInContainer(object));
+        return true;
+    }
+    return false;
+}
+
 void read_cached_player_details(
     RC::Unreal::UObject* player_state, OnlinePlayerSnapshot& player, bool collect_metadata)
 {
@@ -529,7 +565,9 @@ void read_cached_player_details(
         player.guild = describe_object(guild);
         read_string_property(guild, {STR("GuildName"), STR("GroupName")}, player.guild_name);
         read_guid_property(guild, {STR("AdminPlayerUId")}, player.guild_admin_player_uid);
-        player.base_camp_count = read_map_property_count(guild, {STR("BaseCampMap"), STR("BaseCamps")});
+        player.base_camp_count = read_array_property_count(guild, {STR("BaseCampIds")});
+        player.base_camp_level_found =
+            read_number_property(guild, {STR("BaseCampLevel")}, player.base_camp_level);
     }
 
     auto* inventory = read_object_property(player_state, {STR("InventoryData")});
@@ -538,11 +576,20 @@ void read_cached_player_details(
         player.inventory = describe_object(inventory);
         player.inventory_container_count =
             read_array_property_count(inventory, {STR("Containers")});
+        player.inventory_weight_found =
+            read_number_property(inventory, {STR("NowItemWeight")}, player.now_item_weight) &&
+            read_number_property(inventory, {STR("MaxInventoryWeight")}, player.max_inventory_weight);
     }
 
     auto* pal_storage = read_object_property(player_state, {STR("PalStorage")});
     player.pal_storage_found = pal_storage && RC::Unreal::UObject::IsReal(pal_storage);
-    if (player.pal_storage_found) player.pal_storage = describe_object(pal_storage);
+    if (player.pal_storage_found) {
+        player.pal_storage = describe_object(pal_storage);
+        auto* pal_container = read_object_property(pal_storage, {STR("TargetContainer")});
+        player.pal_container_found =
+            pal_container && RC::Unreal::UObject::IsReal(pal_container);
+        if (player.pal_container_found) player.pal_container = describe_object(pal_container);
+    }
 
     auto* otomo = read_object_property(player_state, {STR("OtomoData")});
     player.otomo_found = otomo && RC::Unreal::UObject::IsReal(otomo);
@@ -566,6 +613,12 @@ void read_cached_player_details(
             player.pal_storage_property_metadata = collect_keyword_property_metadata(
                 pal_storage,
                 {"pal", "character", "container", "slot", "box", "storage", "individual"});
+            if (player.pal_container_found) {
+                auto* pal_container = read_object_property(pal_storage, {STR("TargetContainer")});
+                player.pal_container_property_metadata = collect_keyword_property_metadata(
+                    pal_container,
+                    {"pal", "character", "slot", "handle", "container", "individual", "otomo"});
+            }
         }
         if (player.otomo_found) {
             player.otomo_property_metadata = collect_keyword_property_metadata(
@@ -841,6 +894,13 @@ std::string json_escape(const std::string& value)
     return escaped;
 }
 
+std::string json_number(double value)
+{
+    std::ostringstream output;
+    output << std::setprecision(15) << value;
+    return output.str();
+}
+
 void append_property_candidate_json(
     std::ostringstream& body, const PropertyCandidateSnapshot& candidate)
 {
@@ -935,7 +995,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.26");
+        ModVersion = STR("0.1.27");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -1151,7 +1211,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.26\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.27\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -1164,7 +1224,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.26\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.27\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -1282,6 +1342,12 @@ class PalPanelBridge final : public RC::CppUserModBase
                       << "\",\"guild_admin_player_uid\":\""
                       << json_escape(player.guild_admin_player_uid)
                       << "\",\"base_camp_count\":" << player.base_camp_count
+                      << ",\"base_camp_level_found\":"
+                      << (player.base_camp_level_found ? "true" : "false")
+                      << ",\"base_camp_level\":"
+                      << (player.base_camp_level_found
+                              ? json_number(player.base_camp_level)
+                              : std::string("null"))
                       << ",\"inventory_found\":"
                       << (player.inventory_found ? "true" : "false") << ",\"inventory\":";
                  if (player.inventory_found) {
@@ -1294,12 +1360,32 @@ class PalPanelBridge final : public RC::CppUserModBase
                  }
                  body << ",\"inventory_container_count\":"
                       << player.inventory_container_count
+                      << ",\"inventory_weight_found\":"
+                      << (player.inventory_weight_found ? "true" : "false")
+                      << ",\"now_item_weight\":"
+                      << (player.inventory_weight_found
+                              ? json_number(player.now_item_weight)
+                              : std::string("null"))
+                      << ",\"max_inventory_weight\":"
+                      << (player.inventory_weight_found
+                              ? json_number(player.max_inventory_weight)
+                              : std::string("null"))
                       << ",\"pal_storage_found\":"
                       << (player.pal_storage_found ? "true" : "false") << ",\"pal_storage\":";
                  if (player.pal_storage_found) {
                      body << "{\"name\":\"" << json_escape(player.pal_storage.name)
                           << "\",\"full_name\":\"" << json_escape(player.pal_storage.full_name)
                           << "\",\"class_name\":\"" << json_escape(player.pal_storage.class_name)
+                          << "\"}";
+                 } else {
+                     body << "null";
+                 }
+                 body << ",\"pal_container_found\":"
+                      << (player.pal_container_found ? "true" : "false") << ",\"pal_container\":";
+                 if (player.pal_container_found) {
+                     body << "{\"name\":\"" << json_escape(player.pal_container.name)
+                          << "\",\"full_name\":\"" << json_escape(player.pal_container.full_name)
+                          << "\",\"class_name\":\"" << json_escape(player.pal_container.class_name)
                           << "\"}";
                  } else {
                      body << "null";
@@ -1337,6 +1423,8 @@ class PalPanelBridge final : public RC::CppUserModBase
                         append_property_metadata_json(body, player.inventory_property_metadata);
                         body << ",\"pal_storage\":";
                         append_property_metadata_json(body, player.pal_storage_property_metadata);
+                        body << ",\"pal_container\":";
+                        append_property_metadata_json(body, player.pal_container_property_metadata);
                         body << ",\"otomo\":";
                         append_property_metadata_json(body, player.otomo_property_metadata);
                         body << ",\"character_parameter\":";

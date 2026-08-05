@@ -13,7 +13,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.26`
+- PalPanelBridge：`0.1.27`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.26",
+  "bridge_version": "0.1.27",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -214,6 +214,14 @@ PlayerState 和 Pawn 上名称含背包、容器、装备、物品、槽位、�
 （每个对象最多 64 项），并把 guild 关键词列表扩展 `base`、`camp`、
 `territory`、`map` 以发现据点字段。匹配的属性值、数组、Map、嵌套内容和函数
 仍然一律不读取。
+
+`0.1.27` 把实机确认的字段名变成数值：`base_camp_count` 读取公会 `BaseCampIds`
+数组长度，`base_camp_level` 读取数值 `BaseCampLevel`；背包重量在数值属性存在时
+返回 `now_item_weight` 与 `max_inventory_weight`；帕鲁存储对象引用
+`pal_container` 指向 `TargetContainer`（`PalIndividualCharacterContainer`），
+metadata 探针新增 `detail_property_metadata.pal_container` 以便下一步发现帕鲁
+槽位。仍然只读身份、字符串、GUID、数值标量和有界集合规模，不枚举帕鲁或物品
+槽位内容。
 位置字段仅接受完整类型名 `ScriptStruct /Script/CoreUObject.Vector`、12 或 24
 字节属性，并对三个坐标执行有限值校验；失败时不输出伪位置值并返回
 `cached_location_error`。公会对象仅在 `UObject::IsReal` 成功时返回。
