@@ -1881,7 +1881,7 @@ paths:
       parameters:
       - {name: q, in: query, schema: {type: string}}
       - {name: category, in: query, schema: {type: string}}
-      - {name: owner_type, in: query, schema: {type: string, enum: [all, base, player, unknown], default: all}}
+      - {name: owner_type, in: query, schema: {type: string, enum: [all, base, player, guild, unknown], default: all}}
       - {name: sort, in: query, schema: {type: string, enum: [count_desc, name_asc, name_desc], default: count_desc}}
       - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
       - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
@@ -3039,10 +3039,10 @@ components:
         data: {$ref: '#/components/schemas/GuildDetailResult'}
     GlobalInventoryLocation:
       type: object
-      required: [owner_type, owner_id, owner_name, container_id, container_type, container_name, slot, count]
+      required: [owner_type, owner_id, owner_name, container_id, container_type, container_name, slot, count, trusted]
       additionalProperties: false
       properties:
-        owner_type: {type: string, enum: [base, player, unknown]}
+        owner_type: {type: string, enum: [base, player, guild, unknown]}
         owner_id: {type: string}
         owner_name: {type: string}
         guild_name: {type: string}
@@ -3051,6 +3051,8 @@ components:
         container_name: {type: string}
         slot: {type: integer, minimum: 0}
         count: {type: integer, format: int64, minimum: 1}
+        trusted: {type: boolean}
+        scope_reason: {type: string}
     GlobalInventoryItem:
       type: object
       required: [item_id, item_name, item_icon, category, total_count, locations]
@@ -3064,7 +3066,7 @@ components:
         locations: {type: array, items: {$ref: '#/components/schemas/GlobalInventoryLocation'}}
     GlobalInventorySummary:
       type: object
-      required: [item_types, total_count, container_count, location_count, unresolved_containers, returned, offset, limit]
+      required: [item_types, total_count, container_count, location_count, unresolved_containers, suppressed_containers, suppressed_locations, suppressed_item_types, suppressed_total_count, trusted_only, returned, offset, limit]
       additionalProperties: false
       properties:
         item_types: {type: integer, minimum: 0}
@@ -3072,6 +3074,11 @@ components:
         container_count: {type: integer, minimum: 0}
         location_count: {type: integer, minimum: 0}
         unresolved_containers: {type: integer, minimum: 0}
+        suppressed_containers: {type: integer, minimum: 0}
+        suppressed_locations: {type: integer, minimum: 0}
+        suppressed_item_types: {type: integer, minimum: 0}
+        suppressed_total_count: {type: integer, format: int64, minimum: 0}
+        trusted_only: {type: boolean}
         returned: {type: integer, minimum: 0}
         offset: {type: integer, minimum: 0}
         limit: {type: integer, minimum: 1, maximum: 500}
@@ -3087,7 +3094,7 @@ components:
           required: [categories, owner_types]
           properties:
             categories: {type: array, items: {type: string}}
-            owner_types: {type: array, items: {type: string, enum: [all, base, player, unknown]}}
+            owner_types: {type: array, items: {type: string, enum: [all, base, player, guild, unknown]}}
         status: {$ref: '#/components/schemas/SaveIndexStatus'}
         source_id: {type: string}
     StarterGiftItem:
@@ -5048,7 +5055,7 @@ components:
           type: object
           required: [version, repository, features]
           properties:
-            version: {type: string, const: 0.8.93}
+            version: {type: string, const: 0.8.94}
             repository: {type: string, const: ninhua/palworld-panel}
             features:
               type: array

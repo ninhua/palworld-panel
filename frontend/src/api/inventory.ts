@@ -2,7 +2,7 @@ import { apiClient, handleRequest } from './client';
 import { emptySaveIndexStatus, mapSaveIndexStatus } from './saveIndex';
 import type { SaveIndexStatus } from '../types';
 
-export type InventoryOwnerType = 'all' | 'base' | 'player' | 'unknown';
+export type InventoryOwnerType = 'all' | 'base' | 'player' | 'guild' | 'unknown';
 export type InventorySort = 'count_desc' | 'name_asc' | 'name_desc';
 
 export interface GlobalInventoryLocation {
@@ -15,6 +15,8 @@ export interface GlobalInventoryLocation {
   container_name: string;
   slot: number;
   count: number;
+  trusted: boolean;
+  scope_reason?: string;
 }
 
 export interface GlobalInventoryItem {
@@ -60,6 +62,11 @@ export interface GlobalInventorySummary {
   container_count: number;
   location_count: number;
   unresolved_containers: number;
+  suppressed_containers: number;
+  suppressed_locations: number;
+  suppressed_item_types: number;
+  suppressed_total_count: number;
+  trusted_only: boolean;
   returned: number;
   offset: number;
   limit: number;
@@ -104,6 +111,11 @@ const emptySummary: GlobalInventorySummary = {
   container_count: 0,
   location_count: 0,
   unresolved_containers: 0,
+  suppressed_containers: 0,
+  suppressed_locations: 0,
+  suppressed_item_types: 0,
+  suppressed_total_count: 0,
+  trusted_only: true,
   returned: 0,
   offset: 0,
   limit: 200,
@@ -113,7 +125,7 @@ const mapLocation = (raw: unknown): GlobalInventoryLocation => {
   const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const ownerType = String(data.owner_type || 'unknown');
   return {
-    owner_type: ownerType === 'base' || ownerType === 'player' ? ownerType : 'unknown',
+    owner_type: ownerType === 'base' || ownerType === 'player' || ownerType === 'guild' ? ownerType : 'unknown',
     owner_id: String(data.owner_id || ''),
     owner_name: String(data.owner_name || '未识别容器'),
     guild_name: data.guild_name ? String(data.guild_name) : undefined,
@@ -122,6 +134,8 @@ const mapLocation = (raw: unknown): GlobalInventoryLocation => {
     container_name: String(data.container_name || '存储容器'),
     slot: Number(data.slot || 0),
     count: Number(data.count || 0),
+    trusted: Boolean(data.trusted),
+    scope_reason: data.scope_reason ? String(data.scope_reason) : undefined,
   };
 };
 
@@ -181,13 +195,18 @@ export const mapGlobalInventoryResponse = (raw: unknown): GlobalInventoryRespons
       container_count: Number(rawSummary.container_count || 0),
       location_count: Number(rawSummary.location_count || 0),
       unresolved_containers: Number(rawSummary.unresolved_containers || 0),
+      suppressed_containers: Number(rawSummary.suppressed_containers || 0),
+      suppressed_locations: Number(rawSummary.suppressed_locations || 0),
+      suppressed_item_types: Number(rawSummary.suppressed_item_types || 0),
+      suppressed_total_count: Number(rawSummary.suppressed_total_count || 0),
+      trusted_only: rawSummary.trusted_only !== false,
       returned: Number(rawSummary.returned || 0),
       offset: Number(rawSummary.offset || 0),
       limit: Number(rawSummary.limit || 200),
     },
     filters: {
       categories: (Array.isArray(rawFilters.categories) ? rawFilters.categories : []).map(String),
-      owner_types: (Array.isArray(rawFilters.owner_types) ? rawFilters.owner_types : ['all', 'base', 'player', 'unknown']) as InventoryOwnerType[],
+      owner_types: (Array.isArray(rawFilters.owner_types) ? rawFilters.owner_types : ['all', 'base', 'player', 'guild', 'unknown']) as InventoryOwnerType[],
     },
     status: data.status ? mapSaveIndexStatus(data.status) : emptySaveIndexStatus,
     source_id: String(data.source_id || ''),
@@ -207,7 +226,7 @@ export const inventoryApi = {
         offset: query.offset || 0,
       },
     }),
-    { items: [], summary: emptySummary, filters: { categories: [], owner_types: ['all', 'base', 'player', 'unknown'] }, status: emptySaveIndexStatus, source_id: '', unattended: emptyUnattended },
+    { items: [], summary: emptySummary, filters: { categories: [], owner_types: ['all', 'base', 'player', 'guild', 'unknown'] }, status: emptySaveIndexStatus, source_id: '', unattended: emptyUnattended },
     { fallbackOnError: false, map: mapGlobalInventoryResponse },
   ),
 };

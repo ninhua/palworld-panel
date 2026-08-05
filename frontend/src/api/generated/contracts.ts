@@ -660,13 +660,15 @@ export interface components {
       "guild_name"?: string;
       "owner_id": string;
       "owner_name": string;
-      "owner_type": "base" | "player" | "unknown";
+      "owner_type": "base" | "player" | "guild" | "unknown";
+      "scope_reason"?: string;
       "slot": number;
+      "trusted": boolean;
     };
     "GlobalInventoryResult": {
       "filters": {
         "categories": Array<string>;
-        "owner_types": Array<"all" | "base" | "player" | "unknown">;
+        "owner_types": Array<"all" | "base" | "player" | "guild" | "unknown">;
       };
       "items": Array<components["schemas"]["GlobalInventoryItem"]>;
       "source_id": string;
@@ -680,7 +682,12 @@ export interface components {
       "location_count": number;
       "offset": number;
       "returned": number;
+      "suppressed_containers": number;
+      "suppressed_item_types": number;
+      "suppressed_locations": number;
+      "suppressed_total_count": number;
       "total_count": number;
+      "trusted_only": boolean;
       "unresolved_containers": number;
     };
     "Guild": {
@@ -1510,7 +1517,7 @@ export interface components {
       "patch": {
         "features": Array<string>;
         "repository": "ninhua/palworld-panel";
-        "version": "0.8.93";
+        "version": "0.8.94";
       };
       "upstream": {
         "commit": string;

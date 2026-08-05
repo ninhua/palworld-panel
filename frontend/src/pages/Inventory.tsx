@@ -43,7 +43,7 @@ export const Inventory: React.FC = () => {
         <div>
           <p className="eyebrow">Global inventory</p>
           <h1>库存管理</h1>
-          <p>聚合当前激活存档中的玩家背包、据点仓储和尚未识别归属的容器。所有数据均为只读。</p>
+          <p>默认聚合玩家、据点和公会的可信库存；野外宝箱、掉落物和未归属容器仅在诊断范围中显示。所有数据均为只读。</p>
         </div>
         <button type="button" className="pp-button" disabled={inventory.isFetching} onClick={() => void inventory.refetch()}>
           <RefreshCw className={inventory.isFetching ? 'animate-spin' : ''} size={15} />刷新
@@ -55,11 +55,20 @@ export const Inventory: React.FC = () => {
         <InventoryMetric label="物品总量" value={summary?.total_count || 0} />
         <InventoryMetric label="有效容器" value={summary?.container_count || 0} />
         <InventoryMetric label="库存位置" value={summary?.location_count || 0} />
-        <InventoryMetric label="未知容器" value={summary?.unresolved_containers || 0} warning={Boolean(summary?.unresolved_containers)} />
+        <InventoryMetric label="已隐藏容器" value={summary?.suppressed_containers || 0} warning={Boolean(summary?.suppressed_containers)} detail="全存档" />
       </section>
 
       {inventory.error && <div className="pp-notice pp-notice--danger"><AlertTriangle size={16} />{getErrorMessage(inventory.error)}</div>}
       {data?.status.warnings?.length ? <div className="pp-notice"><AlertTriangle size={16} />{data.status.warnings.join('；')}</div> : null}
+
+      {Boolean(summary?.suppressed_containers) && summary && (
+        <div className="pp-notice">
+          <MapPin size={16} />
+          {ownerType === 'unknown'
+            ? `诊断视图正在显示 ${formatNumber(summary.suppressed_containers)} 个未归属或世界容器；这些数量不计入默认库存。`
+            : `已从默认统计隐藏 ${formatNumber(summary.suppressed_containers)} 个世界或未归属容器、${formatNumber(summary.suppressed_item_types)} 种物品，共 ${formatNumber(summary.suppressed_total_count)} 件。`}
+        </div>
+      )}
 
       <UnattendedInventoryCard state={data?.unattended} loading={inventory.isLoading} />
 
@@ -77,10 +86,11 @@ export const Inventory: React.FC = () => {
             />
           </label>
           <select className="pp-input" value={ownerType} onChange={(event) => setOwnerType(event.target.value as InventoryOwnerType)} aria-label="库存归属">
-            <option value="all">全部归属</option>
+            <option value="all">可信库存（默认）</option>
             <option value="base">据点仓储</option>
             <option value="player">玩家背包</option>
-            <option value="unknown">未知容器</option>
+            <option value="guild">公会库存</option>
+            <option value="unknown">诊断：隐藏容器</option>
           </select>
           <select className="pp-input" value={category} onChange={(event) => setCategory(event.target.value)} aria-label="物品分类">
             <option value="all">全部分类</option>
@@ -94,7 +104,7 @@ export const Inventory: React.FC = () => {
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
           <span><Database className="mr-1 inline" size={13} />数据源 {data?.source_id || '当前激活存档'}</span>
-          <span>分类依据物品内部 ID，仅用于浏览筛选。</span>
+          <span>默认总量只包含可验证的玩家、据点和公会归属；分类依据物品内部 ID。</span>
         </div>
       </section>
 
@@ -153,7 +163,7 @@ const UnattendedInventoryCard: React.FC<{ state?: UnattendedInventoryState; load
             {state?.presence_stale && <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700">在线状态中断</span>}
           </div>
           <strong className="mt-1 block text-sm text-slate-700">{copy.title}</strong>
-          <p className="mt-1 text-xs leading-5 text-slate-500">{copy.detail} 该数据只表示库存正向净变化，不等同于据点生产量。</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">{copy.detail} 仅统计可信玩家、据点和公会容器；该数据表示库存正向净变化，不等同于据点生产量。</p>
         </div>
       </div>
       <div className="grid min-w-[280px] grid-cols-3 gap-2">
@@ -200,7 +210,7 @@ const InventoryLocations: React.FC<{ locations: GlobalInventoryLocation[] }> = (
   <div className="grid gap-2 lg:grid-cols-2">
     {locations.map((location) => <div key={`${location.container_id}:${location.slot}`} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white px-3 py-3">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-500">
-        {location.owner_type === 'base' ? <Warehouse size={17} /> : location.owner_type === 'player' ? <UserRound size={17} /> : <MapPin size={17} />}
+        {location.owner_type === 'base' ? <Warehouse size={17} /> : location.owner_type === 'player' ? <UserRound size={17} /> : location.owner_type === 'guild' ? <Users size={17} /> : <MapPin size={17} />}
       </span>
       <span className="min-w-0 flex-1">
         <strong className="block truncate text-xs text-slate-700">{location.owner_name}</strong>
@@ -218,8 +228,8 @@ const InventoryItemIcon: React.FC<{ icon: string; name: string }> = ({ icon, nam
   return <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 p-1"><img src={`/assets/items/${encodeURIComponent(icon)}.webp`} alt={`${name}图标`} loading="lazy" className="h-full w-full object-contain" onError={() => setFailed(true)} /></span>;
 };
 
-const InventoryMetric: React.FC<{ label: string; value: number; warning?: boolean }> = ({ label, value, warning }) => (
-  <div className={warning ? 'metric text-amber-700' : 'metric'}><span className="eyebrow">{label}</span><strong>{formatNumber(value)}</strong><span>当前筛选</span></div>
+const InventoryMetric: React.FC<{ label: string; value: number; warning?: boolean; detail?: string }> = ({ label, value, warning, detail = '当前筛选' }) => (
+  <div className={warning ? 'metric text-amber-700' : 'metric'}><span className="eyebrow">{label}</span><strong>{formatNumber(value)}</strong><span>{detail}</span></div>
 );
 
 const InventoryEmpty: React.FC<{ icon: React.ReactNode; title: string; detail: string }> = ({ icon, title, detail }) => (

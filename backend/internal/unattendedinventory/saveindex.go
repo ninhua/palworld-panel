@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"palpanel/internal/appconfig"
+	"palpanel/internal/inventoryscope"
 	"palpanel/internal/saveindex"
 )
 
@@ -31,9 +32,14 @@ func CurrentSnapshot(ctx context.Context, cfg appconfig.Config) (Snapshot, error
 	return SnapshotFromIndex(index, status), nil
 }
 
+// SnapshotFromIndex deliberately totals only containers whose owner can be
+// proven to be an indexed player, base or guild. World/map-object/drop and
+// unresolved containers are excluded so spawn refreshes cannot become false
+// unattended-production deltas.
 func SnapshotFromIndex(index saveindex.Index, status saveindex.Status) Snapshot {
 	totals := make(map[string]int64)
 	seenContainers := make(map[string]struct{})
+	classifier := inventoryscope.New(index)
 	for _, container := range index.Containers {
 		containerID := normalizeID(container.ContainerID)
 		if containerID == "" {
@@ -43,6 +49,9 @@ func SnapshotFromIndex(index saveindex.Index, status saveindex.Status) Snapshot 
 			continue
 		}
 		seenContainers[containerID] = struct{}{}
+		if ownership := classifier.Resolve(container); !ownership.Trusted {
+			continue
+		}
 		for _, slot := range container.Slots {
 			itemID := strings.TrimSpace(slot.ItemID)
 			if itemID == "" || slot.Count <= 0 {

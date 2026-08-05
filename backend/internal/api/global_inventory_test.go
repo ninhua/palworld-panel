@@ -7,17 +7,28 @@ import (
 )
 
 func TestGlobalInventoryFeatureRegistered(t *testing.T) {
+	wanted := map[string]bool{
+		"global-inventory-browser":           false,
+		"global-inventory-trusted-scope":     false,
+		"inventory-untrusted-diagnostics":    false,
+		"unattended-inventory-trusted-scope": false,
+	}
 	for _, feature := range patchFeatures {
-		if feature == "global-inventory-browser" {
-			return
+		if _, found := wanted[feature]; found {
+			wanted[feature] = true
 		}
 	}
-	t.Fatalf("global-inventory-browser not registered in %#v", patchFeatures)
+	for feature, found := range wanted {
+		if !found {
+			t.Fatalf("feature %q not registered in %#v", feature, patchFeatures)
+		}
+	}
 }
 
-func TestBuildGlobalInventoryAggregatesPlayerBaseAndUnknownLocations(t *testing.T) {
+func TestBuildGlobalInventoryDefaultsToTrustedLocations(t *testing.T) {
 	index := saveindex.Index{
 		Players: []saveindex.Player{{PlayerUID: "player-1", SteamID: "steam-1", Nickname: "Alice"}},
+		Guilds:  []saveindex.Guild{{ID: "guild-1", Name: "GuildOne"}},
 		Bases: []saveindex.Base{{
 			ID:         "base-1",
 			Name:       "MainBase",
@@ -28,11 +39,13 @@ func TestBuildGlobalInventoryAggregatesPlayerBaseAndUnknownLocations(t *testing.
 		Containers: []saveindex.Container{
 			{ContainerID: "player-bag", OwnerType: "player", OwnerID: "player-1", Slots: []saveindex.Slot{{Slot: 0, ItemID: "Stone", Count: 7}}},
 			{ContainerID: "base-chest", OwnerType: "map_object", OwnerID: "map-chest", Slots: []saveindex.Slot{{Slot: 1, ItemID: "Stone", Count: 20}, {Slot: 2, ItemID: "Wood", Count: 5}}},
-			{ContainerID: "orphan", OwnerType: "map_object", OwnerID: "unknown-object", Slots: []saveindex.Slot{{Slot: 0, ItemID: "Stone", Count: 3}}},
+			{ContainerID: "guild-chest", OwnerType: "guild", OwnerID: "guild-1", Slots: []saveindex.Slot{{Slot: 0, ItemID: "Stone", Count: 4}}},
+			{ContainerID: "orphan", OwnerType: "map_object", OwnerID: "unknown-object", Slots: []saveindex.Slot{{Slot: 0, ItemID: "Stone", Count: 300}}},
+			{ContainerID: "spoofed-player", OwnerType: "player", OwnerID: "missing", Slots: []saveindex.Slot{{Slot: 0, ItemID: "Stone", Count: 500}}},
 		},
 	}
 
-	items, categories := buildGlobalInventory(index, map[string]string{"base-1": "北境仓库"}, "all")
+	items, categories, stats := buildGlobalInventory(index, map[string]string{"base-1": "北境仓库"}, "all")
 	if len(items) != 2 || len(categories) == 0 {
 		t.Fatalf("items/categories = %#v / %#v", items, categories)
 	}
@@ -42,17 +55,41 @@ func TestBuildGlobalInventoryAggregatesPlayerBaseAndUnknownLocations(t *testing.
 			stone = item
 		}
 	}
-	if stone.TotalCount != 30 || len(stone.Locations) != 3 {
-		t.Fatalf("stone aggregate = %#v", stone)
+	if stone.TotalCount != 31 || len(stone.Locations) != 3 {
+		t.Fatalf("trusted stone aggregate = %#v", stone)
 	}
 	owners := map[string]bool{}
 	for _, location := range stone.Locations {
-		owners[location.OwnerType+":"+location.OwnerName] = true
+		owners[location.OwnerType+":"+location.OwnerName] = location.Trusted
 	}
-	for _, expected := range []string{"player:Alice", "base:北境仓库", "unknown:未识别容器"} {
+	for _, expected := range []string{"player:Alice", "base:北境仓库", "guild:GuildOne"} {
 		if !owners[expected] {
-			t.Fatalf("missing owner %q in %#v", expected, owners)
+			t.Fatalf("missing trusted owner %q in %#v", expected, owners)
 		}
+	}
+	if len(stats.SuppressedContainers) != 2 || stats.SuppressedTotalCount != 800 || stats.SuppressedLocations != 2 {
+		t.Fatalf("suppression stats = %#v", stats)
+	}
+}
+
+func TestBuildGlobalInventoryUnknownIsExplicitDiagnosticScope(t *testing.T) {
+	index := saveindex.Index{
+		Players: []saveindex.Player{{PlayerUID: "player-1", Nickname: "Alice"}},
+		Containers: []saveindex.Container{
+			{ContainerID: "player-bag", OwnerType: "player", OwnerID: "player-1", Slots: []saveindex.Slot{{Slot: 0, ItemID: "Stone", Count: 7}}},
+			{ContainerID: "wild-box", OwnerType: "map_object", OwnerID: "object-1", Slots: []saveindex.Slot{{Slot: 0, ItemID: "Stone", Count: 50}}},
+		},
+	}
+	items, _, stats := buildGlobalInventory(index, nil, "unknown")
+	if len(items) != 1 || items[0].TotalCount != 50 || len(items[0].Locations) != 1 {
+		t.Fatalf("diagnostic inventory = %#v", items)
+	}
+	location := items[0].Locations[0]
+	if location.Trusted || location.OwnerType != "unknown" || location.ScopeReason != "world_container" {
+		t.Fatalf("diagnostic location = %#v", location)
+	}
+	if len(stats.SuppressedContainers) != 1 {
+		t.Fatalf("stats = %#v", stats)
 	}
 }
 
@@ -66,7 +103,7 @@ func TestBuildGlobalInventoryOwnerScopeAndSearch(t *testing.T) {
 		},
 	}
 
-	items, _ := buildGlobalInventory(index, map[string]string{"base-1": "农场"}, "base")
+	items, _, _ := buildGlobalInventory(index, map[string]string{"base-1": "农场"}, "base")
 	if len(items) != 1 || items[0].TotalCount != 9 || len(items[0].Locations) != 1 || items[0].Category != "种子" {
 		t.Fatalf("base-scoped inventory = %#v", items)
 	}

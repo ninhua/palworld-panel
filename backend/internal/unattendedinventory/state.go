@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	Version           = 1
-	StorageKeyPrefix  = "unattended_inventory:v1:"
+	Version           = 2
+	StorageKeyPrefix  = "unattended_inventory:v2:"
 	MinimumDuration   = 5 * time.Minute
 	MaxObservationGap = 60 * time.Second
 	MaxPublicItems    = 100
