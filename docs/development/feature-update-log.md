@@ -1,5 +1,13 @@
 # 功能移植更新记录
 
+## 2026-08-05：PalPanelBridge 0.1.25 受限玩家详细字段元数据探针
+
+- 关键词枚举 `GuildBelongTo` 与 `Pawn.CharacterParameterComponent` 的属性元数据：当前类和 `TSuperStructRange` 父类逐层使用 `IncludeDeprecated`，按小写属性名匹配并按名称去重，每个对象最多 64 项，达到上限立即停止。
+- 普通在线查询只 additive 返回 `character_parameter_found` 与对象描述；只有 `metadata_probe` 且首名玩家被选中时返回 `detail_property_metadata`。探针不读取匹配属性值、数组、Map、嵌套内容，也不调用未知函数。
+- 版本统一为 `0.1.25`；紧凑查询保留新增字段和存在时的详细元数据。
+- `0.1.24` Action `30932965144`、SHA `2b8634fb3e8ad30f985cdf8e6ef5a25d2191df5e8a499aabebd20a8e09df067a` 已部署，备份成功且未自动重启；实机任务 `players_1785866795757_1` 于 `2026-08-05T02:06:35.759+08:00` 完成，`cached_location=(-374896,237490,-919.81)`，`guild=PalGroupGuild_2147480614/class PalGroupGuild`，错误为空，队列到执行 2ms；metadata 已证实 Pawn 有 `CharacterParameterComponent(object PalCharacterParameterComponent)`。
+- `0.1.25` 尚未运行验证。
+
 ## 2026-08-05：PalPanelBridge 0.1.24 首批玩家详细字段
 
 已完成：

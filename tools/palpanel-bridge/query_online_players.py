@@ -141,9 +141,13 @@ def compact_job(job: dict[str, Any]) -> dict[str, Any]:
             "cached_location_error": player.get("cached_location_error"),
             "guild_found": player.get("guild_found"),
             "guild": player.get("guild"),
+            "character_parameter_found": player.get("character_parameter_found"),
+            "character_parameter": player.get("character_parameter"),
         }
         if "top_level_property_metadata" in player:
             compact_player["top_level_property_metadata"] = player.get("top_level_property_metadata")
+        if "detail_property_metadata" in player:
+            compact_player["detail_property_metadata"] = player.get("detail_property_metadata")
         compact_players.append(compact_player)
     compact_result = {
         "unreal_initialized": result.get("unreal_initialized"),

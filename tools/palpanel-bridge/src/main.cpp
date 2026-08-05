@@ -113,11 +113,16 @@ struct OnlinePlayerSnapshot
     CachedLocationSnapshot cached_location{};
     bool guild_found{};
     ObjectSnapshot guild{};
+    bool character_parameter_found{};
+    ObjectSnapshot character_parameter{};
     std::vector<PropertyCandidateSnapshot> controller_property_candidates{};
     std::vector<PropertyCandidateSnapshot> player_state_property_candidates{};
     std::vector<PropertyCandidateSnapshot> pawn_property_candidates{};
     std::vector<PropertyCandidateSnapshot> player_state_property_metadata{};
     std::vector<PropertyCandidateSnapshot> pawn_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> guild_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> character_parameter_property_metadata{};
+    bool detail_property_metadata_collected{};
 };
 
 struct Job
@@ -368,6 +373,44 @@ std::vector<PropertyCandidateSnapshot> collect_top_level_property_metadata(
     return metadata;
 }
 
+std::vector<PropertyCandidateSnapshot> collect_keyword_property_metadata(
+    RC::Unreal::UObject* object, std::initializer_list<std::string_view> keywords)
+{
+    constexpr size_t metadata_limit = 64;
+    std::vector<PropertyCandidateSnapshot> metadata;
+    if (!object || !RC::Unreal::UObject::IsReal(object)) return metadata;
+    auto* object_class = object->GetClassPrivate();
+    if (!object_class) return metadata;
+    std::unordered_set<std::string> seen;
+    const auto collect_class = [&](RC::Unreal::UStruct* owner) {
+        for (auto* property : RC::Unreal::TFieldRange<RC::Unreal::FProperty>(
+                 owner, RC::Unreal::EFieldIterationFlags::IncludeDeprecated)) {
+            if (metadata.size() >= metadata_limit) return false;
+            if (!property) continue;
+            auto name = RC::to_utf8_string(property->GetName());
+            auto lower = name;
+            std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char character) {
+                return static_cast<char>(std::tolower(character));
+            });
+            const auto selected = std::any_of(keywords.begin(), keywords.end(),
+                                              [&](const auto keyword) {
+                                                  return lower.find(keyword) != std::string::npos;
+                                              });
+            if (!selected || !seen.insert(name).second) continue;
+            metadata.emplace_back(describe_property_candidate(property));
+        }
+        return metadata.size() < metadata_limit;
+    };
+    try {
+        if (!collect_class(object_class)) return metadata;
+        for (auto* parent_class : RC::Unreal::TSuperStructRange(object_class)) {
+            if (!collect_class(parent_class)) break;
+        }
+    } catch (...) {
+    }
+    return metadata;
+}
+
 bool read_player_guid(RC::Unreal::UObject* object, std::string& output)
 {
     auto* property = find_property(object, {STR("PlayerUId"), STR("PlayerUID")});
@@ -396,7 +439,8 @@ bool read_account_name(RC::Unreal::UObject* object, std::string& output)
     return true;
 }
 
-void read_cached_player_details(RC::Unreal::UObject* player_state, OnlinePlayerSnapshot& player)
+void read_cached_player_details(
+    RC::Unreal::UObject* player_state, OnlinePlayerSnapshot& player, bool collect_metadata)
 {
     auto* property = find_property(player_state, {STR("CachedPlayerLocation")});
     auto* struct_property = RC::Unreal::CastField<RC::Unreal::FStructProperty>(property);
@@ -434,6 +478,13 @@ void read_cached_player_details(RC::Unreal::UObject* player_state, OnlinePlayerS
     auto* guild = read_object_property(player_state, {STR("GuildBelongTo")});
     player.guild_found = guild && RC::Unreal::UObject::IsReal(guild);
     if (player.guild_found) player.guild = describe_object(guild);
+    if (collect_metadata) {
+        player.detail_property_metadata_collected = true;
+        if (player.guild_found) {
+            player.guild_property_metadata = collect_keyword_property_metadata(
+                guild, {"name", "guild", "group", "admin", "master", "member", "owner", "rank"});
+        }
+    }
 }
 
 void append_instances(
@@ -595,7 +646,7 @@ void populate_player_state(
     }
     const auto uid_ok = read_player_guid(player_state, player.player_uid);
     const auto name_ok = read_account_name(player_state, player.account_name);
-    read_cached_player_details(player_state, player);
+    read_cached_player_details(player_state, player, collect_metadata);
     if (!uid_ok || !name_ok) {
         player.identity_error = !uid_ok && !name_ok
                                     ? "PlayerUId and AccountName are unavailable"
@@ -796,7 +847,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.24");
+        ModVersion = STR("0.1.25");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -891,6 +942,19 @@ class PalPanelBridge final : public RC::CppUserModBase
                     player.pawn_found = pawn != nullptr;
                     if (pawn) {
                         player.pawn = describe_object(pawn);
+                        auto* character_parameter = read_object_property(
+                            pawn, {STR("CharacterParameterComponent")});
+                        player.character_parameter_found =
+                            character_parameter && RC::Unreal::UObject::IsReal(character_parameter);
+                        if (player.character_parameter_found) {
+                            player.character_parameter = describe_object(character_parameter);
+                            if (collect_metadata) {
+                                player.character_parameter_property_metadata =
+                                    collect_keyword_property_metadata(
+                                        character_parameter,
+                                        {"level", "exp", "experience", "rank", "status", "hp", "health", "parameter", "point"});
+                            }
+                        }
                         if (collect_metadata) {
                             player.pawn_property_metadata = collect_top_level_property_metadata(pawn);
                         } else if (!job.metadata_probe) {
@@ -999,7 +1063,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.24\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.25\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -1012,8 +1076,8 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.24\","
-             << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.25\"," << "\"unreal_initialized\":"
+             << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
              << "\"last_game_thread_tick_age_ms\":" << (last_tick > 0 && now >= last_tick ? now - last_tick : 0) << ','
@@ -1126,12 +1190,29 @@ class PalPanelBridge final : public RC::CppUserModBase
                  } else {
                      body << "null";
                  }
+                 body << ",\"character_parameter_found\":"
+                      << (player.character_parameter_found ? "true" : "false")
+                      << ",\"character_parameter\":";
+                 if (player.character_parameter_found) {
+                     body << "{\"name\":\"" << json_escape(player.character_parameter.name)
+                          << "\",\"full_name\":\"" << json_escape(player.character_parameter.full_name)
+                          << "\",\"class_name\":\"" << json_escape(player.character_parameter.class_name) << "\"}";
+                 } else {
+                     body << "null";
+                 }
                 if (job.metadata_probe) {
                     body << ",\"top_level_property_metadata\":{\"player_state\":";
                     append_property_metadata_json(body, player.player_state_property_metadata);
                     body << ",\"pawn\":";
                     append_property_metadata_json(body, player.pawn_property_metadata);
                     body << '}';
+                    if (player.detail_property_metadata_collected) {
+                        body << ",\"detail_property_metadata\":{\"guild\":";
+                        append_property_metadata_json(body, player.guild_property_metadata);
+                        body << ",\"character_parameter\":";
+                        append_property_metadata_json(body, player.character_parameter_property_metadata);
+                        body << '}';
+                    }
                 } else {
                     body << ",\"property_candidates\":{";
                     const auto append_candidates = [&](const char* name, const std::vector<PropertyCandidateSnapshot>& values) {

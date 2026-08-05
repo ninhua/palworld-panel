@@ -23,7 +23,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.24-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.25-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -49,7 +49,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.24-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.25-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -127,6 +127,16 @@ reflected type is `ScriptStruct /Script/CoreUObject.Vector`, the property size i
 12 or 24 bytes, and all three decoded coordinates are finite. Guild objects are
 reported only when `UObject::IsReal` succeeds. Failed location reads return no
 pseudo-values and include `cached_location_error`.
+
+Version `0.1.25` adds the additive `character_parameter_found` and
+`character_parameter` object-reference fields. A metadata probe for the first
+collected player also returns `detail_property_metadata` for the `GuildBelongTo`
+object and the player's `CharacterParameterComponent`. Each object is enumerated through
+the current class and `TSuperStructRange`, uses `IncludeDeprecated`, filters
+property names by a fixed keyword list, deduplicates by name, and stops at 64
+matches. It reports only property metadata and never reads the matched values,
+arrays, maps, nested contents, or unknown functions. Normal online queries do
+not perform this metadata enumeration.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with

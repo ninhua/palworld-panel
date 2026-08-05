@@ -13,7 +13,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.24`
+- PalPanelBridge：`0.1.25`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.24",
+  "bridge_version": "0.1.25",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -144,6 +144,15 @@ POST http://127.0.0.1:18083/v1/players/online/metadata
 `top_level_property_metadata: {"player_state": [...], "pawn": [...]}`；普通在线
 任务不返回该大列表。
 
+玩家结果始终 additive 返回 `character_parameter_found` 与
+`character_parameter`（仅对象名、完整名和类名）。只有 metadata 任务且当前玩家
+确实被选为收集对象时，才会增加
+`detail_property_metadata: {"guild": [...], "character_parameter": [...]}`。
+两组属性元数据分别从 `GuildBelongTo` 与 `Pawn.CharacterParameterComponent` 对象
+按当前类和 `TSuperStructRange` 父类逐层枚举，使用 `IncludeDeprecated`，按小写属性名
+匹配固定关键词并按名称去重，每个对象最多 64 项；不读取匹配属性值、数组、Map、嵌套
+内容，也不调用未知函数。普通查询不执行这两组枚举。
+
 `0.1.13` 从当前 World 的 `GameState.PlayerArray` 读取服务端维护的权威
 PlayerState 数组，并返回 `game_state_found`、`game_state`、
 `game_state_player_array_available`、`game_state_player_state_count` 和
@@ -192,7 +201,8 @@ PlayerState 和 Pawn 上名称含背包、容器、装备、物品、槽位、�
 该接口不读取未知属性值、数组/Map 内容、嵌套结构，也不调用未知 UE 函数；它不是
 位置、等级、公会等详细信息完成接口。
 
-`0.1.24` 在 PlayerState 上只读返回 `CachedPlayerLocation` 与 `GuildBelongTo`。
+`0.1.25` 在 PlayerState 上保留只读 `CachedPlayerLocation` 与 `GuildBelongTo`，并增加
+受限的公会和角色参数组件元数据探针；`0.1.24` 的字段行为保持不变。
 位置字段仅接受完整类型名 `ScriptStruct /Script/CoreUObject.Vector`、12 或 24
 字节属性，并对三个坐标执行有限值校验；失败时不输出伪位置值并返回
 `cached_location_error`。公会对象仅在 `UObject::IsReal` 成功时返回。
