@@ -13,7 +13,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.27`
+- PalPanelBridge：`0.1.28`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.27",
+  "bridge_version": "0.1.28",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -222,6 +222,16 @@ PlayerState 和 Pawn 上名称含背包、容器、装备、物品、槽位、�
 metadata 探针新增 `detail_property_metadata.pal_container` 以便下一步发现帕鲁
 槽位。仍然只读身份、字符串、GUID、数值标量和有界集合规模，不枚举帕鲁或物品
 槽位内容。
+
+`0.1.28` 开始读取帕鲁槽位并探测背包容器。在线玩家响应新增 `pal_slot_array`
+（`found`、`slot_count` 和最多 10 个 `slots`，每个槽位含 `individual_id` 与
+`Handle` 对象引用）来自 `PalIndividualCharacterContainer.SlotArray`；以及
+`inventory_containers`：在 `PalPlayerInventoryData` 上按名称探测
+`EssentialContainer`、`PlayerInventoryContainer`、`EquipmentContainer`、
+`LoadoutContainer`、`ItemContainer`、`InventoryContainer`，每个容器返回对象
+身份和 `Slots`/`ItemSlots` 数组规模。metadata 探针还会为每个找到的物品容器
+返回 `container_property_metadata` 以确认真实槽位字段名。最多读取 10 个帕鲁
+槽位和少数命名容器，物品槽位内容与单只帕鲁详情暂不读取。
 位置字段仅接受完整类型名 `ScriptStruct /Script/CoreUObject.Vector`、12 或 24
 字节属性，并对三个坐标执行有限值校验；失败时不输出伪位置值并返回
 `cached_location_error`。公会对象仅在 `UObject::IsReal` 成功时返回。

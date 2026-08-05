@@ -156,8 +156,10 @@ def compact_job(job: dict[str, Any]) -> dict[str, Any]:
             "pal_storage": player.get("pal_storage"),
             "pal_container_found": player.get("pal_container_found"),
             "pal_container": player.get("pal_container"),
+            "pal_slot_array": player.get("pal_slot_array"),
             "otomo_found": player.get("otomo_found"),
             "otomo": player.get("otomo"),
+            "inventory_containers": player.get("inventory_containers"),
             "character_parameter_found": player.get("character_parameter_found"),
             "character_parameter": player.get("character_parameter"),
         }

@@ -1,5 +1,18 @@
 # 功能移植更新记录
 
+## 2026-08-06：PalPanelBridge 0.1.28 帕鲁槽位与背包容器读取
+
+已完成：
+
+- 新增 `pal_slot_array`：从 `PalIndividualCharacterContainer.SlotArray` 读取 `found`、`slot_count` 和最多 10 个槽位，每个槽位含 `individual_id`（16 字节实例 ID）与 `Handle` 对象引用（`PalIndividualCharacterHandle`）。
+- 新增 `inventory_containers`：在 `PalPlayerInventoryData` 上按名称探测 `EssentialContainer`、`PlayerInventoryContainer`、`EquipmentContainer`、`LoadoutContainer`、`ItemContainer`、`InventoryContainer`，每个容器返回对象身份与 `Slots`/`ItemSlots` 数组规模。
+- metadata 探针为每个找到的物品容器返回 `container_property_metadata`，确认真实槽位字段名（关键词：slot/item/container/equipment/loadout/weapon/armor）。
+- 版本统一为 `0.1.28`；`query_online_players.py` 紧凑输出保留新字段。
+
+验证：
+
+- 尚未进行运行时验证；等待 PalPanelBridge build 成功后部署、面板 API 重启并用 Panel 诊断中转实测。
+
 ## 2026-08-06：PalPanelBridge 0.1.27 据点/重量/帕鲁容器数值读取
 
 已完成：
@@ -12,7 +25,7 @@
 
 验证：
 
-- 尚未进行运行时验证；等待 PalPanelBridge build 成功后部署并用 Panel 诊断中转实测。
+- 实机验证完成（2026-08-06）：Action `31037770382` 已部署，SFTP 备份替换成功，面板 API `/api/server/restart` 重启成功（同步返回 `status=restarted`），health 返回 `bridge_version=0.1.27`。任务 `players_1785957095373_2`：`base_camp_count=1`、`base_camp_level=1`、`now_item_weight=0`、`max_inventory_weight=300`、`pal_container` 指向 `PalIndividualCharacterContainer_2147481595`。metadata 探针确认帕鲁容器有 `SlotArray`（array，元素 `PalIndividualCharacterSlot`），`pal_storage` 有 `TargetContainer`/`SlotObserver`/`PalDimensionStorage`，为下一步读取帕鲁槽位打基础。`inventory_container_count` 仍 -1：背包容器属性不在 `InventoryData` 顶层关键词枚举内，故 0.1.28 改为按名称探测常见容器属性。
 
 ## 2026-08-06：PalPanelBridge 0.1.26 玩家详细对象引用与背包/帕鲁元数据探针
 

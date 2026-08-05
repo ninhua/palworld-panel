@@ -70,6 +70,29 @@ struct CachedLocationSnapshot
     std::string error{};
 };
 
+struct PalSlotSnapshot
+{
+    bool found{};
+    std::string individual_id{};
+    bool handle_found{};
+    ObjectSnapshot handle{};
+};
+
+struct PalSlotArraySnapshot
+{
+    bool found{};
+    std::int32_t slot_count{-1};
+    std::vector<PalSlotSnapshot> slots{};
+};
+
+struct ItemContainerSnapshot
+{
+    bool found{};
+    ObjectSnapshot container{};
+    std::int32_t slot_count{-1};
+    std::vector<PropertyCandidateSnapshot> container_property_metadata{};
+};
+
 struct FunctionCandidateSnapshot
 {
     std::string name{};
@@ -128,8 +151,10 @@ struct OnlinePlayerSnapshot
     ObjectSnapshot pal_storage{};
     bool pal_container_found{};
     ObjectSnapshot pal_container{};
+    PalSlotArraySnapshot pal_slot_array{};
     bool otomo_found{};
     ObjectSnapshot otomo{};
+    std::vector<ItemContainerSnapshot> inventory_containers{};
     bool character_parameter_found{};
     ObjectSnapshot character_parameter{};
     std::vector<PropertyCandidateSnapshot> controller_property_candidates{};
@@ -523,6 +548,74 @@ bool read_number_property(
     return false;
 }
 
+PalSlotArraySnapshot read_pal_slot_array(RC::Unreal::UObject* container)
+{
+    PalSlotArraySnapshot snapshot;
+    if (!container || !RC::Unreal::UObject::IsReal(container)) return snapshot;
+    auto* property = find_property(container, {STR("SlotArray")});
+    auto* array_property = RC::Unreal::CastField<RC::Unreal::FArrayProperty>(property);
+    if (!array_property) return snapshot;
+    RC::Unreal::FScriptArrayHelper_InContainer values(array_property, container);
+    const auto count = values.Num();
+    if (count < 0 || count > 100000) return snapshot;
+    snapshot.found = true;
+    snapshot.slot_count = count;
+    constexpr std::int32_t max_slots = 10;
+    const auto limit = count < max_slots ? count : max_slots;
+    auto* slot_struct_property = RC::Unreal::CastField<RC::Unreal::FStructProperty>(array_property->GetInner());
+    auto* slot_struct = slot_struct_property ? slot_struct_property->GetStruct().Get() : nullptr;
+    if (!slot_struct) return snapshot;
+    for (std::int32_t index = 0; index < limit; ++index) {
+        void* element = values.GetRawPtr(index);
+        if (!element) continue;
+        PalSlotSnapshot slot;
+        slot.found = true;
+        auto* handle_property = find_struct_property(slot_struct, {STR("Handle")});
+        auto* handle_object_property = RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(handle_property);
+        if (handle_property && handle_object_property) {
+            auto* handle = handle_object_property->GetObjectPropertyValue(
+                handle_property->ContainerPtrToValuePtr<void>(element));
+            slot.handle_found = handle && RC::Unreal::UObject::IsReal(handle);
+            if (slot.handle_found) slot.handle = describe_object(handle);
+        }
+        auto* id_property = find_struct_property(slot_struct, {STR("IndividualId")});
+        if (id_property && id_property->GetSize() >= static_cast<std::int32_t>(sizeof(PlayerGuid))) {
+            PlayerGuid value{};
+            std::memcpy(&value, id_property->ContainerPtrToValuePtr<void>(element), sizeof(value));
+            std::array<char, 33> buffer{};
+            std::snprintf(buffer.data(), buffer.size(), "%08X%08X%08X%08X", value.a, value.b, value.c, value.d);
+            slot.individual_id = buffer.data();
+        }
+        snapshot.slots.emplace_back(std::move(slot));
+    }
+    return snapshot;
+}
+
+std::vector<ItemContainerSnapshot> read_inventory_containers(
+    RC::Unreal::UObject* inventory, bool collect_metadata)
+{
+    std::vector<ItemContainerSnapshot> containers;
+    if (!inventory || !RC::Unreal::UObject::IsReal(inventory)) return containers;
+    constexpr std::array<const TCHAR*, 6> names{
+        STR("EssentialContainer"), STR("PlayerInventoryContainer"), STR("EquipmentContainer"),
+        STR("LoadoutContainer"), STR("ItemContainer"), STR("InventoryContainer")};
+    for (const auto* name : names) {
+        auto* container = read_object_property(inventory, {name});
+        if (!container) continue;
+        ItemContainerSnapshot snapshot;
+        snapshot.found = true;
+        snapshot.container = describe_object(container);
+        snapshot.slot_count = read_array_property_count(container, {STR("Slots"), STR("ItemSlots")});
+        if (collect_metadata) {
+            snapshot.container_property_metadata = collect_keyword_property_metadata(
+                container,
+                {"slot", "item", "container", "equipment", "loadout", "weapon", "armor"});
+        }
+        containers.emplace_back(std::move(snapshot));
+    }
+    return containers;
+}
+
 void read_cached_player_details(
     RC::Unreal::UObject* player_state, OnlinePlayerSnapshot& player, bool collect_metadata)
 {
@@ -579,6 +672,7 @@ void read_cached_player_details(
         player.inventory_weight_found =
             read_number_property(inventory, {STR("NowItemWeight")}, player.now_item_weight) &&
             read_number_property(inventory, {STR("MaxInventoryWeight")}, player.max_inventory_weight);
+        player.inventory_containers = read_inventory_containers(inventory, collect_metadata);
     }
 
     auto* pal_storage = read_object_property(player_state, {STR("PalStorage")});
@@ -588,7 +682,10 @@ void read_cached_player_details(
         auto* pal_container = read_object_property(pal_storage, {STR("TargetContainer")});
         player.pal_container_found =
             pal_container && RC::Unreal::UObject::IsReal(pal_container);
-        if (player.pal_container_found) player.pal_container = describe_object(pal_container);
+        if (player.pal_container_found) {
+            player.pal_container = describe_object(pal_container);
+            player.pal_slot_array = read_pal_slot_array(pal_container);
+        }
     }
 
     auto* otomo = read_object_property(player_state, {STR("OtomoData")});
@@ -954,6 +1051,46 @@ void append_property_metadata_json(
     body << ']';
 }
 
+void append_pal_slot_array_json(std::ostringstream& body, const PalSlotArraySnapshot& slot_array)
+{
+    body << "{\"found\":" << (slot_array.found ? "true" : "false")
+         << ",\"slot_count\":" << slot_array.slot_count << ",\"slots\":[";
+    for (size_t index = 0; index < slot_array.slots.size(); ++index) {
+        if (index > 0) body << ',';
+        const auto& slot = slot_array.slots[index];
+        body << "{\"found\":" << (slot.found ? "true" : "false")
+             << ",\"individual_id\":\"" << json_escape(slot.individual_id)
+             << "\",\"handle_found\":" << (slot.handle_found ? "true" : "false")
+             << ",\"handle\":";
+        if (slot.handle_found) {
+            body << "{\"name\":\"" << json_escape(slot.handle.name)
+                 << "\",\"full_name\":\"" << json_escape(slot.handle.full_name)
+                 << "\",\"class_name\":\"" << json_escape(slot.handle.class_name) << "\"}";
+        } else {
+            body << "null";
+        }
+        body << '}';
+    }
+    body << "]}";
+}
+
+void append_item_container_json(
+    std::ostringstream& body, const ItemContainerSnapshot& container)
+{
+    body << "{\"found\":" << (container.found ? "true" : "false")
+         << ",\"container\":";
+    if (container.found) {
+        body << "{\"name\":\"" << json_escape(container.container.name)
+             << "\",\"full_name\":\"" << json_escape(container.container.full_name)
+             << "\",\"class_name\":\"" << json_escape(container.container.class_name) << "\"}";
+    } else {
+        body << "null";
+    }
+    body << ",\"slot_count\":" << container.slot_count << ",\"container_property_metadata\":";
+    append_property_metadata_json(body, container.container_property_metadata);
+    body << '}';
+}
+
 const char* job_kind_name(JobKind kind)
 {
     if (kind == JobKind::World) return "world";
@@ -995,7 +1132,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.27");
+        ModVersion = STR("0.1.28");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -1211,7 +1348,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.27\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.28\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -1224,7 +1361,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.27\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.28\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -1410,6 +1547,14 @@ class PalPanelBridge final : public RC::CppUserModBase
                  } else {
                      body << "null";
                  }
+                 body << ",\"pal_slot_array\":";
+                 append_pal_slot_array_json(body, player.pal_slot_array);
+                 body << ",\"inventory_containers\":[";
+                 for (size_t container_index = 0; container_index < player.inventory_containers.size(); ++container_index) {
+                     if (container_index > 0) body << ',';
+                     append_item_container_json(body, player.inventory_containers[container_index]);
+                 }
+                 body << ']';
                 if (job.metadata_probe) {
                     body << ",\"top_level_property_metadata\":{\"player_state\":";
                     append_property_metadata_json(body, player.player_state_property_metadata);

@@ -23,7 +23,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.27-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.28-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -49,7 +49,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.27-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.28-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -161,6 +161,19 @@ object reference `pal_container` points at `TargetContainer`
 `detail_property_metadata.pal_container` so the container's pal slots can be
 discovered next. Only identity, strings, GUIDs, numeric scalars, and bounded
 collection sizes are read; pal or item slot contents are still not enumerated.
+
+Version `0.1.28` reads the pal slot array and probes inventory containers. The
+online-player response now includes `pal_slot_array` (`found`, `slot_count`,
+and up to 10 `slots`; each slot reports `individual_id` and the `Handle`
+object reference when present) from `PalIndividualCharacterContainer.SlotArray`,
+and `inventory_containers`: a list of the found named containers on
+`PalPlayerInventoryData` (`EssentialContainer`, `PlayerInventoryContainer`,
+`EquipmentContainer`, `LoadoutContainer`, `ItemContainer`, `InventoryContainer`),
+each with its object identity and `slot_count` from a `Slots`/`ItemSlots`
+array. On metadata probes, each found item container also returns
+`container_property_metadata` so the real slot field names can be confirmed.
+Only up to 10 pal slots and a few named containers are inspected; item slot
+contents and per-pal details are not read yet.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with
