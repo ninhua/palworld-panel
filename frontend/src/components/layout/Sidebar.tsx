@@ -20,14 +20,14 @@ const formatUptime = (seconds?: number) => {
   return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
 };
 
-interface SidebarEntry {
+export interface SidebarEntry {
   id: string;
   labelKey?: TranslationKey;
   label?: string;
   routeIDs: string[];
 }
 
-const sidebarGroups: Array<{ id: string; titleKey: TranslationKey; entries: SidebarEntry[] }> = [
+export const sidebarGroups: Array<{ id: string; titleKey: TranslationKey; entries: SidebarEntry[] }> = [
   { id: 'setup', titleKey: 'nav.setupGroup', entries: [{ id: 'setup', labelKey: 'nav.setup', routeIDs: ['setup'] }] },
   {
     id: 'workspace',
@@ -41,9 +41,9 @@ const sidebarGroups: Array<{ id: string; titleKey: TranslationKey; entries: Side
     id: 'world',
     titleKey: 'nav.worldGroup',
     entries: [
-      { id: 'players-world', labelKey: 'nav.playersWorld', routeIDs: ['player-center', 'starter-gift', 'world-archive'] },
+      { id: 'players-world', labelKey: 'nav.playersWorld', routeIDs: ['player-center', 'starter-gift', 'starter-gift-history', 'world-archive'] },
       { id: 'economy', label: '积分系统', routeIDs: ['economy', 'operations-tasks', 'economy-shop'] },
-      { id: 'boss-events', label: 'Boss 活动', routeIDs: ['fixed-boss-operations', 'boss-registration'] },
+      { id: 'boss-events', label: 'Boss 与袭击', routeIDs: ['raid-operations', 'fixed-boss-operations', 'boss-registration'] },
       { id: 'saves-breeding', labelKey: 'nav.saveTools', routeIDs: ['save-sources', 'save-history', 'global-inventory', 'pal-inventory', 'breeding', 'live-map'] },
       { id: 'mods', labelKey: 'nav.mods', routeIDs: ['mods'] },
     ],
@@ -59,6 +59,9 @@ const sidebarGroups: Array<{ id: string; titleKey: TranslationKey; entries: Side
     ],
   },
 ];
+
+export const groupedSidebarRouteIDs = () =>
+  sidebarGroups.flatMap((group) => group.entries.flatMap((entry) => entry.routeIDs));
 
 const routesByID = new Map(appRoutes.map((route) => [route.id, route]));
 
