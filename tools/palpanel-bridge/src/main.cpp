@@ -113,6 +113,16 @@ struct OnlinePlayerSnapshot
     CachedLocationSnapshot cached_location{};
     bool guild_found{};
     ObjectSnapshot guild{};
+    std::string guild_name{};
+    std::string guild_admin_player_uid{};
+    std::int32_t base_camp_count{-1};
+    bool inventory_found{};
+    ObjectSnapshot inventory{};
+    std::int32_t inventory_container_count{-1};
+    bool pal_storage_found{};
+    ObjectSnapshot pal_storage{};
+    bool otomo_found{};
+    ObjectSnapshot otomo{};
     bool character_parameter_found{};
     ObjectSnapshot character_parameter{};
     std::vector<PropertyCandidateSnapshot> controller_property_candidates{};
@@ -122,6 +132,9 @@ struct OnlinePlayerSnapshot
     std::vector<PropertyCandidateSnapshot> pawn_property_metadata{};
     std::vector<PropertyCandidateSnapshot> guild_property_metadata{};
     std::vector<PropertyCandidateSnapshot> character_parameter_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> inventory_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> pal_storage_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> otomo_property_metadata{};
     bool detail_property_metadata_collected{};
 };
 
@@ -411,9 +424,10 @@ std::vector<PropertyCandidateSnapshot> collect_keyword_property_metadata(
     return metadata;
 }
 
-bool read_player_guid(RC::Unreal::UObject* object, std::string& output)
+bool read_guid_property(
+    RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names, std::string& output)
 {
-    auto* property = find_property(object, {STR("PlayerUId"), STR("PlayerUID")});
+    auto* property = find_property(object, names);
     auto* struct_property = RC::Unreal::CastField<RC::Unreal::FStructProperty>(property);
     auto* structure = struct_property ? struct_property->GetStruct().Get() : nullptr;
     if (!property || !structure ||
@@ -429,14 +443,48 @@ bool read_player_guid(RC::Unreal::UObject* object, std::string& output)
     return true;
 }
 
-bool read_account_name(RC::Unreal::UObject* object, std::string& output)
+bool read_player_guid(RC::Unreal::UObject* object, std::string& output)
 {
-    auto* property = find_property(object, {STR("AccountName")});
+    return read_guid_property(object, {STR("PlayerUId"), STR("PlayerUID")}, output);
+}
+
+bool read_string_property(
+    RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names, std::string& output)
+{
+    auto* property = find_property(object, names);
     auto* string_property = RC::Unreal::CastField<RC::Unreal::FStrProperty>(property);
     if (!string_property) return false;
     const auto& value = string_property->GetPropertyValueInContainer(object);
     output = RC::to_utf8_string(*value);
     return true;
+}
+
+bool read_account_name(RC::Unreal::UObject* object, std::string& output)
+{
+    return read_string_property(object, {STR("AccountName")}, output);
+}
+
+std::int32_t read_array_property_count(
+    RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names)
+{
+    auto* property = find_property(object, names);
+    auto* array_property = RC::Unreal::CastField<RC::Unreal::FArrayProperty>(property);
+    if (!array_property) return -1;
+    RC::Unreal::FScriptArrayHelper_InContainer values(array_property, object);
+    const auto count = values.Num();
+    return count >= 0 && count <= 100000 ? count : -1;
+}
+
+std::int32_t read_map_property_count(
+    RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names)
+{
+    auto* property = find_property(object, names);
+    auto* map_property = RC::Unreal::CastField<RC::Unreal::FMapProperty>(property);
+    if (!map_property) return -1;
+    auto* values = static_cast<RC::Unreal::FScriptMap*>(
+        property->ContainerPtrToValuePtr<void>(object));
+    const auto count = values ? values->Num() : -1;
+    return count >= 0 && count <= 100000 ? count : -1;
 }
 
 void read_cached_player_details(
@@ -477,12 +525,52 @@ void read_cached_player_details(
 
     auto* guild = read_object_property(player_state, {STR("GuildBelongTo")});
     player.guild_found = guild && RC::Unreal::UObject::IsReal(guild);
-    if (player.guild_found) player.guild = describe_object(guild);
+    if (player.guild_found) {
+        player.guild = describe_object(guild);
+        read_string_property(guild, {STR("GuildName"), STR("GroupName")}, player.guild_name);
+        read_guid_property(guild, {STR("AdminPlayerUId")}, player.guild_admin_player_uid);
+        player.base_camp_count = read_map_property_count(guild, {STR("BaseCampMap"), STR("BaseCamps")});
+    }
+
+    auto* inventory = read_object_property(player_state, {STR("InventoryData")});
+    player.inventory_found = inventory && RC::Unreal::UObject::IsReal(inventory);
+    if (player.inventory_found) {
+        player.inventory = describe_object(inventory);
+        player.inventory_container_count =
+            read_array_property_count(inventory, {STR("Containers")});
+    }
+
+    auto* pal_storage = read_object_property(player_state, {STR("PalStorage")});
+    player.pal_storage_found = pal_storage && RC::Unreal::UObject::IsReal(pal_storage);
+    if (player.pal_storage_found) player.pal_storage = describe_object(pal_storage);
+
+    auto* otomo = read_object_property(player_state, {STR("OtomoData")});
+    player.otomo_found = otomo && RC::Unreal::UObject::IsReal(otomo);
+    if (player.otomo_found) player.otomo = describe_object(otomo);
+
     if (collect_metadata) {
         player.detail_property_metadata_collected = true;
         if (player.guild_found) {
             player.guild_property_metadata = collect_keyword_property_metadata(
-                guild, {"name", "guild", "group", "admin", "master", "member", "owner", "rank"});
+                guild,
+                {"name", "guild", "group", "admin", "master", "member", "owner", "rank",
+                 "base", "camp", "territory", "map"});
+        }
+        if (player.inventory_found) {
+            player.inventory_property_metadata = collect_keyword_property_metadata(
+                inventory,
+                {"container", "slot", "item", "equipment", "equip", "weapon", "armor",
+                 "accessory", "storage", "weight"});
+        }
+        if (player.pal_storage_found) {
+            player.pal_storage_property_metadata = collect_keyword_property_metadata(
+                pal_storage,
+                {"pal", "character", "container", "slot", "box", "storage", "individual"});
+        }
+        if (player.otomo_found) {
+            player.otomo_property_metadata = collect_keyword_property_metadata(
+                otomo,
+                {"pal", "character", "party", "slot", "team", "individual", "container"});
         }
     }
 }
@@ -847,7 +935,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.25");
+        ModVersion = STR("0.1.26");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -1063,7 +1151,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.25\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.26\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -1076,7 +1164,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.25\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.26\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -1190,6 +1278,42 @@ class PalPanelBridge final : public RC::CppUserModBase
                  } else {
                      body << "null";
                  }
+                 body << ",\"guild_name\":\"" << json_escape(player.guild_name)
+                      << "\",\"guild_admin_player_uid\":\""
+                      << json_escape(player.guild_admin_player_uid)
+                      << "\",\"base_camp_count\":" << player.base_camp_count
+                      << ",\"inventory_found\":"
+                      << (player.inventory_found ? "true" : "false") << ",\"inventory\":";
+                 if (player.inventory_found) {
+                     body << "{\"name\":\"" << json_escape(player.inventory.name)
+                          << "\",\"full_name\":\"" << json_escape(player.inventory.full_name)
+                          << "\",\"class_name\":\"" << json_escape(player.inventory.class_name)
+                          << "\"}";
+                 } else {
+                     body << "null";
+                 }
+                 body << ",\"inventory_container_count\":"
+                      << player.inventory_container_count
+                      << ",\"pal_storage_found\":"
+                      << (player.pal_storage_found ? "true" : "false") << ",\"pal_storage\":";
+                 if (player.pal_storage_found) {
+                     body << "{\"name\":\"" << json_escape(player.pal_storage.name)
+                          << "\",\"full_name\":\"" << json_escape(player.pal_storage.full_name)
+                          << "\",\"class_name\":\"" << json_escape(player.pal_storage.class_name)
+                          << "\"}";
+                 } else {
+                     body << "null";
+                 }
+                 body << ",\"otomo_found\":"
+                      << (player.otomo_found ? "true" : "false") << ",\"otomo\":";
+                 if (player.otomo_found) {
+                     body << "{\"name\":\"" << json_escape(player.otomo.name)
+                          << "\",\"full_name\":\"" << json_escape(player.otomo.full_name)
+                          << "\",\"class_name\":\"" << json_escape(player.otomo.class_name)
+                          << "\"}";
+                 } else {
+                     body << "null";
+                 }
                  body << ",\"character_parameter_found\":"
                       << (player.character_parameter_found ? "true" : "false")
                       << ",\"character_parameter\":";
@@ -1209,6 +1333,12 @@ class PalPanelBridge final : public RC::CppUserModBase
                     if (player.detail_property_metadata_collected) {
                         body << ",\"detail_property_metadata\":{\"guild\":";
                         append_property_metadata_json(body, player.guild_property_metadata);
+                        body << ",\"inventory\":";
+                        append_property_metadata_json(body, player.inventory_property_metadata);
+                        body << ",\"pal_storage\":";
+                        append_property_metadata_json(body, player.pal_storage_property_metadata);
+                        body << ",\"otomo\":";
+                        append_property_metadata_json(body, player.otomo_property_metadata);
                         body << ",\"character_parameter\":";
                         append_property_metadata_json(body, player.character_parameter_property_metadata);
                         body << '}';

@@ -1,5 +1,18 @@
 # 功能移植更新记录
 
+## 2026-08-06：PalPanelBridge 0.1.26 玩家详细对象引用与背包/帕鲁元数据探针
+
+已完成：
+
+- 普通在线查询 additive 返回 `guild_name`、`guild_admin_player_uid`、`base_camp_count`、`inventory_found`/`inventory`（`PalPlayerInventoryData`，附 `inventory_container_count`）、`pal_storage_found`/`pal_storage`（`PalPlayerDataPalStorage`）、`otomo_found`/`otomo`（`PalPlayerOtomoData`）。
+- 只读取对象身份、`GuildName`/`GroupName` 字符串、`AdminPlayerUId` GUID、`BaseCampMap`/`BaseCamps` Map 规模、`InventoryData.Containers` 数组规模；容器内容、物品槽位和帕鲁数组元素一律不读取。
+- metadata 探针新增 `detail_property_metadata.inventory`、`.pal_storage`、`.otomo` 关键词属性列表（每个对象最多 64 项），guild 关键词扩展 `base`、`camp`、`territory`、`map` 以发现据点字段。
+- 版本统一为 `0.1.26`；`query_online_players.py` 紧凑输出保留新字段。
+
+验证：
+
+- 尚未进行运行时验证；等待 PalPanelBridge build 成功后部署并用 Panel 诊断中转实测。
+
 ## 2026-08-06：PalPanelBridge 构建加速缓存
 
 - `.github/workflows/palpanel-bridge.yml` 增加两个 GitHub Actions 缓存：RE-UE4SS SDK checkout（按 `UE4SS_COMMIT` 作 key）和 CMake 构建目录（按提交 sha 作 key、`palpanel-build-` 作恢复前缀）。

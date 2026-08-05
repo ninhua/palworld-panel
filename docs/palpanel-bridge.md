@@ -13,7 +13,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.25`
+- PalPanelBridge：`0.1.26`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.25",
+  "bridge_version": "0.1.26",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -203,6 +203,17 @@ PlayerState 和 Pawn 上名称含背包、容器、装备、物品、槽位、�
 
 `0.1.25` 在 PlayerState 上保留只读 `CachedPlayerLocation` 与 `GuildBelongTo`，并增加
 受限的公会和角色参数组件元数据探针；`0.1.24` 的字段行为保持不变。
+
+`0.1.26` 增加只读玩家详细对象引用。普通在线查询 additive 返回 `guild_name`、
+`guild_admin_player_uid`、`base_camp_count`、`inventory_found`/`inventory`
+（`PalPlayerInventoryData`，附 `inventory_container_count`）、
+`pal_storage_found`/`pal_storage`（`PalPlayerDataPalStorage`）、
+`otomo_found`/`otomo`（`PalPlayerOtomoData`）。只读取对象身份、一个字符串、
+一个 GUID 和有界集合规模，不枚举容器内容。metadata 探针新增
+`detail_property_metadata.inventory`、`.pal_storage`、`.otomo` 关键词属性列表
+（每个对象最多 64 项），并把 guild 关键词列表扩展 `base`、`camp`、
+`territory`、`map` 以发现据点字段。匹配的属性值、数组、Map、嵌套内容和函数
+仍然一律不读取。
 位置字段仅接受完整类型名 `ScriptStruct /Script/CoreUObject.Vector`、12 或 24
 字节属性，并对三个坐标执行有限值校验；失败时不输出伪位置值并返回
 `cached_location_error`。公会对象仅在 `UObject::IsReal` 成功时返回。
