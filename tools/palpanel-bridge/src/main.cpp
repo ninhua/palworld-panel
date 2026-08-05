@@ -85,6 +85,8 @@ struct PalSlotArraySnapshot
     std::vector<PalSlotSnapshot> slots{};
 };
 
+struct PropertyCandidateSnapshot;
+
 struct ItemContainerSnapshot
 {
     bool found{};
