@@ -22,7 +22,7 @@ const categories = [
   { value: 'bases', label: '据点', icon: <Building2 size={14} /> },
   { value: 'pals', label: '帕鲁', icon: <PawPrint size={14} /> },
   { value: 'items', label: '物品', icon: <PackagePlus size={14} /> },
-  { value: 'containers', label: '容器', icon: <Boxes size={14} /> },
+  { value: 'containers', label: '容器诊断', icon: <Boxes size={14} /> },
 ];
 
 const categoryLabels: Record<string, string> = Object.fromEntries(categories.map((item) => [item.value, item.label]));
@@ -140,7 +140,7 @@ export const SaveHistory: React.FC = () => {
               <div>
                 <h2 className="text-base font-black text-slate-900">变化明细</h2>
                 <p className="mt-1 text-xs text-slate-500">
-                  {snapshotShort(diff.data.from)} <ArrowRight className="inline" size={12} /> {snapshotShort(diff.data.to)} · 推断 {diff.data.event_total} 项事件
+                  {snapshotShort(diff.data.from)} <ArrowRight className="inline" size={12} /> {snapshotShort(diff.data.to)} · 筛选后 {diff.data.event_total} 项可信事件
                 </p>
               </div>
               <ExportButtons diff={diff.data} />
@@ -192,7 +192,7 @@ export const SaveHistory: React.FC = () => {
           )}
 
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0" size={18} /><div><strong>事件由两个快照推断</strong><p className="mt-1 text-xs leading-5 text-amber-800">可以确认前后状态，但无法恢复快照之间每一步的精确时间和原因。例如“获得帕鲁”可能来自捕获、孵化、交易或存档导入。</p></div></div>
+            <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0" size={18} /><div><strong>事件由存档状态与可用日志共同判定</strong><p className="mt-1 text-xs leading-5 text-amber-800">默认排除野外刷新和未归属容器；匹配到 PalDefender 日志时会在证据列标注，其他记录仍是基于前后存档状态的推断。</p></div></div>
           </div>
 
           <details className="pp-card group">
@@ -301,7 +301,7 @@ const EntityTarget: React.FC<{ event: SaveHistoryEvent }> = ({ event }) => {
 
 const EventEvidence: React.FC<{ event: SaveHistoryEvent }> = ({ event }) => {
   const details = event.details ?? [];
-  if (details.length === 0) return <span className="text-xs text-slate-400">状态推断</span>;
+  if (details.length === 0) return <span className="text-xs text-slate-400">仅存档推断</span>;
   return (
     <details className="group/evidence">
       <summary className="cursor-pointer list-none text-xs font-bold text-sky-700">{details.length} 个字段 <ChevronDown className="inline transition-transform group-open/evidence:rotate-180" size={12} /></summary>
@@ -399,7 +399,7 @@ const summarize = (summary?: SaveHistoryDiffSummary) => {
     { label: '公会', value: summary.guilds_added + summary.guilds_removed + summary.guilds_changed, detail: `+${summary.guilds_added} / -${summary.guilds_removed} / 变更 ${summary.guilds_changed}`, tone: 'bg-violet-50 text-violet-700', icon: <UsersRound size={16} /> },
     { label: '据点', value: summary.bases_added + summary.bases_removed + summary.bases_changed, detail: `+${summary.bases_added} / -${summary.bases_removed} / 变更 ${summary.bases_changed}`, tone: 'bg-amber-50 text-amber-700', icon: <Building2 size={16} /> },
     { label: '帕鲁', value: summary.pals_added + summary.pals_removed + summary.pals_changed, detail: `+${summary.pals_added} / -${summary.pals_removed} / 变更 ${summary.pals_changed}`, tone: 'bg-lime-50 text-lime-700', icon: <PawPrint size={16} /> },
-    { label: '容器', value: summary.containers_added + summary.containers_removed + summary.containers_changed, detail: `+${summary.containers_added} / -${summary.containers_removed} / 变更 ${summary.containers_changed}`, tone: 'bg-cyan-50 text-cyan-700', icon: <Boxes size={16} /> },
+    { label: '容器诊断', value: 0, detail: '默认隐藏野外与未归属容器', tone: 'bg-cyan-50 text-cyan-700', icon: <Boxes size={16} /> },
     { label: '物品', value: summary.items_increased + summary.items_decreased, detail: `增加 ${summary.items_increased} / 减少 ${summary.items_decreased}`, tone: 'bg-emerald-50 text-emerald-700', icon: <PackagePlus size={16} /> },
   ];
 };

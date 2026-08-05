@@ -113,9 +113,7 @@ func (s Server) diffSaveHistory(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "save_history_offset_invalid", "offset must be zero or greater")
 		return
 	}
-	diff, err := s.saveIndex.HistoryDiff(fromID, toID, saveindex.HistoryDiffOptions{
-		Category: category, Query: query, Limit: limit, Offset: offset,
-	})
+	diff, err := s.semanticSaveHistoryDiff(c.Request.Context(), fromID, toID, category, query, limit, offset)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			fail(c, http.StatusNotFound, "save_history_snapshot_not_found", "save history snapshot was not found for the active source")

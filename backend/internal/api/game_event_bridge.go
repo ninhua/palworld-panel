@@ -407,7 +407,7 @@ func (s Server) processBridgedPalDefenderEvent(ctx context.Context, runtime *gam
 		PlayerUID:  playerUID,
 		Nickname:   nickname,
 		SteamID:    steamID,
-		OccurredAt: time.Now().UTC().Format(time.RFC3339),
+		OccurredAt: palDefenderLogOccurredAt(raw, time.Now()).UTC().Format(time.RFC3339),
 		Payload:    parsed.Payload,
 	}
 	processingResult, err := s.processBridgeEvent(ctx, service, event)
