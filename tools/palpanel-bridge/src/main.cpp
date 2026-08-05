@@ -167,6 +167,7 @@ struct OnlinePlayerSnapshot
     std::vector<PropertyCandidateSnapshot> guild_property_metadata{};
     std::vector<PropertyCandidateSnapshot> character_parameter_property_metadata{};
     std::vector<PropertyCandidateSnapshot> inventory_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> inventory_all_property_metadata{};
     std::vector<PropertyCandidateSnapshot> pal_storage_property_metadata{};
     std::vector<PropertyCandidateSnapshot> pal_container_property_metadata{};
     std::vector<PropertyCandidateSnapshot> otomo_property_metadata{};
@@ -564,29 +565,45 @@ PalSlotArraySnapshot read_pal_slot_array(RC::Unreal::UObject* container)
     snapshot.slot_count = count;
     constexpr std::int32_t max_slots = 10;
     const auto limit = count < max_slots ? count : max_slots;
+    auto* inner_object_property = RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(array_property->GetInner());
     auto* slot_struct_property = RC::Unreal::CastField<RC::Unreal::FStructProperty>(array_property->GetInner());
     auto* slot_struct = slot_struct_property ? slot_struct_property->GetStruct().Get() : nullptr;
-    if (!slot_struct) return snapshot;
     for (std::int32_t index = 0; index < limit; ++index) {
         void* element = values.GetRawPtr(index);
         if (!element) continue;
         PalSlotSnapshot slot;
         slot.found = true;
-        auto* handle_property = find_struct_property(slot_struct, {STR("Handle")});
-        auto* handle_object_property = RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(handle_property);
-        if (handle_property && handle_object_property) {
-            auto* handle = handle_object_property->GetObjectPropertyValue(
-                handle_property->ContainerPtrToValuePtr<void>(element));
-            slot.handle_found = handle && RC::Unreal::UObject::IsReal(handle);
-            if (slot.handle_found) slot.handle = describe_object(handle);
-        }
-        auto* id_property = find_struct_property(slot_struct, {STR("IndividualId")});
-        if (id_property && id_property->GetSize() >= static_cast<std::int32_t>(sizeof(PlayerGuid))) {
-            PlayerGuid value{};
-            std::memcpy(&value, id_property->ContainerPtrToValuePtr<void>(element), sizeof(value));
-            std::array<char, 33> buffer{};
-            std::snprintf(buffer.data(), buffer.size(), "%08X%08X%08X%08X", value.a, value.b, value.c, value.d);
-            slot.individual_id = buffer.data();
+        if (inner_object_property) {
+            auto* slot_object = inner_object_property->GetObjectPropertyValue(element);
+            if (slot_object && RC::Unreal::UObject::IsReal(slot_object)) {
+                slot.handle_found = true;
+                slot.handle = describe_object(slot_object);
+                auto* id_property = find_property(slot_object, {STR("IndividualId"), STR("IndividualID")});
+                if (id_property && id_property->GetSize() >= static_cast<std::int32_t>(sizeof(PlayerGuid))) {
+                    PlayerGuid value{};
+                    std::memcpy(&value, id_property->ContainerPtrToValuePtr<void>(slot_object), sizeof(value));
+                    std::array<char, 33> buffer{};
+                    std::snprintf(buffer.data(), buffer.size(), "%08X%08X%08X%08X", value.a, value.b, value.c, value.d);
+                    slot.individual_id = buffer.data();
+                }
+            }
+        } else if (slot_struct) {
+            auto* handle_property = find_struct_property(slot_struct, {STR("Handle")});
+            auto* handle_object_property = RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(handle_property);
+            if (handle_property && handle_object_property) {
+                auto* handle = handle_object_property->GetObjectPropertyValue(
+                    handle_property->ContainerPtrToValuePtr<void>(element));
+                slot.handle_found = handle && RC::Unreal::UObject::IsReal(handle);
+                if (slot.handle_found) slot.handle = describe_object(handle);
+            }
+            auto* id_property = find_struct_property(slot_struct, {STR("IndividualId")});
+            if (id_property && id_property->GetSize() >= static_cast<std::int32_t>(sizeof(PlayerGuid))) {
+                PlayerGuid value{};
+                std::memcpy(&value, id_property->ContainerPtrToValuePtr<void>(element), sizeof(value));
+                std::array<char, 33> buffer{};
+                std::snprintf(buffer.data(), buffer.size(), "%08X%08X%08X%08X", value.a, value.b, value.c, value.d);
+                slot.individual_id = buffer.data();
+            }
         }
         snapshot.slots.emplace_back(std::move(slot));
     }
@@ -707,6 +724,8 @@ void read_cached_player_details(
                 inventory,
                 {"container", "slot", "item", "equipment", "equip", "weapon", "armor",
                  "accessory", "storage", "weight"});
+            player.inventory_all_property_metadata =
+                collect_top_level_property_metadata(inventory);
         }
         if (player.pal_storage_found) {
             player.pal_storage_property_metadata = collect_keyword_property_metadata(
@@ -1568,6 +1587,8 @@ class PalPanelBridge final : public RC::CppUserModBase
                         append_property_metadata_json(body, player.guild_property_metadata);
                         body << ",\"inventory\":";
                         append_property_metadata_json(body, player.inventory_property_metadata);
+                        body << ",\"inventory_all\":";
+                        append_property_metadata_json(body, player.inventory_all_property_metadata);
                         body << ",\"pal_storage\":";
                         append_property_metadata_json(body, player.pal_storage_property_metadata);
                         body << ",\"pal_container\":";
