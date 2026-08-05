@@ -33,6 +33,12 @@ jobs:
       - name: Setup Ninja
         uses: seanmiddleditch/gha-setup-ninja@v3
 
+      - name: Cache UE4SS SDK checkout
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/RE-UE4SS
+          key: ue4ss-sdk-${{ env.UE4SS_COMMIT }}
+
       - name: Check private SDK credential
         shell: pwsh
         run: |
@@ -43,14 +49,27 @@ jobs:
       - name: Fetch matching experimental UE4SS SDK
         shell: pwsh
         run: |
+          $sdk = "$env:RUNNER_TEMP\RE-UE4SS"
+          if (Test-Path -LiteralPath "$sdk\CMakeLists.txt" -PathType Leaf) {
+            Write-Host "UE4SS SDK cache hit; skipping fetch"
+            exit 0
+          }
           gh auth setup-git
           git config --global url."https://github.com/".insteadOf "git@github.com:"
-          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\RE-UE4SS" | Out-Null
-          git -C "$env:RUNNER_TEMP\RE-UE4SS" init
-          git -C "$env:RUNNER_TEMP\RE-UE4SS" remote add origin https://github.com/UE4SS-RE/RE-UE4SS.git
-          git -C "$env:RUNNER_TEMP\RE-UE4SS" fetch --depth 1 origin $env:UE4SS_COMMIT
-          git -C "$env:RUNNER_TEMP\RE-UE4SS" checkout --detach FETCH_HEAD
-          git -C "$env:RUNNER_TEMP\RE-UE4SS" submodule update --init --recursive --depth 1
+          New-Item -ItemType Directory -Path $sdk | Out-Null
+          git -C $sdk init
+          git -C $sdk remote add origin https://github.com/UE4SS-RE/RE-UE4SS.git
+          git -C $sdk fetch --depth 1 origin $env:UE4SS_COMMIT
+          git -C $sdk checkout --detach FETCH_HEAD
+          git -C $sdk submodule update --init --recursive --depth 1
+
+      - name: Cache CMake build directory
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/palpanel-bridge-build
+          key: palpanel-build-${{ github.sha }}
+          restore-keys: |
+            palpanel-build-
 
       - name: Build bridge DLL
         shell: pwsh

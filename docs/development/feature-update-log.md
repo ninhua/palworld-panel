@@ -1,5 +1,11 @@
 # 功能移植更新记录
 
+## 2026-08-06：PalPanelBridge 构建加速缓存
+
+- `.github/workflows/palpanel-bridge.yml` 增加两个 GitHub Actions 缓存：RE-UE4SS SDK checkout（按 `UE4SS_COMMIT` 作 key）和 CMake 构建目录（按提交 sha 作 key、`palpanel-build-` 作恢复前缀）。
+- SDK 缓存命中时跳过 `git fetch` + `submodule update --init --recursive`，只做本地校验；构建目录缓存命中后 CMake 配置与编译走增量路径，后续只改插件源码时预计把单次构建从十几分钟降到数分钟。
+- 构建逻辑仍调用 `tools/palpanel-bridge/build-local.ps1`，未复制脚本逻辑到工作流；版本、产物名和上传逻辑不变。
+
 ## 2026-08-05：PalPanelBridge 0.1.25 受限玩家详细字段元数据探针
 
 - 关键词枚举 `GuildBelongTo` 与 `Pawn.CharacterParameterComponent` 的属性元数据：当前类和 `TSuperStructRange` 父类逐层使用 `IncludeDeprecated`，按小写属性名匹配并按名称去重，每个对象最多 64 项，达到上限立即停止。
