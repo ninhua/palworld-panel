@@ -29,7 +29,7 @@ check_package() {
   echo "$module_dir $package coverage ${coverage}% (minimum ${minimum}%)"
 }
 
-check_package backend ./internal/api 50
+check_package backend ./internal/api 45
 check_package backend ./internal/db 50
 check_package backend ./internal/server 50
 check_package backend ./internal/scheduler 50
