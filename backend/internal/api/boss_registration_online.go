@@ -52,6 +52,7 @@ type bossBridgeLocationLookup struct {
 	MatchedBy   string         `json:"matched_by,omitempty"`
 	PlayerUID   string         `json:"player_uid,omitempty"`
 	AccountName string         `json:"account_name,omitempty"`
+	Identifier  string         `json:"identifier,omitempty"`
 	Location    *boss.Location `json:"location,omitempty"`
 	ObservedAt  string         `json:"observed_at,omitempty"`
 	Error       string         `json:"error,omitempty"`
@@ -309,6 +310,7 @@ func matchBossBridgePlayerLocation(players []bossBridgePlayer, observedAt, playe
 	lookup.MatchedBy = matchedBy
 	lookup.PlayerUID = playeridentity.Normalize(player.PlayerUID)
 	lookup.AccountName = strings.TrimSpace(player.AccountName)
+	lookup.Identifier = firstBossNonEmpty(strings.TrimSpace(player.UserID), strings.TrimSpace(player.SteamID), lookup.PlayerUID)
 	if !player.CachedLocationFound || player.CachedLocation == nil {
 		lookup.Error = firstBossNonEmpty(strings.TrimSpace(player.CachedLocationError), errBossBridgeLocationNotFound.Error())
 		return lookup, errBossBridgeLocationNotFound

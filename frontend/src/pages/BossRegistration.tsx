@@ -7,11 +7,13 @@ import {
   Crosshair,
   LoaderCircle,
   MapPin,
+  Navigation,
   RefreshCw,
   Save,
   Search,
   ShieldCheck,
   UserMinus,
+  Undo2,
   UserPlus,
   Users,
 } from 'lucide-react';
@@ -19,6 +21,7 @@ import { bossApi, type BossSummon } from '../api/boss';
 import {
   bossRegistrationApi,
   type BossParticipant,
+  type BossParticipantTransport,
   type BossRegistrationPolicyInput,
 } from '../api/bossRegistration';
 import { getErrorMessage } from '../api/client';
@@ -45,6 +48,13 @@ const metadataString = (value: unknown, key: string) => {
 const isFixedBoss = (summon: BossSummon) => metadataString(summon.metadata, 'activity_kind') === 'fixed_boss';
 const formatTime = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—';
 const shortID = (value: string) => value.length <= 8 ? value : value.slice(-8);
+const summonState = (status: BossSummon['status']) => ({
+  pending: { label: '等待执行', className: 'bg-amber-50 text-amber-700' },
+  active: { label: '进行中', className: 'bg-sky-50 text-sky-700' },
+  completed: { label: '已完成', className: 'bg-emerald-50 text-emerald-700' },
+  failed: { label: '失败', className: 'bg-rose-50 text-rose-700' },
+  cancelled: { label: '已取消', className: 'bg-slate-100 text-slate-600' },
+}[status]);
 
 const participantStatusLabel: Record<BossParticipant['status'], string> = {
   registered: '已报名',
@@ -65,11 +75,32 @@ const participantStatusClass: Record<BossParticipant['status'], string> = {
   cancelled: 'bg-slate-100 text-slate-600',
 };
 
+const transportStatusLabel: Record<BossParticipantTransport['state'], string> = {
+  prepared: '待核对 · 可回程',
+  teleported: '已传送',
+  teleport_failed: '传送失败 · 需回程',
+  returned: '已回程',
+  return_failed: '回程失败',
+};
+
+const transportStatusClass: Record<BossParticipantTransport['state'], string> = {
+  prepared: 'bg-amber-50 text-amber-700',
+  teleported: 'bg-sky-50 text-sky-700',
+  teleport_failed: 'bg-rose-50 text-rose-700',
+  returned: 'bg-emerald-50 text-emerald-700',
+  return_failed: 'bg-rose-50 text-rose-700',
+};
+
 const eventLabel: Record<string, string> = {
   registered: '报名',
   area_checked: '区域核验',
   cancelled: '取消报名',
   policy_rechecked: '策略重算',
+  transport_prepared: '保存回程点',
+  transport_succeeded: '传送成功',
+  transport_failed: '传送失败',
+  return_succeeded: '安全回程成功',
+  return_failed: '安全回程失败',
 };
 
 const FieldLabel: React.FC<React.PropsWithChildren> = ({ children }) => (
@@ -94,6 +125,7 @@ export const BossRegistration: React.FC = () => {
   const [search, setSearch] = useState('');
   const [includeCancelled, setIncludeCancelled] = useState(false);
   const [participantDraft, setParticipantDraft] = useState<ParticipantDraft>(emptyParticipantDraft);
+  const [spreadRadius, setSpreadRadius] = useState(200);
   const [policyDraft, setPolicyDraft] = useState<Required<BossRegistrationPolicyInput>>({
     enabled: false,
     max_players: 0,
@@ -112,12 +144,13 @@ export const BossRegistration: React.FC = () => {
     const query = search.trim().toLowerCase();
     return (summonsQuery.data?.items || [])
       .filter(isFixedBoss)
-      .filter((item) => item.status === 'pending' || item.status === 'active')
       .filter((item) => !query || `${item.template_name} ${item.id} ${item.location.label || ''}`.toLowerCase().includes(query))
       .sort((left, right) => {
-        if (left.status !== right.status) return left.status === 'active' ? -1 : 1;
-        return right.requested_at.localeCompare(left.requested_at);
-      });
+        const priority = (status: BossSummon['status']) => status === 'active' ? 0 : status === 'pending' ? 1 : 2;
+        const delta = priority(left.status) - priority(right.status);
+        return delta || right.requested_at.localeCompare(left.requested_at);
+      })
+      .slice(0, 100);
   }, [summonsQuery.data, search]);
 
   useEffect(() => {
@@ -137,10 +170,25 @@ export const BossRegistration: React.FC = () => {
     refetchInterval: 10_000,
   });
 
+  const transportQuery = useQuery({
+    queryKey: ['boss-registration', 'transport', selectedSummonID],
+    queryFn: () => bossRegistrationApi.transportSnapshot(selectedSummonID),
+    enabled: Boolean(selectedSummonID),
+    refetchInterval: 10_000,
+  });
+
   const snapshot = snapshotQuery.data;
   const policy = snapshot?.policy;
   const participants = snapshot?.participants || [];
   const events = snapshot?.events || [];
+  const transport = transportQuery.data;
+  const transportByPlayer = useMemo(
+    () => new Map((transport?.items || []).map((item) => [item.player_uid, item])),
+    [transport],
+  );
+  const unresolvedTransportCount = (transport?.prepared || 0) + (transport?.teleported || 0) + (transport?.teleport_failed || 0) + (transport?.return_failed || 0);
+  const eligibleParticipantCount = participants.filter((participant) => participant.status !== 'cancelled' && participant.eligible).length;
+  const summonTerminal = selectedSummon ? ['completed', 'failed', 'cancelled'].includes(selectedSummon.status) : false;
 
   useEffect(() => {
     if (!policy || policy.summon_id !== selectedSummonID) return;
@@ -226,6 +274,31 @@ export const BossRegistration: React.FC = () => {
     onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
   });
 
+
+  const teleportMutation = useMutation({
+    mutationFn: () => bossRegistrationApi.teleportParticipants(selectedSummonID, { spread_radius: spreadRadius }),
+    onSuccess: async (value) => {
+      setNotice({
+        type: value.failed > 0 ? 'error' : 'success',
+        text: `参与者传送完成：成功 ${value.succeeded}，跳过 ${value.skipped}，失败 ${value.failed}。所有成功传送的玩家均已保存原始回程坐标。`,
+      });
+      await refresh();
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
+  const returnMutation = useMutation({
+    mutationFn: () => bossRegistrationApi.returnParticipants(selectedSummonID),
+    onSuccess: async (value) => {
+      setNotice({
+        type: value.failed > 0 ? 'error' : 'success',
+        text: `安全回程完成：成功 ${value.succeeded}，失败 ${value.failed}。失败玩家保留原回程点，可再次执行安全回程。`,
+      });
+      await refresh();
+    },
+    onError: (error) => setNotice({ type: 'error', text: getErrorMessage(error) }),
+  });
+
   const availableText = !policy
     ? '—'
     : policy.max_players <= 0
@@ -261,11 +334,11 @@ export const BossRegistration: React.FC = () => {
             <label className="relative mt-3 block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} className="pp-input w-full pl-9" placeholder="名称、场次ID或地点" /></label>
             <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">
               {summons.map((summon) => <button key={summon.id} type="button" onClick={() => setSelectedSummonID(summon.id)} className={`w-full rounded-xl border p-3 text-left transition ${selectedSummonID === summon.id ? 'border-rose-300 bg-rose-50/50' : 'border-slate-200 hover:bg-slate-50'}`}>
-                <div className="flex items-center justify-between gap-2"><strong className="truncate text-sm text-slate-800">{summon.template_name}</strong><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${summon.status === 'active' ? 'bg-sky-50 text-sky-700' : 'bg-amber-50 text-amber-700'}`}>{summon.status === 'active' ? '进行中' : '等待执行'}</span></div>
+                <div className="flex items-center justify-between gap-2"><strong className="truncate text-sm text-slate-800">{summon.template_name}</strong><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${summonState(summon.status).className}`}>{summonState(summon.status).label}</span></div>
                 <div className="mt-1 font-mono text-[10px] text-slate-400">{shortID(summon.id)}</div>
                 <div className="mt-1 truncate text-[11px] text-slate-500">{summon.location.label || `${summon.location.x}, ${summon.location.y}, ${summon.location.z}`}</div>
               </button>)}
-              {!summonsQuery.isLoading && summons.length === 0 && <div className="rounded-xl bg-slate-50 py-8 text-center text-xs text-slate-400">暂无等待或进行中的固定 Boss 场次。</div>}
+              {!summonsQuery.isLoading && summons.length === 0 && <div className="rounded-xl bg-slate-50 py-8 text-center text-xs text-slate-400">暂无固定 Boss 场次。</div>}
             </div>
           </div>
 
@@ -284,7 +357,7 @@ export const BossRegistration: React.FC = () => {
 
         <div className="space-y-5">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-black text-slate-900">报名策略</h2><p className="mt-1 text-xs text-slate-400">策略保存在本次召唤快照中。修改半径后会重新计算已有参与者状态。</p></div><button type="button" disabled={!selectedSummonID || configureMutation.isPending} onClick={() => configureMutation.mutate()} className="pp-btn pp-btn--primary">{configureMutation.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <Save size={14} />}保存策略</button></div>
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-black text-slate-900">报名策略</h2><p className="mt-1 text-xs text-slate-400">策略保存在本次召唤快照中。修改半径后会重新计算已有参与者状态；已结束场次只允许查看和安全回程。</p></div><button type="button" disabled={!selectedSummonID || summonTerminal || configureMutation.isPending} onClick={() => configureMutation.mutate()} className="pp-btn pp-btn--primary">{configureMutation.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <Save size={14} />}保存策略</button></div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={policyDraft.enabled} onChange={(event) => setPolicyDraft((current) => ({ ...current, enabled: event.target.checked }))} className="h-4 w-4 rounded border-slate-300" /><span className="text-sm font-black text-slate-800">启用报名</span></label>
               <label><FieldLabel>人数上限</FieldLabel><input type="number" min={0} max={1000} value={policyDraft.max_players} onChange={(event) => setPolicyDraft((current) => ({ ...current, max_players: Math.max(0, Math.trunc(Number(event.target.value) || 0)) }))} className="pp-input w-full" /><span className="mt-1 block text-[10px] text-slate-400">0 表示不限人数</span></label>
@@ -292,6 +365,25 @@ export const BossRegistration: React.FC = () => {
               <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={policyDraft.use_z} onChange={(event) => setPolicyDraft((current) => ({ ...current, use_z: event.target.checked }))} className="h-4 w-4 rounded border-slate-300" /><span><span className="block text-sm font-black text-slate-800">计算高度</span><span className="text-[10px] text-slate-400">包含 Z 轴距离</span></span></label>
               <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={policyDraft.allow_active} onChange={(event) => setPolicyDraft((current) => ({ ...current, allow_active: event.target.checked }))} className="h-4 w-4 rounded border-slate-300" /><span><span className="block text-sm font-black text-slate-800">开始后可报名</span><span className="text-[10px] text-slate-400">活动进行中仍开放</span></span></label>
             </div>
+          </div>
+
+          <div className="rounded-2xl border border-sky-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div><h2 className="flex items-center gap-2 font-black text-slate-900"><Navigation size={17} className="text-sky-600" />参与者传送与安全回程</h2><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">只传送已通过区域资格的在线参与者。面板会先从 PalPanelBridge 读取并持久化每名玩家的原始坐标，成功保存回程点后才发送传送命令。</p></div>
+              <div className="grid w-full gap-2 sm:grid-cols-[150px_1fr_1fr] lg:w-auto">
+                <label><FieldLabel>落点分散半径</FieldLabel><input type="number" min={0} max={5000} value={spreadRadius} onChange={(event) => setSpreadRadius(Math.max(0, Math.min(5000, Number(event.target.value) || 0)))} className="pp-input w-full" /></label>
+                <button type="button" disabled={!selectedSummonID || summonTerminal || teleportMutation.isPending || returnMutation.isPending || eligibleParticipantCount <= 0} onClick={() => { if (window.confirm(`传送所有符合资格的参与者到 ${selectedSummon?.template_name || 'Boss 场地'}？`)) teleportMutation.mutate(); }} className="pp-btn pp-btn--primary self-end justify-center">{teleportMutation.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <Navigation size={14} />}传送已到场</button>
+                <button type="button" disabled={!selectedSummonID || teleportMutation.isPending || returnMutation.isPending || unresolvedTransportCount <= 0} onClick={() => { if (window.confirm('将仍在活动场地的参与者送回各自保存的原始坐标？')) returnMutation.mutate(); }} className="self-end inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700 disabled:opacity-40">{returnMutation.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <Undo2 size={14} />}安全回程</button>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="rounded-xl bg-slate-50 p-3"><span className="text-[10px] font-bold text-slate-400">待核对</span><strong className="mt-1 block text-lg text-slate-800">{transport?.prepared || 0}</strong></div>
+              <div className="rounded-xl bg-sky-50 p-3"><span className="text-[10px] font-bold text-sky-500">场地中</span><strong className="mt-1 block text-lg text-sky-700">{transport?.teleported || 0}</strong></div>
+              <div className="rounded-xl bg-emerald-50 p-3"><span className="text-[10px] font-bold text-emerald-500">已回程</span><strong className="mt-1 block text-lg text-emerald-700">{transport?.returned || 0}</strong></div>
+              <div className="rounded-xl bg-rose-50 p-3"><span className="text-[10px] font-bold text-rose-500">传送失败</span><strong className="mt-1 block text-lg text-rose-700">{transport?.teleport_failed || 0}</strong></div>
+              <div className="rounded-xl bg-amber-50 p-3"><span className="text-[10px] font-bold text-amber-600">回程待重试</span><strong className="mt-1 block text-lg text-amber-700">{transport?.return_failed || 0}</strong></div>
+            </div>
+            {transportQuery.error && <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">传送账本读取失败：{getErrorMessage(transportQuery.error)}</div>}
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -307,17 +399,18 @@ export const BossRegistration: React.FC = () => {
             {snapshotQuery.error && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{getErrorMessage(snapshotQuery.error)}</div>}
             <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
               <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
-                <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-400"><tr><th className="px-3 py-3">玩家</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">区域</th><th className="px-3 py-3">位置</th><th className="px-3 py-3">时间</th><th className="px-3 py-3 text-right">操作</th></tr></thead>
+                <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-400"><tr><th className="px-3 py-3">玩家</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">区域</th><th className="px-3 py-3">位置</th><th className="px-3 py-3">传送</th><th className="px-3 py-3">时间</th><th className="px-3 py-3 text-right">操作</th></tr></thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
                   {participants.map((participant) => <tr key={participant.id}>
                     <td className="px-3 py-3"><div className="font-black text-slate-800">{participant.nickname || '未命名玩家'}</div><div className="mt-1 max-w-64 truncate font-mono text-[10px] text-slate-400">{participant.player_uid}</div>{participant.steam_id && <div className="mt-0.5 font-mono text-[10px] text-slate-400">{participant.steam_id}</div>}</td>
                     <td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${participantStatusClass[participant.status]}`}>{participantStatusLabel[participant.status]}</span></td>
                     <td className="px-3 py-3"><div className={`font-bold ${participant.eligible ? 'text-emerald-700' : participant.area_status === 'outside' ? 'text-rose-700' : 'text-amber-700'}`}>{areaStatusLabel[participant.area_status]}</div><div className="mt-1 text-[10px] text-slate-400">距离 {number.format(participant.distance)}</div></td>
                     <td className="px-3 py-3 font-mono text-[10px] text-slate-500">{participant.location ? `${number.format(participant.location.x)}, ${number.format(participant.location.y)}, ${number.format(participant.location.z)}` : '未取得'}</td>
+                    <td className="px-3 py-3">{(() => { const item = transportByPlayer.get(participant.player_uid); return item ? <div><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${transportStatusClass[item.state]}`}>{transportStatusLabel[item.state]}</span>{item.last_error && <div className="mt-1 max-w-56 text-[10px] text-rose-600">{item.last_error}</div>}</div> : <span className="text-[10px] text-slate-400">未传送</span>; })()}</td>
                     <td className="px-3 py-3 text-[10px] text-slate-500"><div>报名 {formatTime(participant.registered_at)}</div>{participant.checked_at && <div className="mt-1">核验 {formatTime(participant.checked_at)}</div>}</td>
                     <td className="px-3 py-3"><div className="flex justify-end gap-1.5">{participant.status !== 'cancelled' && <button type="button" disabled={checkMutation.isPending} onClick={() => checkMutation.mutate(participant)} className="pp-button"><MapPin size={13} />核验位置</button>}{participant.status !== 'cancelled' && <button type="button" disabled={cancelMutation.isPending} onClick={() => { if (window.confirm(`取消 ${participant.nickname || participant.player_uid} 的报名？`)) cancelMutation.mutate(participant); }} className="rounded-lg border border-rose-100 px-2.5 py-2 font-bold text-rose-600 hover:bg-rose-50"><UserMinus size={13} /></button>}</div></td>
                   </tr>)}
-                  {!snapshotQuery.isLoading && participants.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">暂无报名参与者。</td></tr>}
+                  {!snapshotQuery.isLoading && participants.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">暂无报名参与者。</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -336,7 +429,7 @@ export const BossRegistration: React.FC = () => {
           </div>
 
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">
-            <div className="flex gap-2"><CircleAlert className="mt-0.5 shrink-0" size={15} /><div><strong className="block">位置读取条件</strong>PalPanelBridge 必须为 0.1.24 或更高版本，`config.ini` Token 必须可用，并且玩家处于在线状态。位置读取失败不会自动取消已有报名。</div></div>
+            <div className="flex gap-2"><CircleAlert className="mt-0.5 shrink-0" size={15} /><div><strong className="block">位置与回程安全条件</strong>PalPanelBridge 必须为 0.1.24 或更高版本，`config.ini` Token 必须可用，并且玩家处于在线状态。位置读取失败不会自动取消报名，也不会发送传送命令。传送失败、进程中断或结果未落账时都会保留原始坐标并阻止重复外送；管理员应先执行安全回程，再重新传送。回程失败可重复执行。</div></div>
           </div>
         </div>
       </section>

@@ -24,7 +24,7 @@ func init() {
 
 func (s Server) tryBossRegistrationControl(c *gin.Context, request boss.TransitionRequest) bool {
 	action := normalizeBossRegistrationAction(request.Status)
-	if !boss.IsRegistrationControlAction(request.Status) && !isBossRegistrationOnlineControl(action) {
+	if !boss.IsRegistrationControlAction(request.Status) && !isBossRegistrationOnlineControl(action) && !isBossParticipantTransportControl(action) {
 		return false
 	}
 	service, err := s.bossService()
@@ -104,6 +104,35 @@ func (s Server) tryBossRegistrationControl(c *gin.Context, request boss.Transiti
 			return true
 		}
 		ok(c, result)
+	case "transport_snapshot":
+		result, operationErr := service.TransportSnapshot(c.Request.Context(), c.Param("id"))
+		if operationErr != nil {
+			bossRegistrationFailure(c, operationErr)
+			return true
+		}
+		ok(c, result)
+	case "participants_teleport":
+		var input bossTransportBatchInput
+		if !decodeBossRegistrationInput(c, request.Result, &input) {
+			return true
+		}
+		result, operationErr := s.teleportBossParticipants(c.Request.Context(), service, c.Param("id"), input, actor)
+		if operationErr != nil {
+			bossRegistrationFailure(c, operationErr)
+			return true
+		}
+		ok(c, result)
+	case "participants_return":
+		var input bossTransportBatchInput
+		if !decodeBossRegistrationInput(c, request.Result, &input) {
+			return true
+		}
+		result, operationErr := s.returnBossParticipants(c.Request.Context(), service, c.Param("id"), input, actor)
+		if operationErr != nil {
+			bossRegistrationFailure(c, operationErr)
+			return true
+		}
+		ok(c, result)
 	case "participant_cancel":
 		var input boss.ParticipantCancelInput
 		if !decodeBossRegistrationInput(c, request.Result, &input) {
@@ -139,12 +168,13 @@ func decodeBossRegistrationInput(c *gin.Context, value map[string]any, target an
 
 func bossRegistrationFailure(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, boss.ErrInvalidRegistration):
+	case errors.Is(err, boss.ErrInvalidRegistration), errors.Is(err, boss.ErrInvalidTransport):
 		fail(c, http.StatusBadRequest, "boss_registration_invalid", err.Error())
 	case errors.Is(err, boss.ErrSummonNotFound), errors.Is(err, boss.ErrParticipantNotFound):
 		fail(c, http.StatusNotFound, "boss_registration_not_found", err.Error())
 	case errors.Is(err, boss.ErrRegistrationClosed), errors.Is(err, boss.ErrRegistrationFull),
-		errors.Is(err, boss.ErrRegistrationPolicy), errors.Is(err, boss.ErrRegistrationBusy), errors.Is(err, boss.ErrParticipantStateConflict):
+		errors.Is(err, boss.ErrRegistrationPolicy), errors.Is(err, boss.ErrRegistrationBusy), errors.Is(err, boss.ErrParticipantStateConflict),
+		errors.Is(err, boss.ErrTransportBusy), errors.Is(err, boss.ErrTransportStateConflict):
 		fail(c, http.StatusConflict, "boss_registration_conflict", err.Error())
 	case errors.Is(err, errBossBridgeUnavailable), errors.Is(err, errBossBridgePlayerNotFound), errors.Is(err, errBossBridgeLocationNotFound):
 		fail(c, http.StatusServiceUnavailable, "boss_registration_location_unavailable", err.Error())

@@ -68,6 +68,7 @@ export interface BossLocationLookup {
   matched_by?: string;
   player_uid?: string;
   account_name?: string;
+  identifier?: string;
   location?: BossRegistrationLocation;
   observed_at?: string;
   error?: string;
@@ -89,6 +90,66 @@ export interface BossRegistrationRefreshResult {
   failed: number;
   lookups: BossLocationLookup[];
   snapshot: BossRegistrationSnapshot;
+}
+
+
+export type BossTransportState = 'prepared' | 'teleported' | 'teleport_failed' | 'returned' | 'return_failed';
+
+export interface BossParticipantTransport {
+  id: number;
+  summon_id: string;
+  player_uid: string;
+  nickname?: string;
+  identifier: string;
+  state: BossTransportState;
+  origin: BossRegistrationLocation;
+  destination: BossRegistrationLocation;
+  teleport_attempts: number;
+  return_attempts: number;
+  last_error?: string;
+  actor?: string;
+  metadata?: Record<string, unknown>;
+  prepared_at: string;
+  teleported_at?: string;
+  returned_at?: string;
+  updated_at: string;
+}
+
+export interface BossTransportSnapshot {
+  summon_id: string;
+  items: BossParticipantTransport[];
+  count: number;
+  prepared: number;
+  teleported: number;
+  teleport_failed: number;
+  returned: number;
+  return_failed: number;
+}
+
+export interface BossTransportItemResult {
+  player_uid: string;
+  nickname?: string;
+  status: string;
+  error?: string;
+  location_lookup?: BossLocationLookup;
+  transport?: BossParticipantTransport;
+}
+
+export interface BossTransportBatchResult {
+  summon_id: string;
+  action: 'teleport' | 'return';
+  requested: number;
+  selected: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  items: BossTransportItemResult[];
+  snapshot: BossTransportSnapshot;
+}
+
+export interface BossTransportBatchInput {
+  player_uids?: string[];
+  spread_radius?: number;
 }
 
 export interface BossRegistrationPolicyInput {
@@ -119,6 +180,12 @@ const emptySnapshot: BossRegistrationSnapshot = {
   events: [],
   count: 0,
   event_count: 0,
+};
+
+
+const emptyTransportSnapshot: BossTransportSnapshot = {
+  summon_id: '', items: [], count: 0, prepared: 0, teleported: 0,
+  teleport_failed: 0, returned: 0, return_failed: 0,
 };
 
 const control = <T>(summonID: string, status: string, result: Record<string, unknown>, fallback: T) =>
@@ -179,5 +246,23 @@ export const bossRegistrationApi = {
       failed: 0,
       lookups: [],
       snapshot: { ...emptySnapshot, policy: { ...emptyPolicy, summon_id: summonID } },
+    }),
+
+
+  transportSnapshot: (summonID: string) =>
+    control<BossTransportSnapshot>(summonID, 'transport_snapshot', {}, { ...emptyTransportSnapshot, summon_id: summonID }),
+
+  teleportParticipants: (summonID: string, input: BossTransportBatchInput = {}) =>
+    control<BossTransportBatchResult>(summonID, 'participants_teleport', input as unknown as Record<string, unknown>, {
+      summon_id: summonID, action: 'teleport', requested: 0, selected: 0,
+      succeeded: 0, failed: 0, skipped: 0, items: [],
+      snapshot: { ...emptyTransportSnapshot, summon_id: summonID },
+    }),
+
+  returnParticipants: (summonID: string, input: BossTransportBatchInput = {}) =>
+    control<BossTransportBatchResult>(summonID, 'participants_return', input as unknown as Record<string, unknown>, {
+      summon_id: summonID, action: 'return', requested: 0, selected: 0,
+      succeeded: 0, failed: 0, skipped: 0, items: [],
+      snapshot: { ...emptyTransportSnapshot, summon_id: summonID },
     }),
 };
