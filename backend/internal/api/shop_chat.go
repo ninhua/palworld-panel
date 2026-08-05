@@ -12,6 +12,7 @@ import (
 type gameChatCommandOutcome struct {
 	Economy   *economy.CommandResult
 	Shop      *shop.PlayerCommandResult
+	Boss      *bossRegistrationChatResult
 	Tasks     *tasks.PlayerCommandResult
 	Handled   bool
 	Duplicate bool
@@ -59,6 +60,23 @@ func (s Server) executeGameChatCommand(ctx context.Context, record gameevents.Re
 		outcome.Handled = true
 		outcome.Duplicate = shopCommand.Duplicate
 		outcome.Reply = shopCommand.Reply
+		return outcome, nil
+	}
+
+	bossCommand, err := s.executeBossRegistrationChatCommand(
+		ctx,
+		record,
+		message,
+		config.CommandPrefix,
+		config.AllowBareCommands,
+	)
+	if err != nil {
+		return gameChatCommandOutcome{}, err
+	}
+	outcome.Boss = &bossCommand
+	if bossCommand.Handled {
+		outcome.Handled = true
+		outcome.Reply = bossCommand.Reply
 		return outcome, nil
 	}
 

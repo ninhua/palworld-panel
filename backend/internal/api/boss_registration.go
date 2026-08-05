@@ -23,7 +23,8 @@ func init() {
 }
 
 func (s Server) tryBossRegistrationControl(c *gin.Context, request boss.TransitionRequest) bool {
-	if !boss.IsRegistrationControlAction(request.Status) {
+	action := normalizeBossRegistrationAction(request.Status)
+	if !boss.IsRegistrationControlAction(request.Status) && !isBossRegistrationOnlineControl(action) {
 		return false
 	}
 	service, err := s.bossService()
@@ -31,9 +32,8 @@ func (s Server) tryBossRegistrationControl(c *gin.Context, request boss.Transiti
 		bossRegistrationFailure(c, err)
 		return true
 	}
-	action := request.Status
 	actor := CurrentPrincipal(c).Name
-	switch normalizeBossRegistrationAction(action) {
+	switch action {
 	case "registration_configure":
 		var input boss.RegistrationPolicyUpdate
 		if !decodeBossRegistrationInput(c, request.Result, &input) {
@@ -64,12 +64,41 @@ func (s Server) tryBossRegistrationControl(c *gin.Context, request boss.Transiti
 			return true
 		}
 		ok(c, result)
+	case "participant_register_online":
+		var input boss.ParticipantInput
+		if !decodeBossRegistrationInput(c, request.Result, &input) {
+			return true
+		}
+		result, operationErr := s.registerBossParticipantOnline(c.Request.Context(), service, c.Param("id"), input, actor)
+		if operationErr != nil {
+			bossRegistrationFailure(c, operationErr)
+			return true
+		}
+		ok(c, result)
 	case "participant_check_area":
 		var input boss.ParticipantAreaInput
 		if !decodeBossRegistrationInput(c, request.Result, &input) {
 			return true
 		}
 		result, operationErr := service.CheckParticipantArea(c.Request.Context(), c.Param("id"), input, actor)
+		if operationErr != nil {
+			bossRegistrationFailure(c, operationErr)
+			return true
+		}
+		ok(c, result)
+	case "participant_check_area_online":
+		var input boss.ParticipantInput
+		if !decodeBossRegistrationInput(c, request.Result, &input) {
+			return true
+		}
+		result, operationErr := s.checkBossParticipantOnline(c.Request.Context(), service, c.Param("id"), input, actor)
+		if operationErr != nil {
+			bossRegistrationFailure(c, operationErr)
+			return true
+		}
+		ok(c, result)
+	case "registration_refresh_online":
+		result, operationErr := s.refreshBossRegistrationOnline(c.Request.Context(), service, c.Param("id"), actor)
 		if operationErr != nil {
 			bossRegistrationFailure(c, operationErr)
 			return true
@@ -117,6 +146,8 @@ func bossRegistrationFailure(c *gin.Context, err error) {
 	case errors.Is(err, boss.ErrRegistrationClosed), errors.Is(err, boss.ErrRegistrationFull),
 		errors.Is(err, boss.ErrRegistrationPolicy), errors.Is(err, boss.ErrRegistrationBusy), errors.Is(err, boss.ErrParticipantStateConflict):
 		fail(c, http.StatusConflict, "boss_registration_conflict", err.Error())
+	case errors.Is(err, errBossBridgeUnavailable), errors.Is(err, errBossBridgePlayerNotFound), errors.Is(err, errBossBridgeLocationNotFound):
+		fail(c, http.StatusServiceUnavailable, "boss_registration_location_unavailable", err.Error())
 	default:
 		bossFailure(c, err)
 	}
