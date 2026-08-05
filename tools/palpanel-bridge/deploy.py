@@ -23,6 +23,8 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from zipfile import ZipFile
 
 import paramiko
@@ -245,6 +247,41 @@ def deploy(dll: Path, checksum: str, version: str, host: str, port: int, usernam
         transport.close()
 
 
+def panel_request(panel_url: str, api_key: str, method: str, path: str, body: object | None = None, timeout_seconds: int = 120) -> dict[str, object]:
+    url = panel_url.rstrip("/") + path
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    request = Request(url, data=data, headers=headers, method=method)
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            raw = response.read(1024 * 1024 + 1)
+            if len(raw) > 1024 * 1024:
+                raise RuntimeError("Panel response exceeds 1 MiB")
+            value = json.loads(raw.decode("utf-8"))
+    except HTTPError as error:
+        raise RuntimeError(f"Panel API HTTP {error.code}: {error.read().decode('utf-8', errors='replace')[:500]}") from error
+    except URLError as error:
+        raise RuntimeError(f"Panel API request failed: {error.reason}") from error
+    except (TimeoutError, OSError) as error:
+        raise RuntimeError(f"Panel API request failed: {type(error).__name__}") from error
+    if not isinstance(value, dict):
+        raise RuntimeError("Panel API returned a non-object response")
+    return value
+
+
+def panel_restart(panel_url: str, api_key: str, version: str, timeout_seconds: int = 900, poll_seconds: int = 15) -> dict[str, object]:
+    """Restart the game server through the panel API and wait for completion."""
+    submitted = panel_request(panel_url, api_key, "POST", "/api/server/restart", timeout_seconds=300)
+    data = submitted.get("data") if isinstance(submitted.get("data"), dict) else {}
+    status = data.get("status")
+    if status == "restarted" or submitted.get("ok") is True:
+        return {"status": status, "response": submitted}
+    raise RuntimeError(f"Panel restart returned an unexpected response: {submitted}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", type=int)
@@ -263,6 +300,9 @@ def main() -> None:
     parser.add_argument("--username")
     parser.add_argument("--fingerprint")
     parser.add_argument("--remote-dir", default=os.environ.get("PALPANEL_SFTP_REMOTE_DIR", "/palworld_win/server/Pal/Binaries/Win64/ue4ss/Mods/PalPanelBridge/dlls"))
+    parser.add_argument("--panel-url", default=os.environ.get("PALPANEL_API_URL", ""))
+    parser.add_argument("--panel-api-key", default=os.environ.get("PALPANEL_API_KEY", ""))
+    parser.add_argument("--restart", action="store_true", help="restart the game server via the panel API after deploying")
     args = parser.parse_args()
 
     if args.poll_seconds < 10:
@@ -296,6 +336,13 @@ def main() -> None:
     fingerprint = env_or_argument(args.fingerprint, "PALPANEL_SFTP_HOSTKEY_SHA256")
     password = os.environ.get("PALPANEL_SFTP_PASSWORD") or getpass.getpass("SFTP password: ")
     backup = deploy(dll, checksum, version, host, args.port, username, password, fingerprint, args.remote_dir)
+    restarted = False
+    if args.restart:
+        panel_url = env_or_argument(args.panel_url, "PALPANEL_API_URL")
+        api_key = env_or_argument(args.panel_api_key, "PALPANEL_API_KEY")
+        restart_result = panel_restart(panel_url, api_key, version)
+        restarted = True
+        print(f"Panel restart submitted: {restart_result}", flush=True)
     print(json.dumps({
         "ok": True,
         "version": version,
@@ -305,7 +352,7 @@ def main() -> None:
         "local_package": str(local_root),
         "remote_backup": backup,
         "config_preserved": True,
-        "server_restarted": False,
+        "server_restarted": restarted,
     }, ensure_ascii=True, indent=2))
 
 
