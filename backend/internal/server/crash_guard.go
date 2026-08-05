@@ -15,11 +15,12 @@ import (
 var ErrCrashGuardTripped = errors.New("crash guard is tripped")
 
 const (
-	defaultCrashGuardInterval  = 5 * time.Second
-	defaultCrashGuardWindow    = 10 * time.Minute
-	defaultCrashGuardThreshold = 3
-	crashGuardEventRetention   = 50
-	expectedStopTTL            = 10 * time.Minute
+	defaultCrashGuardInterval   = 5 * time.Second
+	defaultCrashGuardWindow     = 10 * time.Minute
+	defaultCrashGuardThreshold  = 3
+	crashGuardEventRetention    = 50
+	expectedStopTTL             = 10 * time.Minute
+	crashGuardBusyRetryAttempts = 4
 )
 
 type CrashGuardStatus struct {
@@ -50,6 +51,52 @@ func (m Manager) lockCrashGuard() func() {
 	}
 	m.crashGuardMu.Lock()
 	return m.crashGuardMu.Unlock
+}
+
+// crashGuardSQLiteBusy recognizes only transient SQLite writer contention.
+// Other database failures must surface immediately instead of being retried.
+func crashGuardSQLiteBusy(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "database is locked") ||
+		strings.Contains(message, "database table is locked") ||
+		strings.Contains(message, "sqlite_busy") ||
+		strings.Contains(message, "sqlite_locked")
+}
+
+// retryCrashGuardSQLiteBusy gives a competing writer time to commit while keeping
+// the crash guard responsive to shutdown cancellation. Each database operation is
+// retried independently so lifecycle side effects are never replayed.
+func retryCrashGuardSQLiteBusy(ctx context.Context, operation string, action func() error) error {
+	delays := [...]time.Duration{100 * time.Millisecond, 250 * time.Millisecond, 500 * time.Millisecond}
+	var err error
+	for attempt := 1; attempt <= crashGuardBusyRetryAttempts; attempt++ {
+		err = action()
+		if err == nil {
+			return nil
+		}
+		if !crashGuardSQLiteBusy(err) {
+			return fmt.Errorf("%s: %w", operation, err)
+		}
+		if attempt == crashGuardBusyRetryAttempts {
+			break
+		}
+		timer := time.NewTimer(delays[attempt-1])
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return fmt.Errorf("%s remained locked after %d attempts: %w", operation, crashGuardBusyRetryAttempts, err)
 }
 
 func crashGuardWindowStart(state db.CrashGuardState, now time.Time, window time.Duration) time.Time {
@@ -133,8 +180,12 @@ func (m Manager) StartCrashGuard(ctx context.Context) <-chan struct{} {
 
 func (m Manager) ObserveCrashGuard(ctx context.Context) error {
 	unlock := m.lockCrashGuard()
-	state, err := m.store.GetCrashGuardState(ctx)
-	if err != nil {
+	var state db.CrashGuardState
+	if err := retryCrashGuardSQLiteBusy(ctx, "read crash guard state", func() error {
+		var readErr error
+		state, readErr = m.store.GetCrashGuardState(ctx)
+		return readErr
+	}); err != nil {
 		unlock()
 		return err
 	}
@@ -191,12 +242,26 @@ func (m Manager) ObserveCrashGuard(ctx context.Context) error {
 		}
 	}
 
+	previousState := state
+	stateChanged := state.LastRuntimeMode != status.RuntimeMode ||
+		state.LastStatus != currentStatus ||
+		state.LastRestartCount != container.RestartCount ||
+		state.LastSignature != signature
+	if event == nil && !stateChanged {
+		// The observer runs every five seconds. Rewriting an unchanged singleton
+		// row only creates avoidable writer contention with jobs, events and Boss
+		// ledgers that share the panel database.
+		unlock()
+		return nil
+	}
 	state.LastRuntimeMode = status.RuntimeMode
 	state.LastStatus = currentStatus
 	state.LastRestartCount = container.RestartCount
 	state.LastSignature = signature
 	state.UpdatedAt = now.Format(time.RFC3339Nano)
-	if err := m.store.PutCrashGuardState(ctx, state); err != nil {
+	if err := retryCrashGuardSQLiteBusy(ctx, "write crash guard state", func() error {
+		return m.store.PutCrashGuardState(ctx, state)
+	}); err != nil {
 		unlock()
 		return err
 	}
@@ -204,11 +269,23 @@ func (m Manager) ObserveCrashGuard(ctx context.Context) error {
 		unlock()
 		return nil
 	}
-	if err := m.store.CreateCrashGuardEvent(ctx, *event); err != nil {
+	if err := retryCrashGuardSQLiteBusy(ctx, "record crash guard event", func() error {
+		return m.store.CreateCrashGuardEvent(ctx, *event)
+	}); err != nil {
+		// Do not advance the observed signature unless its crash event was safely
+		// recorded. Restoring the previous state lets the next tick detect it again.
+		rollbackErr := retryCrashGuardSQLiteBusy(ctx, "restore crash guard state after event failure", func() error {
+			return m.store.PutCrashGuardState(ctx, previousState)
+		})
 		unlock()
+		if rollbackErr != nil {
+			return fmt.Errorf("%v; %w", err, rollbackErr)
+		}
 		return err
 	}
-	_ = m.store.PruneCrashGuardEvents(ctx, crashGuardEventRetention)
+	_ = retryCrashGuardSQLiteBusy(ctx, "prune crash guard events", func() error {
+		return m.store.PruneCrashGuardEvents(ctx, crashGuardEventRetention)
+	})
 	window := m.crashGuardWindow
 	if window <= 0 {
 		window = defaultCrashGuardWindow
@@ -217,8 +294,12 @@ func (m Manager) ObserveCrashGuard(ctx context.Context) error {
 	if threshold <= 0 {
 		threshold = defaultCrashGuardThreshold
 	}
-	count, err := m.store.CountCrashGuardOccurrencesSince(ctx, crashGuardWindowStart(state, now, window).Format(time.RFC3339Nano))
-	if err != nil {
+	var count int
+	if err := retryCrashGuardSQLiteBusy(ctx, "count crash guard events", func() error {
+		var countErr error
+		count, countErr = m.store.CountCrashGuardOccurrencesSince(ctx, crashGuardWindowStart(state, now, window).Format(time.RFC3339Nano))
+		return countErr
+	}); err != nil {
 		unlock()
 		return err
 	}
