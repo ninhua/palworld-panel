@@ -6,7 +6,7 @@
 - 普通在线查询只 additive 返回 `character_parameter_found` 与对象描述；只有 `metadata_probe` 且首名玩家被选中时返回 `detail_property_metadata`。探针不读取匹配属性值、数组、Map、嵌套内容，也不调用未知函数。
 - 版本统一为 `0.1.25`；紧凑查询保留新增字段和存在时的详细元数据。
 - `0.1.24` Action `30932965144`、SHA `2b8634fb3e8ad30f985cdf8e6ef5a25d2191df5e8a499aabebd20a8e09df067a` 已部署，备份成功且未自动重启；实机任务 `players_1785866795757_1` 于 `2026-08-05T02:06:35.759+08:00` 完成，`cached_location=(-374896,237490,-919.81)`，`guild=PalGroupGuild_2147480614/class PalGroupGuild`，错误为空，队列到执行 2ms；metadata 已证实 Pawn 有 `CharacterParameterComponent(object PalCharacterParameterComponent)`。
-- `0.1.25` 尚未运行验证。
+- `0.1.25` 已部署验证（2026-08-06）：Action `31033828265`、SHA `d9246add053d376b46f27538f37477e845952d164543a2bf398bc8e86639ace7` 已部署，备份成功且未自动重启；服务器进程于 `2026-08-06T02:31:11+08:00` 重新加载并 `Starting C++ mod 'PalPanelBridge'`，监听 `127.0.0.1:18083`、token 已配置。构建快照位于 `PalPanelBridge/versions/PalPanelBridge-v0.1.25-run-31033828265`。接口实机调用待 Panel 诊断中转可用后补充。
 
 ## 2026-08-05：PalPanelBridge 0.1.24 首批玩家详细字段
 
