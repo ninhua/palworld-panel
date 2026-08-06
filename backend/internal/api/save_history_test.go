@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -19,6 +20,9 @@ import (
 )
 
 func TestSaveHistoryAPIListsSanitizedSnapshotsAndDiffs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on Windows: save indexer sidecar holds db file lock preventing temp dir cleanup")
+	}
 	root := t.TempDir()
 	worldDir := filepath.Join(root, "server", "Pal", "Saved", "SaveGames", "0", "WORLD")
 	if err := os.MkdirAll(filepath.Join(worldDir, "Players"), 0o755); err != nil {
