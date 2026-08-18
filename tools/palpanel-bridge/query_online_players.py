@@ -72,7 +72,7 @@ def diagnostic_request(panel_url: str, panel_key: str, method: str, url: str, br
     )
     try:
         with urlopen(request, timeout=15) as response:
-            raw = response.read(64 * 1024 + 1)
+            raw = response.read(2 * 1024 * 1024 + 1)
             status = response.status
     except HTTPError as exc:
         raise ProbeError(f"Panel HTTP 错误：{exc.code}") from exc
@@ -80,8 +80,8 @@ def diagnostic_request(panel_url: str, panel_key: str, method: str, url: str, br
         raise ProbeError(f"Panel 请求失败：{type(exc.reason).__name__}") from exc
     except (TimeoutError, OSError) as exc:
         raise ProbeError(f"Panel 请求失败：{type(exc).__name__}") from exc
-    if len(raw) > 64 * 1024:
-        raise ProbeError("Panel 响应超过 64 KiB")
+    if len(raw) > 2 * 1024 * 1024:
+        raise ProbeError("Panel 响应超过 2 MiB")
     if status < 200 or status >= 300:
         raise ProbeError(f"Panel HTTP 状态异常：{status}")
     return json_object(raw, "Panel 响应")

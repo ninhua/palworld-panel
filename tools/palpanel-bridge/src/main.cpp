@@ -18,6 +18,7 @@
 #include <array>
 #include <cctype>
 #include <chrono>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdint>
@@ -111,7 +112,6 @@ struct PropertyCandidateSnapshot;
 struct ItemSlotSnapshot
 {
     bool found{};
-    ObjectSnapshot slot{};
     bool slot_index_found{};
     double slot_index{};
     bool stack_count_found{};
@@ -860,7 +860,6 @@ std::vector<ItemSlotSnapshot> read_item_slots(
         if (!slot_object || !RC::Unreal::UObject::IsReal(slot_object)) continue;
         ItemSlotSnapshot slot;
         slot.found = true;
-        slot.slot = describe_object(slot_object);
         slot.slot_index_found =
             read_number_property(slot_object, {STR("SlotIndex")}, slot.slot_index);
         slot.stack_count_found =
@@ -1225,11 +1224,6 @@ void populate_player_state(
         return;
     }
     player.player_state = describe_object(player_state);
-    if (metadata_probe && collect_metadata) {
-        player.player_state_property_metadata = collect_top_level_property_metadata(player_state);
-    } else if (!metadata_probe) {
-        player.player_state_property_candidates = collect_player_data_property_candidates(player_state);
-    }
     const auto uid_ok = read_player_guid(player_state, player.player_uid);
     const auto name_ok = read_account_name(player_state, player.account_name);
     read_cached_player_details(player_state, player, collect_metadata);
@@ -1483,18 +1477,13 @@ void append_item_container_json(
         if (index > 0) body << ',';
         const auto& slot = container.slots[index];
         body << "{\"found\":" << (slot.found ? "true" : "false")
-             << ",\"slot\":{\"name\":\"" << json_escape(slot.slot.name)
-             << "\",\"full_name\":\"" << json_escape(slot.slot.full_name)
-             << "\",\"class_name\":\"" << json_escape(slot.slot.class_name)
-             << "\"},\"slot_index\":"
+             << ",\"slot_index\":"
              << (slot.slot_index_found ? json_number(slot.slot_index) : std::string("null"))
              << ",\"stack_count\":"
              << (slot.stack_count_found ? json_number(slot.stack_count) : std::string("null"))
              << '}';
     }
-    body << "],\"container_property_metadata\":";
-    append_property_metadata_json(body, container.container_property_metadata);
-    body << '}';
+    body << "]}";
 }
 
 const char* job_kind_name(JobKind kind)
@@ -1538,7 +1527,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.32");
+        ModVersion = STR("0.1.33");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -1620,9 +1609,6 @@ class PalPanelBridge final : public RC::CppUserModBase
                     OnlinePlayerSnapshot player;
                     player.source = "controller";
                     player.controller = describe_object(controller);
-                    if (!job.metadata_probe) {
-                        player.controller_property_candidates = collect_player_data_property_candidates(controller);
-                    }
                     const auto collect_metadata = job.metadata_probe &&
                                                   job.metadata_player_count < metadata_player_limit;
                     auto* player_state = read_object_property(controller, {STR("PlayerState")});
@@ -1647,9 +1633,8 @@ class PalPanelBridge final : public RC::CppUserModBase
                             }
                         }
                         if (collect_metadata) {
-                            player.pawn_property_metadata = collect_top_level_property_metadata(pawn);
-                        } else if (!job.metadata_probe) {
-                            player.pawn_property_candidates = collect_player_data_property_candidates(pawn);
+                            player.pawn_property_metadata = collect_keyword_property_metadata(
+                                pawn, {"inventory", "container", "equipment", "otomo", "party", "item", "slot", "pal"});
                         }
                     }
                     job.online_players.emplace_back(std::move(player));
@@ -1754,7 +1739,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.32\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.33\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -1767,7 +1752,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.32\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.33\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -1980,11 +1965,6 @@ class PalPanelBridge final : public RC::CppUserModBase
                  }
                  body << ']';
                 if (job.metadata_probe) {
-                    body << ",\"top_level_property_metadata\":{\"player_state\":";
-                    append_property_metadata_json(body, player.player_state_property_metadata);
-                    body << ",\"pawn\":";
-                    append_property_metadata_json(body, player.pawn_property_metadata);
-                    body << '}';
                     if (player.detail_property_metadata_collected) {
                         body << ",\"detail_property_metadata\":{\"guild\":";
                         append_property_metadata_json(body, player.guild_property_metadata);
@@ -2020,36 +2000,6 @@ class PalPanelBridge final : public RC::CppUserModBase
                         append_property_metadata_json(body, player.character_parameter_property_metadata);
                         body << '}';
                     }
-                } else {
-                    body << ",\"property_candidates\":{";
-                    const auto append_candidates = [&](const char* name, const std::vector<PropertyCandidateSnapshot>& values) {
-                        body << '\"' << name << "\":[";
-                        for (size_t candidate_index = 0; candidate_index < values.size(); ++candidate_index) {
-                            if (candidate_index > 0) body << ',';
-                            body << '\"' << json_escape(values[candidate_index].name) << '\"';
-                        }
-                        body << ']';
-                    };
-                    append_candidates("controller", player.controller_property_candidates);
-                    body << ',';
-                    append_candidates("player_state", player.player_state_property_candidates);
-                    body << ',';
-                    append_candidates("pawn", player.pawn_property_candidates);
-                    body << "},\"property_details\":{";
-                    const auto append_details = [&](const char* name, const std::vector<PropertyCandidateSnapshot>& values) {
-                        body << '\"' << name << "\":[";
-                        for (size_t candidate_index = 0; candidate_index < values.size(); ++candidate_index) {
-                            if (candidate_index > 0) body << ',';
-                            append_property_candidate_json(body, values[candidate_index]);
-                        }
-                        body << ']';
-                    };
-                    append_details("controller", player.controller_property_candidates);
-                    body << ',';
-                    append_details("player_state", player.player_state_property_candidates);
-                    body << ',';
-                    append_details("pawn", player.pawn_property_candidates);
-                    body << "}";
                 }
                 body << '}';
             }
@@ -2119,7 +2069,21 @@ class PalPanelBridge final : public RC::CppUserModBase
         }
         body = add_response_time(body);
         const auto wire = response(status, body);
-        send(client, wire.data(), static_cast<int>(wire.size()), 0);
+        size_t sent_total = 0;
+        while (sent_total < wire.size()) {
+            const auto remaining = wire.size() - sent_total;
+            const auto chunk_size = remaining > static_cast<size_t>(INT_MAX)
+                                        ? INT_MAX
+                                        : static_cast<int>(remaining);
+            const auto sent = send(client, wire.data() + sent_total, chunk_size, 0);
+            if (sent == SOCKET_ERROR || sent == 0) {
+                append_log("HTTP response send failed error=" + std::to_string(WSAGetLastError()) +
+                           " sent=" + std::to_string(sent_total) +
+                           " total=" + std::to_string(wire.size()));
+                break;
+            }
+            sent_total += static_cast<size_t>(sent);
+        }
     }
 
     void serve()

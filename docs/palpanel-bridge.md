@@ -13,7 +13,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.32`
+- PalPanelBridge：`0.1.33`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.32",
+  "bridge_version": "0.1.33",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -140,9 +140,8 @@ GET http://127.0.0.1:18083/v1/jobs/<job_id>
 POST http://127.0.0.1:18083/v1/players/online/metadata
 ```
 
-任务结果带有 `metadata_probe: true`，每个已收集玩家可带有
-`top_level_property_metadata: {"player_state": [...], "pawn": [...]}`；普通在线
-任务不返回该大列表。
+任务结果带有 `metadata_probe: true` 和受限的 `detail_property_metadata`；普通在线
+任务不返回反射诊断大列表。
 
 玩家结果始终 additive 返回 `character_parameter_found` 与
 `character_parameter`（仅对象名、完整名和类名）。只有 metadata 任务且当前玩家
@@ -258,6 +257,11 @@ metadata 探针新增 `detail_property_metadata.pal_container` 以便下一步�
 `PalItemId` 的内部字段，为读取真实物品 ID 提供一次性结构证据。有效帕鲁参数
 同时尝试读取昵称、等级、Rank、经验、HP/最大 HP、饱食度和理智，并过滤大量
 Delegate 元数据，优先返回技能、词条、种类、等级和状态字段。
+
+`0.1.33` 修复大响应只调用一次 Winsock `send` 导致 65528 字节后截断的问题，
+改为循环发送完整响应。普通在线查询移除旧的 `property_candidates`/
+`property_details`，物品槽位不再重复返回 UObject 名称；反射详情集中到 metadata
+接口，面板查询脚本的诊断响应上限同步提高到 2 MiB。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、

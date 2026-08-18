@@ -23,7 +23,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.32-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.33-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -49,7 +49,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.32-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.33-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -83,11 +83,9 @@ curl -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/jobs/<job_id>
 Success means the job changes from `queued` to `completed` and reports
 `game_thread_tick_seen=true` plus `unreal_initialized=true`.
 
-Online-player jobs keep the `property_candidates` name lists and also return
-`property_details`. Each detail reports the reflected property `name`, its
-coarse `kind` (`object`, `array`, `struct`, or `other`), and the declared
-object/array-element/struct type when UE4SS exposes one. This is metadata only;
-the bridge does not read container contents or modify game objects.
+Normal online-player jobs return only stable player data. Large reflection
+details are restricted to the dedicated metadata endpoint so routine responses
+stay bounded.
 
 Version `0.1.16` resolves object-type candidates one level further. Details
 include whether the current object value exists, its runtime object identity,
@@ -206,6 +204,13 @@ decode the real static/dynamic item identifier without guessing field names.
 For valid pal parameters it also attempts bounded reads of nickname, level,
 rank, experience, HP, max HP, fullness, and sanity, while returning a filtered
 data-property metadata list instead of delegate-heavy class metadata.
+
+Version `0.1.33` fixes HTTP responses larger than one Winsock send buffer by
+looping until the complete response is transmitted. Routine player responses
+no longer include legacy `property_candidates`/`property_details`; inventory
+slots omit redundant UObject names, and metadata discovery stays on the
+dedicated endpoint. The panel query helper accepts diagnostic responses up to
+2 MiB.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with
