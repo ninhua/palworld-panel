@@ -301,7 +301,22 @@ def replace_with_retry(source: Path, target: Path, timeout_seconds: int = 90) ->
             time.sleep(1)
 
 
-def validate_local_world_binding(local_main: Path) -> tuple[Path, str]:
+def repair_windows_settings_acl(settings: Path) -> None:
+    """Restore inheritance only on the known local GameUserSettings.ini file."""
+    if os.name != "nt" or settings.name.casefold() != "gameusersettings.ini":
+        raise RuntimeError("automatic GameUserSettings.ini ACL repair is only supported on Windows")
+    completed = subprocess.run(
+        ["icacls", str(settings), "/inheritance:e"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if completed.returncode != 0:
+        raise RuntimeError("failed to restore GameUserSettings.ini ACL inheritance")
+
+
+def validate_local_world_binding(local_main: Path, repair_acl: bool = False) -> tuple[Path, str]:
     """Fail closed if the local server cannot prove which existing world it will load."""
     pal_roots = [
         parent for parent in local_main.resolve().parents
@@ -313,7 +328,16 @@ def validate_local_world_binding(local_main: Path) -> tuple[Path, str]:
     try:
         content = settings.read_text(encoding="utf-8")
     except OSError as error:
-        raise RuntimeError(f"refusing to start: GameUserSettings.ini is unreadable: {error}") from error
+        permission_denied = isinstance(error, PermissionError) or getattr(error, "winerror", None) == 5
+        if not repair_acl or not permission_denied:
+            raise RuntimeError(f"refusing to start: GameUserSettings.ini is unreadable: {error}") from error
+        repair_windows_settings_acl(settings)
+        try:
+            content = settings.read_text(encoding="utf-8")
+        except OSError as retry_error:
+            raise RuntimeError(
+                f"refusing to start: GameUserSettings.ini remains unreadable after ACL repair: {retry_error}"
+            ) from retry_error
     match = DEDICATED_SERVER_NAME_PATTERN.search(content)
     if not match:
         raise RuntimeError("refusing to start: DedicatedServerName is missing from GameUserSettings.ini")
@@ -503,7 +527,7 @@ def main() -> None:
             panel_safe_stop(panel_url, api_key)
             stopped = True
             safe_to_start = False
-            _, stopped_world_id = validate_local_world_binding(local_main)
+            _, stopped_world_id = validate_local_world_binding(local_main, repair_acl=True)
             if stopped_world_id != expected_world_id:
                 raise RuntimeError(
                     f"refusing to deploy: world binding changed from {expected_world_id} to {stopped_world_id}"

@@ -277,6 +277,9 @@ Delegate 元数据，优先返回技能、词条、种类、等级和状态字�
 本地部署使用面板安全停服任务，不调用 Windows 强制 Stop。脚本在停服前和启动前
 分别校验 `GameUserSettings.ini` 可读、`DedicatedServerName` 非空且对应世界存在
 非空 `Level.sav`；校验失败时保持停服，禁止 PalServer 随机创建新世界。
+Windows 本地服若仅在安全停服后把该 INI 重写为空 DACL，脚本只对这个确定文件恢复
+父目录权限继承，然后再次核对世界 ID 未变化及 `Level.sav` 非空；不修改 INI 内容，
+也不批量修改目录 ACL。
 
 仅需验证 CI 和保存构建快照时使用 `--download-only`，该模式不会连接面板、不会
 停服或替换 DLL。工作流从 `src/main.cpp` 的 `ModVersion` 自动生成压缩包及

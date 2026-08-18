@@ -254,6 +254,10 @@ and again before starting, it requires a readable `GameUserSettings.ini`, a
 non-empty `DedicatedServerName`, and an existing bound `Level.sav`. If the
 binding cannot be proven, the server remains stopped instead of creating a new
 world.
+On local Windows servers that rewrite only `GameUserSettings.ini` with an empty
+DACL during safe stop, the helper restores inheritance on that exact file and
+then revalidates the unchanged world ID and non-empty `Level.sav`. It never
+changes the INI contents or broad directory permissions.
 Use `--download-only` when only CI waiting, artifact verification, and the
 versioned snapshot are needed; this mode never contacts the panel or changes
 the running server. The workflow derives the package version from
