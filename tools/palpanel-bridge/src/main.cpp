@@ -154,6 +154,8 @@ struct OnlinePlayerSnapshot
     bool pal_container_found{};
     ObjectSnapshot pal_container{};
     PalSlotArraySnapshot pal_slot_array{};
+    bool inventory_helper_found{};
+    ObjectSnapshot inventory_helper{};
     bool otomo_found{};
     ObjectSnapshot otomo{};
     std::vector<ItemContainerSnapshot> inventory_containers{};
@@ -170,6 +172,8 @@ struct OnlinePlayerSnapshot
     std::vector<PropertyCandidateSnapshot> inventory_all_property_metadata{};
     std::vector<PropertyCandidateSnapshot> pal_storage_property_metadata{};
     std::vector<PropertyCandidateSnapshot> pal_container_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> inventory_helper_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> pal_slot_object_property_metadata{};
     std::vector<PropertyCandidateSnapshot> otomo_property_metadata{};
     bool detail_property_metadata_collected{};
 };
@@ -551,7 +555,10 @@ bool read_number_property(
     return false;
 }
 
-PalSlotArraySnapshot read_pal_slot_array(RC::Unreal::UObject* container)
+PalSlotArraySnapshot read_pal_slot_array(
+    RC::Unreal::UObject* container,
+    std::vector<PropertyCandidateSnapshot>& slot_object_metadata,
+    bool collect_metadata)
 {
     PalSlotArraySnapshot snapshot;
     if (!container || !RC::Unreal::UObject::IsReal(container)) return snapshot;
@@ -578,6 +585,11 @@ PalSlotArraySnapshot read_pal_slot_array(RC::Unreal::UObject* container)
             if (slot_object && RC::Unreal::UObject::IsReal(slot_object)) {
                 slot.handle_found = true;
                 slot.handle = describe_object(slot_object);
+                if (collect_metadata && index == 0) {
+                    slot_object_metadata = collect_keyword_property_metadata(
+                        slot_object,
+                        {"individual", "handle", "slot", "id", "character", "order", "lock"});
+                }
                 auto* id_property = find_property(slot_object, {STR("IndividualId"), STR("IndividualID")});
                 if (id_property && id_property->GetSize() >= static_cast<std::int32_t>(sizeof(PlayerGuid))) {
                     PlayerGuid value{};
@@ -692,6 +704,10 @@ void read_cached_player_details(
             read_number_property(inventory, {STR("NowItemWeight")}, player.now_item_weight) &&
             read_number_property(inventory, {STR("MaxInventoryWeight")}, player.max_inventory_weight);
         player.inventory_containers = read_inventory_containers(inventory, collect_metadata);
+        auto* inventory_helper = read_object_property(inventory, {STR("InventoryMultiHelper")});
+        player.inventory_helper_found =
+            inventory_helper && RC::Unreal::UObject::IsReal(inventory_helper);
+        if (player.inventory_helper_found) player.inventory_helper = describe_object(inventory_helper);
     }
 
     auto* pal_storage = read_object_property(player_state, {STR("PalStorage")});
@@ -703,7 +719,8 @@ void read_cached_player_details(
             pal_container && RC::Unreal::UObject::IsReal(pal_container);
         if (player.pal_container_found) {
             player.pal_container = describe_object(pal_container);
-            player.pal_slot_array = read_pal_slot_array(pal_container);
+            player.pal_slot_array = read_pal_slot_array(
+                pal_container, player.pal_slot_object_property_metadata, collect_metadata);
         }
     }
 
@@ -726,6 +743,12 @@ void read_cached_player_details(
                  "accessory", "storage", "weight"});
             player.inventory_all_property_metadata =
                 collect_top_level_property_metadata(inventory);
+            if (player.inventory_helper_found) {
+                auto* inventory_helper = read_object_property(inventory, {STR("InventoryMultiHelper")});
+                player.inventory_helper_property_metadata = collect_keyword_property_metadata(
+                    inventory_helper,
+                    {"container", "slot", "item", "equipment", "equip", "loadout", "inventory", "essential"});
+            }
         }
         if (player.pal_storage_found) {
             player.pal_storage_property_metadata = collect_keyword_property_metadata(
@@ -1153,7 +1176,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.28");
+        ModVersion = STR("0.1.29");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -1369,7 +1392,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.28\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.29\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -1382,7 +1405,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.28\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.29\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -1518,7 +1541,18 @@ class PalPanelBridge final : public RC::CppUserModBase
                  }
                  body << ",\"inventory_container_count\":"
                       << player.inventory_container_count
-                      << ",\"inventory_weight_found\":"
+                      << ",\"inventory_helper_found\":"
+                      << (player.inventory_helper_found ? "true" : "false")
+                      << ",\"inventory_helper\":";
+                 if (player.inventory_helper_found) {
+                     body << "{\"name\":\"" << json_escape(player.inventory_helper.name)
+                          << "\",\"full_name\":\"" << json_escape(player.inventory_helper.full_name)
+                          << "\",\"class_name\":\"" << json_escape(player.inventory_helper.class_name)
+                          << "\"}";
+                 } else {
+                     body << "null";
+                 }
+                 body << ",\"inventory_weight_found\":"
                       << (player.inventory_weight_found ? "true" : "false")
                       << ",\"now_item_weight\":"
                       << (player.inventory_weight_found
@@ -1589,10 +1623,14 @@ class PalPanelBridge final : public RC::CppUserModBase
                         append_property_metadata_json(body, player.inventory_property_metadata);
                         body << ",\"inventory_all\":";
                         append_property_metadata_json(body, player.inventory_all_property_metadata);
+                        body << ",\"inventory_helper\":";
+                        append_property_metadata_json(body, player.inventory_helper_property_metadata);
                         body << ",\"pal_storage\":";
                         append_property_metadata_json(body, player.pal_storage_property_metadata);
                         body << ",\"pal_container\":";
                         append_property_metadata_json(body, player.pal_container_property_metadata);
+                        body << ",\"pal_slot_object\":";
+                        append_property_metadata_json(body, player.pal_slot_object_property_metadata);
                         body << ",\"otomo\":";
                         append_property_metadata_json(body, player.otomo_property_metadata);
                         body << ",\"character_parameter\":";

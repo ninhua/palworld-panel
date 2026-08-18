@@ -13,7 +13,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.28`
+- PalPanelBridge：`0.1.29`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.28",
+  "bridge_version": "0.1.29",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -232,6 +232,13 @@ metadata 探针新增 `detail_property_metadata.pal_container` 以便下一步�
 身份和 `Slots`/`ItemSlots` 数组规模。metadata 探针还会为每个找到的物品容器
 返回 `container_property_metadata` 以确认真实槽位字段名。最多读取 10 个帕鲁
 槽位和少数命名容器，物品槽位内容与单只帕鲁详情暂不读取。
+
+`0.1.29` 增加本地实机诊断路径。在线玩家响应新增 `inventory_helper_found`/
+`inventory_helper`（`PalItemContainerMultiHelper`，已确认的背包容器的真实入口
+对象）；metadata 探针新增 `detail_property_metadata.inventory_helper` 与
+`detail_property_metadata.pal_slot_object`（首个 `PalIndividualCharacterSlot`
+对象的关键词属性），用于确认个体 ID 与物品槽位字段名后再读取实际帕鲁/物品
+内容。
 位置字段仅接受完整类型名 `ScriptStruct /Script/CoreUObject.Vector`、12 或 24
 字节属性，并对三个坐标执行有限值校验；失败时不输出伪位置值并返回
 `cached_location_error`。公会对象仅在 `UObject::IsReal` 成功时返回。

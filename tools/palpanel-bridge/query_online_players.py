@@ -149,6 +149,8 @@ def compact_job(job: dict[str, Any]) -> dict[str, Any]:
             "inventory_found": player.get("inventory_found"),
             "inventory": player.get("inventory"),
             "inventory_container_count": player.get("inventory_container_count"),
+            "inventory_helper_found": player.get("inventory_helper_found"),
+            "inventory_helper": player.get("inventory_helper"),
             "inventory_weight_found": player.get("inventory_weight_found"),
             "now_item_weight": player.get("now_item_weight"),
             "max_inventory_weight": player.get("max_inventory_weight"),

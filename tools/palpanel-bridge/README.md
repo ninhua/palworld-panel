@@ -23,7 +23,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.28-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.29-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -49,7 +49,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.28-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.29-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -174,6 +174,14 @@ array. On metadata probes, each found item container also returns
 `container_property_metadata` so the real slot field names can be confirmed.
 Only up to 10 pal slots and a few named containers are inspected; item slot
 contents and per-pal details are not read yet.
+
+Version `0.1.29` adds local runtime diagnosis for the confirmed object paths.
+The online-player response adds `inventory_helper_found`/`inventory_helper`
+(`PalItemContainerMultiHelper`, the real inventory container entry object) and
+the metadata probe returns `detail_property_metadata.inventory_helper` and
+`detail_property_metadata.pal_slot_object` (the first `PalIndividualCharacterSlot`
+object's keyword properties) so the individual-id and item-slot field names can
+be confirmed before reading actual pal/item contents.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with

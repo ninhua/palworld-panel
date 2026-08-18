@@ -1,5 +1,18 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.29 本地运行时诊断（帕鲁槽位对象 + 背包容器入口）
+
+已完成：
+
+- 修复 `PalIndividualCharacterContainer.SlotArray` 的对象数组读取：槽位元素按 `UObject` 解析，`pal_slot_array.slots` 实机返回 `PalIndividualCharacterSlot` 对象（每槽 `Handle` 引用有效）；`individual_id` 待字段名确认。
+- 新增 `inventory_helper_found`/`inventory_helper`：读取 `PalPlayerInventoryData.InventoryMultiHelper`（`PalItemContainerMultiHelper`，背包容器真实入口对象）。
+- metadata 探针新增 `detail_property_metadata.inventory_helper` 与 `.pal_slot_object`（首个 `PalIndividualCharacterSlot` 对象关键词属性），用于确认个体 ID 与物品槽位字段名。
+- 版本统一为 `0.1.29`；`query_online_players.py` 紧凑输出保留新字段。
+
+验证：
+
+- 本地服务器（experimental UE4SS + 0.1.29）实机：`pal_slot_array.found=true`、`slot_count=960`，槽位对象引用有效；`inventory_helper` 待构建后确认。
+
 ## 2026-08-19：面板默认 UE4SS 改为 GitHub experimental-latest
 
 - `backend/internal/appconfig/config.go` 默认 UE4SS 下载源从 `v3.0.1` release 改为 GitHub `experimental-latest`（`UE4SS_v3.0.1-1029-g69f1bd11.zip`），版本标记 `experimental-latest`，SHA-256 更新为 `d42ca456316c2ff7b0cbc0c978a6c391eb8f71726048574082fa8aee94eff5fa`。
