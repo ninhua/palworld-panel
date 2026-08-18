@@ -1,19 +1,21 @@
 # PalPanelBridge 安装与验证
 
-`PalPanelBridge` 是 PalPanel 的 UE4SS C++ 只读通信探针，用于验证：
+`PalPanelBridge` 是 PalPanel 的 UE4SS C++ 本机通信插件，用于读取运行时数据，
+并通过受限游戏线程任务修改背包数量和帕鲁数据：
 
 ```text
 PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 ```
 
-当前版本不会修改玩家、背包、帕鲁或存档。
+插件不开放任意 UObject 调用。修改必须带确认标记、目标身份和预期原值，写后立即
+回读；不一致时尝试恢复原值。正式修改前仍必须先备份世界存档。
 
 后续功能优先级、完成标准和 GitHub Actions 构建部署门禁统一记录在
 [`development/palpanel-bridge-roadmap.md`](development/palpanel-bridge-roadmap.md)。
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.34`
+- PalPanelBridge：`0.1.35`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +63,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.34",
+  "bridge_version": "0.1.35",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -130,8 +132,8 @@ GET http://127.0.0.1:18083/v1/jobs/<job_id>
 `PalPlayerState` 与 `BP_PalPlayerState_C`。结果增加 `controller_object_count`、
 `player_state_object_count` 和每项的 `source`，用于区分 Controller 与 PlayerState
 来源。还会以当前 World 为上下文只读调用 `PalUtility.GetAllPlayerStates` 作为回退。
-当前版本返回 UID、Pawn、位置、公会/据点、背包容器及堆叠数、受限帕鲁槽位详情，
-但不会修改对象、背包、帕鲁或存档。
+当前版本返回 UID、Pawn、位置、公会/据点、背包容器及堆叠数、受限帕鲁槽位详情；
+写接口仅支持下文列出的三个操作。
 
 字段发现接口：
 
@@ -267,6 +269,68 @@ Delegate 元数据，优先返回技能、词条、种类、等级和状态字�
 `passive_skill_ids` 和数值 `equipped_waza_ids`。数组与数值均执行范围限制，不调用
 任何修改函数。调用前还会核对反射返回类型、参数缓冲大小和枚举元素宽度；不匹配
 时关闭该读取路径，不执行函数。
+
+## 受限修改接口（0.1.35）
+
+先调用 `/v1/players/online` 取得最新 UID、容器数组序号、槽位数组序号、物品 ID、
+数量、帕鲁实例 ID、种类和被动列表；再备份世界存档。修改请求：
+
+```text
+POST http://127.0.0.1:18083/v1/mutations
+GET  http://127.0.0.1:18083/v1/jobs/<job_id>
+```
+
+背包数量示例（`container_index`/`slot_index` 是返回数组中的序号）：
+
+```json
+{
+  "operation": "item_set_count",
+  "confirm": true,
+  "player_uid": "32位玩家UID",
+  "container_index": 0,
+  "slot_index": 0,
+  "expected_item_static_id": "Wood",
+  "expected_stack_count": 994,
+  "stack_count": 995
+}
+```
+
+增加或删除被动词条（删除时 `add_passive=false`）：
+
+```json
+{
+  "operation": "pal_replace_passive",
+  "confirm": true,
+  "player_uid": "32位玩家UID",
+  "instance_id": "32位帕鲁实例ID",
+  "expected_character_id": "BadCatgirl",
+  "expected_passive_skill_ids": ["PAL_Sanity_Up_1"],
+  "passive_skill_id": "待修改词条ID",
+  "add_passive": true
+}
+```
+
+修改等级或个体值：
+
+```json
+{
+  "operation": "pal_set_stats",
+  "confirm": true,
+  "player_uid": "32位玩家UID",
+  "instance_id": "32位帕鲁实例ID",
+  "expected_character_id": "BadCatgirl",
+  "field": "Talent_HP",
+  "expected_value": 0,
+  "value": 1
+}
+```
+
+`field` 只允许 `Level`（1..80）、`Talent_HP`、`Talent_Shot`、
+`Talent_Defense`（0..100）。任务结果的 `mutation_status` 为 `succeeded`、
+`rejected`、`rolled_back` 或 `rollback_failed`，并附带 `before`、`after`、
+`error` 和 `rollback_status`。任一目标身份或预期原值不一致都不会写入。
+物品增删继续使用面板已有的 PalDefender 审计接口；它会产生 RCON 命令日志，
+不属于 Bridge 直接修改。DLL 部署备份不等于世界存档备份。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、

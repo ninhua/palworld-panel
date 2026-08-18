@@ -1,12 +1,13 @@
-# PalPanelBridge read-only probe
+# PalPanelBridge
 
-This is the first, deliberately read-only UE4SS bridge milestone. It proves:
+PalPanelBridge exposes authenticated localhost diagnostics and a bounded mutation queue:
 
 ```text
 localhost HTTP -> bounded job queue -> UE4SS on_update game-thread callback
 ```
 
-It does not expose arbitrary UObject calls and cannot modify players, inventory, pals, or saves.
+It does not expose arbitrary UObject calls. Mutation requests require explicit confirmation,
+target identity, expected current values, post-write verification, and rollback on mismatch.
 
 For the Chinese installation, diagnostic-console examples, and troubleshooting
 matrix, see [`docs/palpanel-bridge.md`](../../docs/palpanel-bridge.md).
@@ -23,7 +24,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.34-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.35-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -49,7 +50,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.34-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.35-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -77,6 +78,8 @@ curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/world
 curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/players/online
 curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/players/online/metadata
 curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/probe/game-thread
+curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+  --data @mutation.json http://127.0.0.1:18083/v1/mutations
 curl -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/jobs/<job_id>
 ```
 
@@ -218,6 +221,16 @@ uses confirmed read-only Pal functions to return `character_id`, `level`,
 parameter. Function results are range-bounded and no mutation function is
 called. Each call first verifies the reflected return type, parameter-buffer
 size, and enum element width; mismatches fail closed without invoking it.
+
+Version `0.1.35` adds three allowlisted game-thread mutation operations through
+`POST /v1/mutations`: `item_set_count`, `pal_replace_passive`, and
+`pal_set_stats` (`Level`, `Talent_HP`, `Talent_Shot`, `Talent_Defense`). Every
+request requires `confirm=true`, an online `player_uid`, the exact current
+item/Pal identity, and expected current values. Writes are immediately reread;
+verification failure triggers an inverse write or snapshot restore and reports
+`rolled_back` or `rollback_failed`. Item creation/removal remains on the panel's
+existing audited PalDefender API. Back up the world save before any accepted
+mutation; DLL deployment backup does not back up save data.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with

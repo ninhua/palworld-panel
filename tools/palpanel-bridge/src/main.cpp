@@ -56,6 +56,39 @@ enum class JobKind
     GameThread,
     World,
     OnlinePlayers,
+    Mutation,
+};
+
+struct MutationRequest
+{
+    std::string operation{};
+    bool confirm{};
+    std::string player_uid{};
+    std::string instance_id{};
+    std::int32_t container_index{-1};
+    std::int32_t slot_index{-1};
+    std::int32_t expected_stack_count{-1};
+    std::int32_t stack_count{-1};
+    std::string expected_item_static_id{};
+    std::string expected_character_id{};
+    std::string passive_skill_id{};
+    bool add_passive{};
+    std::vector<std::string> expected_passive_skill_ids{};
+    std::string expected_value_field{};
+    std::int32_t expected_value{-1};
+    std::string value_field{};
+    std::int32_t value{-1};
+};
+
+struct MutationResult
+{
+    std::string operation{};
+    std::string status{"rejected"};
+    std::string before_json{"null"};
+    std::string after_json{"null"};
+    std::string error{};
+    std::string rollback_status{"not_attempted"};
+    std::string rollback_error{};
 };
 
 struct ObjectSnapshot
@@ -254,6 +287,8 @@ struct Job
     bool metadata_probe{false};
     size_t metadata_player_count{};
     bool metadata_truncated{false};
+    MutationRequest mutation_request{};
+    MutationResult mutation_result{};
 };
 
 struct PlayerGuid
@@ -1470,6 +1505,181 @@ std::string json_number(double value)
     return output.str();
 }
 
+bool parse_json_string(std::string_view input, size_t& cursor, std::string& output)
+{
+    if (cursor >= input.size() || input[cursor++] != '"') return false;
+    output.clear();
+    while (cursor < input.size()) {
+        const auto character = input[cursor++];
+        if (character == '"') return true;
+        if (character == '\\') {
+            if (cursor >= input.size()) return false;
+            const auto escaped = input[cursor++];
+            if (escaped == '"' || escaped == '\\' || escaped == '/') output.push_back(escaped);
+            else if (escaped == 'n') output.push_back('\n');
+            else if (escaped == 'r') output.push_back('\r');
+            else if (escaped == 't') output.push_back('\t');
+            else return false;
+        } else if (static_cast<unsigned char>(character) < 0x20) return false;
+        else output.push_back(character);
+    }
+    return false;
+}
+
+void skip_json_space(std::string_view input, size_t& cursor)
+{
+    while (cursor < input.size() && std::isspace(static_cast<unsigned char>(input[cursor]))) ++cursor;
+}
+
+bool parse_json_object(std::string_view input, std::map<std::string, std::string>& values)
+{
+    size_t cursor = 0;
+    skip_json_space(input, cursor);
+    if (cursor >= input.size() || input[cursor++] != '{') return false;
+    skip_json_space(input, cursor);
+    if (cursor < input.size() && input[cursor] == '}') return true;
+    while (cursor < input.size()) {
+        std::string key;
+        if (!parse_json_string(input, cursor, key)) return false;
+        skip_json_space(input, cursor);
+        if (cursor >= input.size() || input[cursor++] != ':') return false;
+        skip_json_space(input, cursor);
+        const auto value_start = cursor;
+        if (cursor < input.size() && input[cursor] == '"') {
+            std::string decoded;
+            if (!parse_json_string(input, cursor, decoded)) return false;
+            values[key] = "\"" + json_escape(decoded) + "\"";
+        } else if (cursor < input.size() && input[cursor] == '[') {
+            int depth = 0;
+            bool in_string = false;
+            while (cursor < input.size()) {
+                const auto c = input[cursor++];
+                if (c == '"' && (cursor < 2 || input[cursor - 2] != '\\')) in_string = !in_string;
+                if (!in_string && c == '[') ++depth;
+                if (!in_string && c == ']' && --depth == 0) break;
+            }
+            if (depth != 0 || in_string) return false;
+            values[key] = std::string(input.substr(value_start, cursor - value_start));
+        } else {
+            while (cursor < input.size() && input[cursor] != ',' && input[cursor] != '}') ++cursor;
+            auto raw = trim(std::string(input.substr(value_start, cursor - value_start)));
+            if (raw.empty()) return false;
+            values[key] = std::move(raw);
+        }
+        skip_json_space(input, cursor);
+        if (cursor >= input.size()) return false;
+        if (input[cursor] == '}') { ++cursor; skip_json_space(input, cursor); return cursor == input.size(); }
+        if (input[cursor++] != ',') return false;
+        skip_json_space(input, cursor);
+    }
+    return false;
+}
+
+bool json_bool(const std::map<std::string, std::string>& values, const char* key, bool& output)
+{
+    const auto found = values.find(key);
+    if (found == values.end()) return false;
+    if (found->second == "true") { output = true; return true; }
+    if (found->second == "false") { output = false; return true; }
+    return false;
+}
+
+bool json_string(const std::map<std::string, std::string>& values, const char* key, std::string& output)
+{
+    const auto found = values.find(key);
+    if (found == values.end() || found->second.size() < 2 || found->second.front() != '"' || found->second.back() != '"') return false;
+    output = found->second.substr(1, found->second.size() - 2);
+    return !output.empty();
+}
+
+bool json_int(const std::map<std::string, std::string>& values, const char* key, std::int32_t& output)
+{
+    const auto found = values.find(key);
+    if (found == values.end()) return false;
+    try {
+        size_t used = 0;
+        const auto value = std::stoll(found->second, &used);
+        if (used != found->second.size() || value < INT_MIN || value > INT_MAX) return false;
+        output = static_cast<std::int32_t>(value);
+        return true;
+    } catch (...) { return false; }
+}
+
+bool normalize_guid(std::string& value)
+{
+    if (value.size() != 32) return false;
+    for (auto& character : value) {
+        if (!std::isxdigit(static_cast<unsigned char>(character))) return false;
+        character = static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
+    }
+    return true;
+}
+
+bool valid_name_id(const std::string& value)
+{
+    if (value.empty() || value.size() > 128) return false;
+    return std::all_of(value.begin(), value.end(), [](unsigned char character) {
+        return std::isalnum(character) || character == '_';
+    });
+}
+
+bool parse_mutation_request(std::string_view input, MutationRequest& request, std::string& error)
+{
+    std::map<std::string, std::string> values;
+    if (!parse_json_object(input, values)) { error = "invalid JSON object"; return false; }
+    if (!json_string(values, "operation", request.operation) || !json_bool(values, "confirm", request.confirm) || !request.confirm) {
+        error = "operation and confirm=true are required"; return false;
+    }
+    if (!json_string(values, "player_uid", request.player_uid) || !normalize_guid(request.player_uid)) {
+        error = "player_uid must be a 32-digit hex GUID"; return false;
+    }
+    if (request.operation == "item_set_count") {
+        if (!json_int(values, "container_index", request.container_index) || !json_int(values, "slot_index", request.slot_index) ||
+            !json_int(values, "expected_stack_count", request.expected_stack_count) || !json_int(values, "stack_count", request.stack_count) ||
+            !json_string(values, "expected_item_static_id", request.expected_item_static_id) ||
+            request.container_index < 0 || request.slot_index < 0 || request.expected_stack_count < 0 || request.expected_stack_count > 9999 ||
+            request.stack_count < 0 || request.stack_count > 9999 || !valid_name_id(request.expected_item_static_id)) {
+            error = "invalid item_set_count fields"; return false;
+        }
+    } else if (request.operation == "pal_replace_passive") {
+        if (!json_string(values, "instance_id", request.instance_id) || !json_string(values, "passive_skill_id", request.passive_skill_id) ||
+            !json_string(values, "expected_character_id", request.expected_character_id) ||
+            !json_bool(values, "add_passive", request.add_passive) || !normalize_guid(request.instance_id) ||
+            !valid_name_id(request.passive_skill_id) || !valid_name_id(request.expected_character_id)) {
+            error = "invalid pal_replace_passive fields"; return false;
+        }
+        const auto expected = values.find("expected_passive_skill_ids");
+        if (expected == values.end() || expected->second.size() < 2 || expected->second.front() != '[' || expected->second.back() != ']') {
+            error = "expected_passive_skill_ids is required"; return false;
+        }
+        std::string array = expected->second.substr(1, expected->second.size() - 2);
+        size_t pos = 0;
+        while (pos < array.size()) {
+            while (pos < array.size() && std::isspace(static_cast<unsigned char>(array[pos]))) ++pos;
+            if (pos >= array.size()) break;
+            std::string item;
+            if (!parse_json_string(array, pos, item)) { error = "invalid expected_passive_skill_ids"; return false; }
+            if (!valid_name_id(item) || request.expected_passive_skill_ids.size() >= 16) {
+                error = "invalid expected_passive_skill_ids"; return false;
+            }
+            request.expected_passive_skill_ids.push_back(std::move(item));
+            while (pos < array.size() && std::isspace(static_cast<unsigned char>(array[pos]))) ++pos;
+            if (pos < array.size() && array[pos++] != ',') { error = "invalid expected_passive_skill_ids"; return false; }
+        }
+    } else if (request.operation == "pal_set_stats") {
+        if (!json_string(values, "instance_id", request.instance_id) || !normalize_guid(request.instance_id) ||
+            !json_string(values, "expected_character_id", request.expected_character_id) ||
+            !valid_name_id(request.expected_character_id) || !json_string(values, "field", request.value_field) ||
+            !json_int(values, "expected_value", request.expected_value) || !json_int(values, "value", request.value) ||
+            (request.value_field != "Level" && request.value_field != "Talent_HP" && request.value_field != "Talent_Shot" && request.value_field != "Talent_Defense") ||
+            request.expected_value < 0 || request.value < 0 ||
+            (request.value_field == "Level" ? request.expected_value < 1 || request.expected_value > 80 || request.value < 1 || request.value > 80 : request.expected_value > 100 || request.value > 100)) {
+            error = "invalid pal_set_stats fields"; return false;
+        }
+    } else { error = "unsupported mutation operation"; return false; }
+    return true;
+}
+
 void append_property_candidate_json(
     std::ostringstream& body, const PropertyCandidateSnapshot& candidate)
 {
@@ -1632,6 +1842,7 @@ const char* job_kind_name(JobKind kind)
 {
     if (kind == JobKind::World) return "world";
     if (kind == JobKind::OnlinePlayers) return "online_players";
+    if (kind == JobKind::Mutation) return "mutation";
     return "game_thread";
 }
 
@@ -1649,7 +1860,8 @@ std::string add_response_time(const std::string& body)
 
 std::string response(int status, const std::string& body)
 {
-    const char* reason = status == 200 ? "OK" : status == 202 ? "Accepted" : status == 401 ? "Unauthorized"
+    const char* reason = status == 200 ? "OK" : status == 202 ? "Accepted" : status == 400 ? "Bad Request" : status == 401 ? "Unauthorized"
+                                                                                           : status == 413 ? "Payload Too Large"
                                                                                            : status == 404 ? "Not Found"
                                                                                                            : "Service Unavailable";
     std::ostringstream output;
@@ -1661,6 +1873,326 @@ std::string response(int status, const std::string& body)
            << body;
     return output.str();
 }
+
+bool exact_noarg_function(RC::Unreal::UFunction* function)
+{
+    if (!function || function->GetReturnProperty()) return false;
+    size_t count = 0;
+    for (auto* property : RC::Unreal::TFieldRange<RC::Unreal::FProperty>(
+             function, RC::Unreal::EFieldIterationFlags::IncludeDeprecated)) {
+        if (property && property->HasAnyPropertyFlags(RC::Unreal::CPF_Parm)) ++count;
+    }
+    return count == 0;
+}
+
+bool exact_parameter_count(RC::Unreal::UFunction* function, size_t expected)
+{
+    if (!function) return false;
+    size_t count = 0;
+    for (auto* property : RC::Unreal::TFieldRange<RC::Unreal::FProperty>(
+             function, RC::Unreal::EFieldIterationFlags::IncludeDeprecated)) {
+        if (property && property->HasAnyPropertyFlags(RC::Unreal::CPF_Parm)) ++count;
+    }
+    return count == expected;
+}
+
+bool input_parameter(RC::Unreal::FProperty* property)
+{
+    using namespace RC::Unreal;
+    return property && property->HasAnyPropertyFlags(CPF_Parm) &&
+           !property->HasAnyPropertyFlags(CPF_ReturnParm) &&
+           (!property->HasAnyPropertyFlags(CPF_OutParm) ||
+            property->HasAnyPropertyFlags(CPF_ConstParm));
+}
+
+bool return_parameter(RC::Unreal::FProperty* property)
+{
+    using namespace RC::Unreal;
+    return property && property->HasAnyPropertyFlags(CPF_Parm) &&
+           property->HasAnyPropertyFlags(CPF_ReturnParm);
+}
+
+RC::Unreal::UObject* find_player_state_by_uid(const std::string& uid)
+{
+    std::vector<RC::Unreal::UObject*> states;
+    std::unordered_set<RC::Unreal::UObject*> seen;
+    append_instances("PalPlayerState", states, seen);
+    append_instances("BP_PalPlayerState_C", states, seen);
+    for (auto* state : states) {
+        std::string actual;
+        if (read_player_guid(state, actual) && actual == uid) return state;
+    }
+    return nullptr;
+}
+
+RC::Unreal::UObject* find_pal_parameter(
+    RC::Unreal::UObject* player_state, const std::string& uid, const std::string& instance_id,
+    std::string& error)
+{
+    auto* storage = read_object_property(player_state, {STR("PalStorage")});
+    auto* container = read_object_property(storage, {STR("TargetContainer")});
+    if (!storage || !container) { error = "PalStorage path is unavailable"; return nullptr; }
+    const auto scan = [&](RC::Unreal::UObject* owner,
+                          std::initializer_list<const TCHAR*> property_names)
+        -> RC::Unreal::UObject* {
+        auto* property = find_property(owner, property_names);
+        auto* array = RC::Unreal::CastField<RC::Unreal::FArrayProperty>(property);
+        auto* inner = array
+                          ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(
+                                array->GetInner())
+                          : nullptr;
+        if (!array || !inner) return nullptr;
+        RC::Unreal::FScriptArrayHelper_InContainer values(array, owner);
+        if (values.Num() < 0 || values.Num() > 100000) return nullptr;
+        for (std::int32_t index = 0; index < values.Num(); ++index) {
+            auto* element = values.GetRawPtr(index);
+            auto* slot = element ? inner->GetObjectPropertyValue(element) : nullptr;
+            std::string slot_uid, slot_instance;
+            if (!read_nested_guid_property(
+                    slot,
+                    {STR("ReplicateHandleID")},
+                    {STR("PlayerUId"), STR("PlayerUID")},
+                    slot_uid) ||
+                !read_nested_guid_property(
+                    slot,
+                    {STR("ReplicateHandleID")},
+                    {STR("InstanceId"), STR("InstanceID")},
+                    slot_instance) ||
+                slot_uid != uid || slot_instance != instance_id) {
+                continue;
+            }
+            return read_object_property(slot, {STR("ReplicateIndividualParameter")});
+        }
+        return nullptr;
+    };
+    if (auto* parameter = scan(storage, {STR("CachedNonEmptySlots_InServer")})) {
+        return parameter;
+    }
+    if (auto* parameter = scan(container, {STR("SlotArray")})) return parameter;
+    error = "Pal instance_id was not found for player_uid";
+    return nullptr;
+}
+
+std::string passive_json(const std::vector<std::string>& ids)
+{
+    std::ostringstream output;
+    output << '[';
+    for (size_t index = 0; index < ids.size(); ++index) {
+        if (index) output << ',';
+        output << '"' << json_escape(ids[index]) << '"';
+    }
+    output << ']';
+    return output.str();
+}
+
+bool read_character_id_strict(RC::Unreal::UObject* parameter, std::string& output)
+{
+    if (!parameter || !RC::Unreal::UObject::IsReal(parameter)) return false;
+    auto* function = parameter->GetFunctionByNameInChain(STR("GetCharacterID"));
+    auto* return_property = function
+                                ? RC::Unreal::CastField<RC::Unreal::FNameProperty>(
+                                      function->GetReturnProperty())
+                                : nullptr;
+    if (!return_property || !exact_parameter_count(function, 1) ||
+        !return_parameter(return_property) || function->GetParmsSize() !=
+                                static_cast<std::int32_t>(sizeof(RC::Unreal::FName))) {
+        return false;
+    }
+    struct Params
+    {
+        RC::Unreal::FName ReturnValue{};
+    } params;
+    parameter->ProcessEvent(function, &params);
+    output = RC::to_utf8_string(params.ReturnValue.ToString());
+    return valid_name_id(output);
+}
+
+bool read_passive_ids_strict(
+    RC::Unreal::UObject* parameter, std::vector<std::string>& output)
+{
+    output.clear();
+    if (!parameter || !RC::Unreal::UObject::IsReal(parameter)) return false;
+    auto* function = parameter->GetFunctionByNameInChain(STR("GetPassiveSkillList"));
+    auto* return_property = function
+                                ? RC::Unreal::CastField<RC::Unreal::FArrayProperty>(
+                                      function->GetReturnProperty())
+                                : nullptr;
+    auto* inner_property = return_property
+                               ? RC::Unreal::CastField<RC::Unreal::FNameProperty>(
+                                     return_property->GetInner())
+                               : nullptr;
+    struct Params
+    {
+        RC::Unreal::TArray<RC::Unreal::FName> ReturnValue{};
+    } params;
+    if (!return_property || !inner_property || !exact_parameter_count(function, 1) ||
+        !return_parameter(return_property) ||
+        function->GetParmsSize() != static_cast<std::int32_t>(sizeof(Params))) {
+        return false;
+    }
+    parameter->ProcessEvent(function, &params);
+    const auto count = params.ReturnValue.Num();
+    if (count < 0 || count > 16) return false;
+    output.reserve(static_cast<size_t>(count));
+    for (std::int32_t index = 0; index < count; ++index) {
+        auto id = RC::to_utf8_string(params.ReturnValue[index].ToString());
+        if (!valid_name_id(id)) return false;
+        output.emplace_back(std::move(id));
+    }
+    return true;
+}
+
+bool passive_call(RC::Unreal::UObject* parameter, const char* name, const std::string& id)
+{
+    if (!parameter) return false;
+    auto* function = parameter->GetFunctionByNameInChain(name == std::string("AddPassiveSkill") ? STR("AddPassiveSkill") : STR("RemovePassiveSkill"));
+    if (!function || function->GetReturnProperty() || !valid_name_id(id)) return false;
+    auto* id_property = RC::Unreal::CastField<RC::Unreal::FNameProperty>(
+        function->FindProperty(RC::Unreal::FName(STR("SkillId"), RC::Unreal::FNAME_Find)));
+    auto* add_property = RC::Unreal::CastField<RC::Unreal::FNameProperty>(
+        function->FindProperty(RC::Unreal::FName(STR("AddSkill"), RC::Unreal::FNAME_Find)));
+    auto* override_property = RC::Unreal::CastField<RC::Unreal::FNameProperty>(
+        function->FindProperty(RC::Unreal::FName(STR("OverrideSkill"), RC::Unreal::FNAME_Find)));
+    if (name == std::string("AddPassiveSkill")) {
+        if (!exact_parameter_count(function, 2) || !input_parameter(add_property) ||
+            !input_parameter(override_property)) return false;
+        if (function->GetParmsSize() <= 0 || function->GetParmsSize() > 4096) return false;
+        std::vector<std::uint8_t> params(static_cast<size_t>(function->GetParmsSize()));
+        const std::wstring wide(id.begin(), id.end());
+        add_property->SetPropertyValueInContainer(params.data(), RC::Unreal::FName(wide.c_str()));
+        override_property->SetPropertyValueInContainer(params.data(), RC::Unreal::FName{});
+        parameter->ProcessEvent(function, params.data()); return true;
+    }
+    if (!exact_parameter_count(function, 1) || !input_parameter(id_property)) return false;
+    if (function->GetParmsSize() <= 0 || function->GetParmsSize() > 4096) return false;
+    std::vector<std::uint8_t> params(static_cast<size_t>(function->GetParmsSize()));
+    const std::wstring wide(id.begin(), id.end());
+    id_property->SetPropertyValueInContainer(params.data(), RC::Unreal::FName(wide.c_str()));
+    parameter->ProcessEvent(function, params.data()); return true;
+}
+
+MutationResult execute_mutation(const MutationRequest& request)
+{
+    MutationResult result; result.operation = request.operation;
+    auto* player_state = find_player_state_by_uid(request.player_uid);
+    if (!player_state) { result.error = "online player_uid was not found"; return result; }
+    if (request.operation == "item_set_count") {
+        auto* inventory = read_object_property(player_state, {STR("InventoryData")});
+        auto* helper = read_object_property(inventory, {STR("InventoryMultiHelper")});
+        auto* containers_property = find_property(helper, {STR("Containers")});
+        auto* containers_array = RC::Unreal::CastField<RC::Unreal::FArrayProperty>(containers_property);
+        if (!inventory || !helper || !containers_array) { result.error = "InventoryData->InventoryMultiHelper->Containers unavailable"; return result; }
+        RC::Unreal::FScriptArrayHelper_InContainer containers(containers_array, helper);
+        if (containers.Num() < 0 || containers.Num() > 64 || request.container_index >= containers.Num()) {
+            result.error = "container_index out of range"; return result;
+        }
+        auto* container_element = containers.GetRawPtr(request.container_index);
+        auto* container_inner = RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(containers_array->GetInner());
+        auto* container_object = container_element && container_inner ? container_inner->GetObjectPropertyValue(container_element) : nullptr;
+        auto* slots_property = find_property(container_object, {STR("ItemSlotArray")});
+        auto* slots_array = RC::Unreal::CastField<RC::Unreal::FArrayProperty>(slots_property);
+        if (!container_object || !slots_array) { result.error = "ItemSlotArray unavailable"; return result; }
+        RC::Unreal::FScriptArrayHelper_InContainer slots(slots_array, container_object);
+        if (slots.Num() < 0 || slots.Num() > 10000 || request.slot_index >= slots.Num()) {
+            result.error = "slot_index out of range"; return result;
+        }
+        auto* slot_element = slots.GetRawPtr(request.slot_index);
+        auto* slot_inner_object = RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(slots_array->GetInner());
+        auto* slot_inner_struct = RC::Unreal::CastField<RC::Unreal::FStructProperty>(slots_array->GetInner());
+        auto* slot_object = slot_element && slot_inner_object ? slot_inner_object->GetObjectPropertyValue(slot_element) : nullptr;
+        auto* slot_container = slot_object ? static_cast<void*>(slot_object) : slot_element;
+        auto* stack = slot_inner_struct ? find_struct_property(slot_inner_struct->GetStruct().Get(), {STR("StackCount")}) : find_property(slot_object, {STR("StackCount")});
+        auto* stack_property = RC::Unreal::CastField<RC::Unreal::FIntProperty>(stack);
+        if (!stack_property || !slot_container) { result.error = "StackCount is not FIntProperty"; return result; }
+        std::string actual_item_static_id;
+        if (!slot_object || !read_nested_name_property(
+                                slot_object,
+                                {STR("ItemId"), STR("ItemID")},
+                                {STR("StaticId"), STR("StaticID")},
+                                actual_item_static_id) ||
+            actual_item_static_id != request.expected_item_static_id) {
+            result.error = "expected_item_static_id mismatch"; return result;
+        }
+        const auto before = stack_property->GetPropertyValueInContainer(slot_container);
+        result.before_json = std::to_string(before);
+        if (before != request.expected_stack_count) { result.error = "expected_stack_count mismatch"; return result; }
+        stack_property->SetPropertyValueInContainer(slot_container, request.stack_count);
+        const auto after = stack_property->GetPropertyValueInContainer(slot_container);
+        result.after_json = std::to_string(after);
+        if (after == request.stack_count) { result.status = "succeeded"; result.rollback_status = "not_needed"; return result; }
+        stack_property->SetPropertyValueInContainer(slot_container, before);
+        const auto restored = stack_property->GetPropertyValueInContainer(slot_container);
+        result.rollback_status = restored == before ? "succeeded" : "failed";
+        result.error = "write verification failed"; result.status = restored == before ? "rolled_back" : "rollback_failed"; return result;
+    }
+    std::string error;
+    auto* parameter = find_pal_parameter(player_state, request.player_uid, request.instance_id, error);
+    if (!parameter) { result.error = error; return result; }
+    std::string actual_character_id;
+    if (!read_character_id_strict(parameter, actual_character_id) ||
+        actual_character_id != request.expected_character_id) {
+        result.error = "expected_character_id mismatch"; return result;
+    }
+    if (request.operation == "pal_replace_passive") {
+        std::vector<std::string> original;
+        if (!read_passive_ids_strict(parameter, original)) {
+            result.error = "passive skill read ABI mismatch"; return result;
+        }
+        result.before_json = passive_json(original);
+        if (original != request.expected_passive_skill_ids) {
+            result.error = "expected_passive_skill_ids mismatch"; return result;
+        }
+        auto target = original;
+        const auto found = std::find(target.begin(), target.end(), request.passive_skill_id);
+        if ((request.add_passive && found != target.end()) ||
+            (!request.add_passive && found == target.end())) {
+            result.error = request.add_passive ? "passive skill already exists" : "passive skill does not exist";
+            return result;
+        }
+        if (request.add_passive) target.emplace_back(request.passive_skill_id);
+        else target.erase(found);
+        if (!passive_call(
+                parameter,
+                request.add_passive ? "AddPassiveSkill" : "RemovePassiveSkill",
+                request.passive_skill_id)) {
+            result.error = "passive mutation ABI mismatch"; return result;
+        }
+        std::vector<std::string> after;
+        const auto after_read = read_passive_ids_strict(parameter, after);
+        if (after_read) result.after_json = passive_json(after);
+        if (after_read && after == target) {
+            result.status = "succeeded"; result.rollback_status = "not_needed"; return result;
+        }
+        const auto inverse_ok = passive_call(
+            parameter,
+            request.add_passive ? "RemovePassiveSkill" : "AddPassiveSkill",
+            request.passive_skill_id);
+        std::vector<std::string> restored;
+        const auto restored_ok = inverse_ok && read_passive_ids_strict(parameter, restored) &&
+                                 restored == original;
+        result.rollback_status = restored_ok ? "succeeded" : "failed";
+        if (!restored_ok) result.rollback_error = "inverse passive operation did not restore snapshot";
+        result.status = restored_ok ? "rolled_back" : "rollback_failed";
+        result.error = "passive write verification failed";
+        return result;
+    }
+    auto* save_property = RC::Unreal::CastField<RC::Unreal::FStructProperty>(find_property(parameter, {STR("SaveParameter")}));
+    auto* save_struct = save_property ? save_property->GetStruct().Get() : nullptr;
+    auto* save_value = save_property ? save_property->ContainerPtrToValuePtr<void>(parameter) : nullptr;
+    const std::wstring value_field_wide(request.value_field.begin(), request.value_field.end());
+    auto* value_property = save_struct ? RC::Unreal::CastField<RC::Unreal::FByteProperty>(find_struct_property(save_struct, {value_field_wide.c_str()})) : nullptr;
+    auto* on_rep = parameter->GetFunctionByNameInChain(STR("OnRep_SaveParameter"));
+    if (!save_value || !value_property || !exact_noarg_function(on_rep)) { result.error = "SaveParameter byte ABI or OnRep_SaveParameter mismatch"; return result; }
+    const auto before = static_cast<std::int32_t>(value_property->GetPropertyValueInContainer(save_value));
+    result.before_json = std::to_string(before);
+    if (before != request.expected_value) { result.error = "expected_value mismatch"; return result; }
+    value_property->SetPropertyValueInContainer(save_value, static_cast<std::uint8_t>(request.value)); parameter->ProcessEvent(on_rep, nullptr);
+    const auto after = static_cast<std::int32_t>(value_property->GetPropertyValueInContainer(save_value)); result.after_json = std::to_string(after);
+    if (after == request.value) { result.status = "succeeded"; result.rollback_status = "not_needed"; return result; }
+    value_property->SetPropertyValueInContainer(save_value, static_cast<std::uint8_t>(before)); parameter->ProcessEvent(on_rep, nullptr);
+    const auto restored = static_cast<std::int32_t>(value_property->GetPropertyValueInContainer(save_value)); result.rollback_status = restored == before ? "succeeded" : "failed";
+    result.status = restored == before ? "rolled_back" : "rollback_failed"; result.error = "stat write verification failed"; return result;
+}
 } // namespace
 
 class PalPanelBridge final : public RC::CppUserModBase
@@ -1669,8 +2201,8 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.34");
-        ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
+        ModVersion = STR("0.1.35");
+        ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
     }
@@ -1722,7 +2254,17 @@ class PalPanelBridge final : public RC::CppUserModBase
         }
         if (job_id.empty()) return;
 
-        if (job.kind == JobKind::World) {
+        if (job.kind == JobKind::Mutation) {
+            try {
+                job.mutation_result = execute_mutation(job.mutation_request);
+                job.status = "completed";
+                append_log(
+                    "mutation operation=" + job.mutation_request.operation +
+                    " player_uid=" + job.mutation_request.player_uid +
+                    " status=" + job.mutation_result.status);
+            }
+            catch (...) { job.mutation_result.operation = job.mutation_request.operation; job.mutation_result.status = "failed"; job.mutation_result.error = "mutation exception"; job.status = "failed"; }
+        } else if (job.kind == JobKind::World) {
             try {
                 auto* world = RC::Unreal::UObjectGlobals::FindFirstOf(STR("World"));
                 job.world_found = world != nullptr;
@@ -1881,7 +2423,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.34\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.35\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -1894,7 +2436,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.34\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.35\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -1903,14 +2445,14 @@ class PalPanelBridge final : public RC::CppUserModBase
         return body.str();
     }
 
-    std::string enqueue(JobKind kind, bool metadata_probe = false)
+    std::string enqueue(JobKind kind, bool metadata_probe = false, MutationRequest mutation_request = {})
     {
         const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::system_clock::now().time_since_epoch())
                              .count();
         const auto prefix = kind == JobKind::World
                                 ? "world_"
-                                : kind == JobKind::OnlinePlayers ? "players_" : "probe_";
+                                : kind == JobKind::OnlinePlayers ? "players_" : kind == JobKind::Mutation ? "mutation_" : "probe_";
         const auto id = std::string(prefix) + std::to_string(now) + "_" + std::to_string(++sequence_);
         std::scoped_lock lock(jobs_mutex_);
         if (jobs_.size() >= 64) {
@@ -1921,7 +2463,7 @@ class PalPanelBridge final : public RC::CppUserModBase
             jobs_.erase(removable);
         }
         jobs_.emplace(id, Job{.id = id, .kind = kind, .queued_at_unix_ms = static_cast<unsigned long long>(now),
-                              .metadata_probe = metadata_probe});
+                              .metadata_probe = metadata_probe, .mutation_request = std::move(mutation_request)});
         return id;
     }
 
@@ -2146,6 +2688,15 @@ class PalPanelBridge final : public RC::CppUserModBase
                 body << '}';
             }
             body << ']';
+        } else if (job.kind == JobKind::Mutation) {
+            const auto& mutation = job.mutation_result;
+            body << ",\"operation\":\"" << json_escape(mutation.operation)
+                 << "\",\"mutation_status\":\"" << json_escape(mutation.status)
+                 << "\",\"before\":" << mutation.before_json
+                 << ",\"after\":" << mutation.after_json
+                 << ",\"error\":\"" << json_escape(mutation.error)
+                 << "\",\"rollback_status\":\"" << json_escape(mutation.rollback_status)
+                 << "\",\"rollback_error\":\"" << json_escape(mutation.rollback_error) << '"';
         }
         body << "}}}";
         return body.str();
@@ -2155,17 +2706,51 @@ class PalPanelBridge final : public RC::CppUserModBase
     {
         DWORD timeout = 2000;
         setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
-        char buffer[8193]{};
-        const auto received = recv(client, buffer, 8192, 0);
-        if (received <= 0) return;
-        const std::string request(buffer, static_cast<size_t>(received));
+        std::string request;
+        char buffer[4096]{};
+        size_t header_end = std::string::npos;
+        size_t content_length = 0;
+        bool payload_too_large = false;
+        for (;;) {
+            const auto received = recv(client, buffer, sizeof(buffer), 0);
+            if (received <= 0) return;
+            request.append(buffer, static_cast<size_t>(received));
+            if (request.size() > 32768) return;
+            header_end = request.find("\r\n\r\n");
+            if (header_end != std::string::npos) {
+                const auto header = request.substr(0, header_end);
+                auto lower_header = header;
+                std::transform(
+                    lower_header.begin(), lower_header.end(), lower_header.begin(),
+                    [](unsigned char character) {
+                        return static_cast<char>(std::tolower(character));
+                    });
+                const auto marker = lower_header.find("\r\ncontent-length:");
+                if (marker != std::string::npos) {
+                    const auto start = marker + 17;
+                    const auto end = header.find("\r\n", start);
+                    try { content_length = std::stoul(trim(header.substr(start, end - start))); }
+                    catch (...) { return; }
+                }
+                if (content_length > 16384) {
+                    payload_too_large = true;
+                    break;
+                }
+                if (request.size() >= header_end + 4 + content_length) break;
+            }
+        }
         const auto first_end = request.find("\r\n");
         if (first_end == std::string::npos) return;
         const auto first = request.substr(0, first_end);
+        const auto body_start = header_end == std::string::npos ? request.size() : header_end + 4;
+        const auto request_body = body_start <= request.size() ? request.substr(body_start, content_length) : std::string{};
 
         int status = 404;
         std::string body{"{\"ok\":false,\"error\":{\"code\":\"not_found\",\"message\":\"route not found\"}}"};
-        if (config_.token.empty()) {
+        if (payload_too_large) {
+            status = 413;
+            body = "{\"ok\":false,\"error\":{\"code\":\"payload_too_large\",\"message\":\"request body exceeds 16384 bytes\"}}";
+        } else if (config_.token.empty()) {
             status = 503;
             body = "{\"ok\":false,\"error\":{\"code\":\"bridge_not_configured\",\"message\":\"bridge token is not configured\"}}";
         } else if (!authorized(request)) {
@@ -2201,6 +2786,19 @@ class PalPanelBridge final : public RC::CppUserModBase
             body = id.empty()
                        ? "{\"ok\":false,\"error\":{\"code\":\"job_queue_full\",\"message\":\"all job slots are queued or running\"}}"
                        : "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
+        } else if (first == "POST /v1/mutations HTTP/1.1") {
+            MutationRequest mutation;
+            std::string error;
+            if (!parse_mutation_request(request_body, mutation, error)) {
+                status = 400;
+                body = "{\"ok\":false,\"error\":{\"code\":\"invalid_mutation\",\"message\":\"" + json_escape(error) + "\"}}";
+            } else {
+                const auto id = enqueue(JobKind::Mutation, false, std::move(mutation));
+                status = id.empty() ? 503 : 202;
+                body = id.empty()
+                           ? "{\"ok\":false,\"error\":{\"code\":\"job_queue_full\",\"message\":\"all job slots are queued or running\"}}"
+                           : "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
+            }
         } else if (first.rfind("GET /v1/jobs/", 0) == 0 && first.ends_with(" HTTP/1.1")) {
             const auto id = first.substr(13, first.size() - 13 - 9);
             body = get_job(id);

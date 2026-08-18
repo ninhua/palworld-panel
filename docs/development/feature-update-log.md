@@ -1,5 +1,27 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.35 受限写任务
+
+已完成：
+
+- 新增 `POST /v1/mutations`，所有操作进入 UE4SS `on_update` 游戏线程队列。
+- `item_set_count` 修改既有槽位数量；强制核对在线玩家 UID、容器/槽位数组序号、
+  `item_static_id`、原数量和 0..9999 范围，写后回读，失败恢复原数量。
+- `pal_replace_passive` 支持增加/删除单个被动词条；强制核对玩家 UID、帕鲁实例 ID、
+  `character_id` 和完整原被动列表，调用前校验反射 ABI，失败执行逆操作并再次回读。
+- 帕鲁定位优先使用服务端非空槽缓存，缓存未命中时回退完整 `TargetContainer.SlotArray`。
+- `pal_set_stats` 首批只开放等级与 HP/攻击/防御个体值；强制核对实例身份和原值，
+  仅写 `SaveParameter` 的 Byte 字段并调用零参数 `OnRep_SaveParameter`。
+- 请求必须 `confirm=true`；结果区分 `rejected`、`succeeded`、`rolled_back`、
+  `rollback_failed`，保留修改前后值及错误；插件日志记录操作、玩家 UID 和结果状态。
+  正式修改前必须另行备份世界存档。
+- 物品增删继续走现有 PalDefender 审计接口。2026-08-19 03:54（中国时区）的
+  Wood `994→995→994` 回归测试使用该接口，因此服务器出现 `delitems` RCON 日志；
+  最终数量恢复，该测试不是 Bridge 直接写入。
+- 版本、README 和接口文档一次性同步为 `0.1.35`。
+
+构建与实机结果：待 GitHub Actions 成功并由 `deploy.py` 完成部署后补充；不在本地编译。
+
 ## 2026-08-19：PalPanelBridge 0.1.34 物品 ID 与帕鲁技能批量读取
 
 已完成：
