@@ -822,9 +822,7 @@ void read_pal_parameter_functions(RC::Unreal::UObject* parameter, PalSlotSnapsho
             auto* return_property =
                 RC::Unreal::CastField<RC::Unreal::FArrayProperty>(function->GetReturnProperty());
             auto* inner_property = return_property ? return_property->GetInner() : nullptr;
-            auto* enum_property =
-                RC::Unreal::CastField<RC::Unreal::FEnumProperty>(inner_property);
-            if (!return_property || !enum_property ||
+            if (!return_property || !inner_property ||
                 inner_property->GetSize() != static_cast<std::int32_t>(sizeof(PalWazaId)) ||
                 function->GetParmsSize() != static_cast<std::int32_t>(sizeof(Params))) {
                 return;

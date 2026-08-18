@@ -8,6 +8,7 @@
 - 对有效 `PalIndividualCharacterParameter` 集中调用已确认的只读函数：`GetCharacterID`、`GetLevel`、`GetPassiveSkillList`、`GetEquipWaza`。
 - 帕鲁结果新增 `character_id`、`level`、`passive_skill_ids`、`equipped_waza_ids`；数组限制最多 16 项，等级限制 0–1000，不调用修改函数。
 - 每次调用前校验反射返回类型、参数缓冲大小与主动技能枚举宽度；ABI 不一致时关闭读取路径，不执行函数。
+- 首次 CI 在 UE4SS beta SDK 中因 `FEnumProperty` 不满足 `CastField` 约束而失败；最小修复仅移除该不可用类型转换，保留数组返回类型、参数大小与 2 字节元素宽度校验。
 - 版本、README、接口文档一次性统一为 `0.1.34`。
 
 验证计划：
