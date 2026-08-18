@@ -1,5 +1,11 @@
 # 功能移植更新记录
 
+## 2026-08-19：面板默认 UE4SS 改为 GitHub experimental-latest
+
+- `backend/internal/appconfig/config.go` 默认 UE4SS 下载源从 `v3.0.1` release 改为 GitHub `experimental-latest`（`UE4SS_v3.0.1-1029-g69f1bd11.zip`），版本标记 `experimental-latest`，SHA-256 更新为 `d42ca456316c2ff7b0cbc0c978a6c391eb8f71726048574082fa8aee94eff5fa`。
+- 目的：PalPanelBridge 按 UE4SS experimental `c838a8ac` 编译（创意工坊 item `3625223587` 同源），release `v3.0.1` 的 C++ 模组 ABI 不兼容，加载报 `0x7f`；experimental-latest 已验证可正常加载 0.1.28 main.dll。
+- 面板的 UE4SS 标识（WorkshopID `3625223587`）保持不变；仅统一下载源与哈希固定。
+
 ## 2026-08-06：PalPanelBridge 0.1.28 帕鲁槽位与背包容器读取
 
 已完成：
