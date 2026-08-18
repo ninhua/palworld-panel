@@ -1,5 +1,19 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.34 物品 ID 与帕鲁技能批量读取
+
+已完成：
+
+- 背包槽位沿已确认的 `PalItemId.StaticId` 路径读取物品静态 ID，与 `slot_index`、`stack_count` 同项返回。
+- 对有效 `PalIndividualCharacterParameter` 集中调用已确认的只读函数：`GetCharacterID`、`GetLevel`、`GetPassiveSkillList`、`GetEquipWaza`。
+- 帕鲁结果新增 `character_id`、`level`、`passive_skill_ids`、`equipped_waza_ids`；数组限制最多 16 项，等级限制 0–1000，不调用修改函数。
+- 每次调用前校验反射返回类型、参数缓冲大小与主动技能枚举宽度；ABI 不一致时关闭读取路径，不执行函数。
+- 版本、README、接口文档一次性统一为 `0.1.34`。
+
+验证计划：
+
+- GitHub Actions 成功后安全部署，在线验证主背包非空槽的物品 ID、首只有效帕鲁的种类、等级、被动与主动技能。
+
 ## 2026-08-19：PalPanelBridge 0.1.33 大响应完整发送
 
 已完成：

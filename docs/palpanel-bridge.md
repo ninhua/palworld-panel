@@ -13,7 +13,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.33`
+- PalPanelBridge：`0.1.34`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.33",
+  "bridge_version": "0.1.34",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -261,6 +261,12 @@ Delegate 元数据，优先返回技能、词条、种类、等级和状态字�
 改为循环发送完整响应。普通在线查询移除旧的 `property_candidates`/
 `property_details`，物品槽位不再重复返回 UObject 名称；反射详情集中到 metadata
 接口，面板查询脚本的诊断响应上限同步提高到 2 MiB。
+
+`0.1.34` 根据实机确认结构读取每个受限背包槽位的 `PalItemId.StaticId`；对有效
+帕鲁参数对象调用已确认的只读函数，返回 `character_id`、`level`、
+`passive_skill_ids` 和数值 `equipped_waza_ids`。数组与数值均执行范围限制，不调用
+任何修改函数。调用前还会核对反射返回类型、参数缓冲大小和枚举元素宽度；不匹配
+时关闭该读取路径，不执行函数。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、

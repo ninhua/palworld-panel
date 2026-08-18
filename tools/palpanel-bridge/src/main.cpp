@@ -5,6 +5,7 @@
 #include <Unreal/CoreUObject/UObject/UnrealType.hpp>
 #include <Unreal/Core/Containers/Array.hpp>
 #include <Unreal/FField.hpp>
+#include <Unreal/NameTypes.hpp>
 #include <Unreal/UFunctionStructs.hpp>
 #include <Unreal/UObject.hpp>
 #include <Unreal/UObjectGlobals.hpp>
@@ -98,6 +99,9 @@ struct PalSlotSnapshot
     bool sanity_found{};
     double sanity{};
     std::string nickname{};
+    std::string character_id{};
+    std::vector<std::string> passive_skill_ids{};
+    std::vector<std::uint16_t> equipped_waza_ids{};
 };
 
 struct PalSlotArraySnapshot
@@ -116,6 +120,7 @@ struct ItemSlotSnapshot
     double slot_index{};
     bool stack_count_found{};
     double stack_count{};
+    std::string item_static_id{};
 };
 
 struct ItemContainerSnapshot
@@ -651,6 +656,29 @@ bool read_player_guid(RC::Unreal::UObject* object, std::string& output)
     return read_guid_property(object, {STR("PlayerUId"), STR("PlayerUID")}, output);
 }
 
+bool read_nested_name_property(
+    RC::Unreal::UObject* object,
+    std::initializer_list<const TCHAR*> outer_names,
+    std::initializer_list<const TCHAR*> inner_names,
+    std::string& output)
+{
+    auto* outer_property = find_property(object, outer_names);
+    auto* outer_struct_property =
+        RC::Unreal::CastField<RC::Unreal::FStructProperty>(outer_property);
+    auto* outer_struct = outer_struct_property ? outer_struct_property->GetStruct().Get() : nullptr;
+    auto* outer_value = outer_property
+                            ? outer_property->ContainerPtrToValuePtr<void>(object)
+                            : nullptr;
+    auto* inner_property = outer_struct
+                               ? find_struct_property(outer_struct, inner_names)
+                               : nullptr;
+    auto* name_property = RC::Unreal::CastField<RC::Unreal::FNameProperty>(inner_property);
+    if (!outer_value || !name_property) return false;
+    const auto value = name_property->GetPropertyValueInContainer(outer_value);
+    output = RC::to_utf8_string(value.ToString());
+    return !output.empty();
+}
+
 bool read_string_property(
     RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names, std::string& output)
 {
@@ -716,6 +744,104 @@ bool read_number_property(
         return true;
     }
     return false;
+}
+
+enum class PalWazaId : std::uint16_t
+{
+};
+
+void read_pal_parameter_functions(RC::Unreal::UObject* parameter, PalSlotSnapshot& slot)
+{
+    if (!parameter || !RC::Unreal::UObject::IsReal(parameter)) return;
+    try {
+        if (auto* function = RC::Unreal::UObjectGlobals::StaticFindObject<RC::Unreal::UFunction*>(
+                nullptr, nullptr, STR("/Script/Pal.PalIndividualCharacterParameter:GetCharacterID"))) {
+            struct Params
+            {
+                RC::Unreal::FName ReturnValue{};
+            };
+            auto* return_property =
+                RC::Unreal::CastField<RC::Unreal::FNameProperty>(function->GetReturnProperty());
+            if (!return_property || function->GetParmsSize() != static_cast<std::int32_t>(sizeof(Params))) {
+                return;
+            }
+            Params params;
+            parameter->ProcessEvent(function, &params);
+            slot.character_id = RC::to_utf8_string(params.ReturnValue.ToString());
+        }
+        if (auto* function = RC::Unreal::UObjectGlobals::StaticFindObject<RC::Unreal::UFunction*>(
+                nullptr, nullptr, STR("/Script/Pal.PalIndividualCharacterParameter:GetLevel"))) {
+            struct Params
+            {
+                std::int32_t ReturnValue{};
+            };
+            auto* return_property =
+                RC::Unreal::CastField<RC::Unreal::FIntProperty>(function->GetReturnProperty());
+            if (!return_property || function->GetParmsSize() != static_cast<std::int32_t>(sizeof(Params))) {
+                return;
+            }
+            Params params;
+            parameter->ProcessEvent(function, &params);
+            if (params.ReturnValue >= 0 && params.ReturnValue <= 1000) {
+                slot.level_found = true;
+                slot.level = static_cast<double>(params.ReturnValue);
+            }
+        }
+        if (auto* function = RC::Unreal::UObjectGlobals::StaticFindObject<RC::Unreal::UFunction*>(
+                nullptr, nullptr, STR("/Script/Pal.PalIndividualCharacterParameter:GetPassiveSkillList"))) {
+            struct Params
+            {
+                RC::Unreal::TArray<RC::Unreal::FName> ReturnValue{};
+            };
+            auto* return_property =
+                RC::Unreal::CastField<RC::Unreal::FArrayProperty>(function->GetReturnProperty());
+            auto* inner_property = return_property
+                                       ? RC::Unreal::CastField<RC::Unreal::FNameProperty>(return_property->GetInner())
+                                       : nullptr;
+            if (!return_property || !inner_property ||
+                function->GetParmsSize() != static_cast<std::int32_t>(sizeof(Params))) {
+                return;
+            }
+            Params params;
+            parameter->ProcessEvent(function, &params);
+            const auto count = params.ReturnValue.Num();
+            if (count >= 0 && count <= 16) {
+                slot.passive_skill_ids.reserve(static_cast<size_t>(count));
+                for (std::int32_t index = 0; index < count; ++index) {
+                    slot.passive_skill_ids.emplace_back(
+                        RC::to_utf8_string(params.ReturnValue[index].ToString()));
+                }
+            }
+        }
+        if (auto* function = RC::Unreal::UObjectGlobals::StaticFindObject<RC::Unreal::UFunction*>(
+                nullptr, nullptr, STR("/Script/Pal.PalIndividualCharacterParameter:GetEquipWaza"))) {
+            struct Params
+            {
+                RC::Unreal::TArray<PalWazaId> ReturnValue{};
+            };
+            auto* return_property =
+                RC::Unreal::CastField<RC::Unreal::FArrayProperty>(function->GetReturnProperty());
+            auto* inner_property = return_property ? return_property->GetInner() : nullptr;
+            auto* enum_property =
+                RC::Unreal::CastField<RC::Unreal::FEnumProperty>(inner_property);
+            if (!return_property || !enum_property ||
+                inner_property->GetSize() != static_cast<std::int32_t>(sizeof(PalWazaId)) ||
+                function->GetParmsSize() != static_cast<std::int32_t>(sizeof(Params))) {
+                return;
+            }
+            Params params;
+            parameter->ProcessEvent(function, &params);
+            const auto count = params.ReturnValue.Num();
+            if (count >= 0 && count <= 16) {
+                slot.equipped_waza_ids.reserve(static_cast<size_t>(count));
+                for (std::int32_t index = 0; index < count; ++index) {
+                    slot.equipped_waza_ids.emplace_back(
+                        static_cast<std::uint16_t>(params.ReturnValue[index]));
+                }
+            }
+        }
+    } catch (...) {
+    }
 }
 
 PalSlotArraySnapshot read_pal_slot_array(
@@ -803,6 +929,7 @@ PalSlotArraySnapshot read_pal_slot_array(
                         read_number_property(parameter, {STR("Sanity")}, slot.sanity);
                     read_string_property(
                         parameter, {STR("NickName"), STR("Nickname")}, slot.nickname);
+                    read_pal_parameter_functions(parameter, slot);
                     if (collect_metadata && index == 0) {
                         parameter_metadata = collect_data_property_metadata(
                             parameter,
@@ -864,6 +991,11 @@ std::vector<ItemSlotSnapshot> read_item_slots(
             read_number_property(slot_object, {STR("SlotIndex")}, slot.slot_index);
         slot.stack_count_found =
             read_number_property(slot_object, {STR("StackCount")}, slot.stack_count);
+        read_nested_name_property(
+            slot_object,
+            {STR("ItemId"), STR("ItemID")},
+            {STR("StaticId"), STR("StaticID")},
+            slot.item_static_id);
         if (collect_metadata && item_id_metadata.empty()) {
             item_id_metadata = collect_struct_property_metadata(
                 slot_object, {STR("ItemId"), STR("ItemID")});
@@ -1440,6 +1572,7 @@ void append_pal_slot_array_json(std::ostringstream& body, const PalSlotArraySnap
         }
         body << ",\"parameter_values\":{\"nickname\":\""
              << json_escape(slot.nickname)
+             << "\",\"character_id\":\"" << json_escape(slot.character_id)
              << "\",\"level\":"
              << (slot.level_found ? json_number(slot.level) : std::string("null"))
              << ",\"rank\":"
@@ -1454,7 +1587,17 @@ void append_pal_slot_array_json(std::ostringstream& body, const PalSlotArraySnap
              << (slot.full_stomach_found ? json_number(slot.full_stomach) : std::string("null"))
              << ",\"sanity\":"
              << (slot.sanity_found ? json_number(slot.sanity) : std::string("null"))
-             << '}';
+             << ",\"passive_skill_ids\":[";
+        for (size_t skill_index = 0; skill_index < slot.passive_skill_ids.size(); ++skill_index) {
+            if (skill_index > 0) body << ',';
+            body << '\"' << json_escape(slot.passive_skill_ids[skill_index]) << '\"';
+        }
+        body << "],\"equipped_waza_ids\":[";
+        for (size_t skill_index = 0; skill_index < slot.equipped_waza_ids.size(); ++skill_index) {
+            if (skill_index > 0) body << ',';
+            body << slot.equipped_waza_ids[skill_index];
+        }
+        body << "]}";
         body << '}';
     }
     body << "]}";
@@ -1481,6 +1624,7 @@ void append_item_container_json(
              << (slot.slot_index_found ? json_number(slot.slot_index) : std::string("null"))
              << ",\"stack_count\":"
              << (slot.stack_count_found ? json_number(slot.stack_count) : std::string("null"))
+             << ",\"item_static_id\":\"" << json_escape(slot.item_static_id) << '\"'
              << '}';
     }
     body << "]}";
@@ -1527,7 +1671,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.33");
+        ModVersion = STR("0.1.34");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -1739,7 +1883,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.33\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.34\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -1752,7 +1896,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.33\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.34\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','

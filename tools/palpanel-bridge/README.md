@@ -23,7 +23,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.33-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.34-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -49,7 +49,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.33-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.34-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -211,6 +211,13 @@ no longer include legacy `property_candidates`/`property_details`; inventory
 slots omit redundant UObject names, and metadata discovery stays on the
 dedicated endpoint. The panel query helper accepts diagnostic responses up to
 2 MiB.
+
+Version `0.1.34` reads each bounded inventory slot's `PalItemId.StaticId` and
+uses confirmed read-only Pal functions to return `character_id`, `level`,
+`passive_skill_ids`, and numeric `equipped_waza_ids` for each valid Pal
+parameter. Function results are range-bounded and no mutation function is
+called. Each call first verifies the reflected return type, parameter-buffer
+size, and enum element width; mismatches fail closed without invoking it.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with
