@@ -57,6 +57,7 @@ enum class JobKind
     World,
     OnlinePlayers,
     Mutation,
+    BaseModules,
 };
 
 struct MutationRequest
@@ -147,6 +148,21 @@ struct PalSlotArraySnapshot
 };
 
 struct PropertyCandidateSnapshot;
+struct FunctionCandidateSnapshot;
+
+struct BaseModuleSnapshot
+{
+    ObjectSnapshot object{};
+    std::vector<PropertyCandidateSnapshot> properties{};
+    std::vector<FunctionCandidateSnapshot> functions{};
+};
+
+struct BaseCampSnapshot
+{
+    std::string base_id{};
+    ObjectSnapshot model{};
+    std::vector<BaseModuleSnapshot> modules{};
+};
 
 struct ItemSlotSnapshot
 {
@@ -293,6 +309,9 @@ struct Job
     bool metadata_truncated{false};
     MutationRequest mutation_request{};
     MutationResult mutation_result{};
+    ObjectSnapshot base_camp_manager{};
+    std::vector<BaseCampSnapshot> base_camps{};
+    std::string base_modules_error{};
 };
 
 struct PlayerGuid
@@ -409,6 +428,97 @@ std::vector<FunctionCandidateSnapshot> collect_player_data_function_candidates(
                 .params_size = function->GetParmsSize(),
             };
             candidates.emplace_back(std::move(candidate));
+        }
+    } catch (...) {
+    }
+    return candidates;
+}
+
+bool base_keyword_match(std::string value)
+{
+    static constexpr std::array<std::string_view, 14> keywords{
+        "work", "worker", "task", "facility", "assign", "production", "product",
+        "recipe", "craft", "build", "queue", "pal", "character", "operate"};
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return std::any_of(keywords.begin(), keywords.end(), [&](std::string_view keyword) {
+        return value.find(keyword) != std::string::npos;
+    });
+}
+
+std::string property_abi_kind(RC::Unreal::FProperty* property)
+{
+    if (!property) return "unknown";
+    if (RC::Unreal::CastField<RC::Unreal::FIntProperty>(property)) return "int32";
+    if (RC::Unreal::CastField<RC::Unreal::FInt64Property>(property)) return "int64";
+    if (RC::Unreal::CastField<RC::Unreal::FByteProperty>(property)) return "byte";
+    if (RC::Unreal::CastField<RC::Unreal::FBoolProperty>(property)) return "bool";
+    if (RC::Unreal::CastField<RC::Unreal::FFloatProperty>(property)) return "float";
+    if (RC::Unreal::CastField<RC::Unreal::FDoubleProperty>(property)) return "double";
+    if (RC::Unreal::CastField<RC::Unreal::FNameProperty>(property)) return "name";
+    if (RC::Unreal::CastField<RC::Unreal::FStrProperty>(property)) return "string";
+    if (RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(property)) return "object";
+    if (RC::Unreal::CastField<RC::Unreal::FStructProperty>(property)) return "struct";
+    if (RC::Unreal::CastField<RC::Unreal::FArrayProperty>(property)) return "array";
+    if (RC::Unreal::CastField<RC::Unreal::FMapProperty>(property)) return "map";
+    return "other";
+}
+
+std::vector<FunctionCandidateSnapshot> collect_base_function_metadata(
+    RC::Unreal::UObject* object)
+{
+    std::vector<FunctionCandidateSnapshot> candidates;
+    if (!object || !RC::Unreal::UObject::IsReal(object)) return candidates;
+    std::unordered_set<std::string> seen;
+    try {
+        for (auto* function : RC::Unreal::TFieldRange<RC::Unreal::UFunction>(
+                 object->GetClassPrivate(), RC::Unreal::EFieldIterationFlags::IncludeAll)) {
+            if (!function || candidates.size() >= 32) continue;
+            auto name = RC::to_utf8_string(function->GetName());
+            if (!base_keyword_match(name) || !seen.insert(name).second ||
+                function->GetParmsSize() < 0 || function->GetParmsSize() > 16384) {
+                continue;
+            }
+            FunctionCandidateSnapshot candidate{
+                .name = std::move(name),
+                .full_name = RC::to_utf8_string(function->GetFullName()),
+                .params_size = function->GetParmsSize(),
+            };
+            for (auto* property : RC::Unreal::TFieldRange<RC::Unreal::FProperty>(
+                     function, RC::Unreal::EFieldIterationFlags::IncludeDeprecated)) {
+                if (!property || !property->HasAnyPropertyFlags(RC::Unreal::CPF_Parm) ||
+                    candidate.parameters.size() >= 32) {
+                    continue;
+                }
+                const auto description = describe_property_candidate(property);
+                candidate.parameters.emplace_back(FunctionCandidateSnapshot::Parameter{
+                    .name = RC::to_utf8_string(property->GetName()),
+                    .kind = property_abi_kind(property),
+                    .declared_type = description.declared_type,
+                    .size = property->GetSize(),
+                    .return_value = property->HasAnyPropertyFlags(RC::Unreal::CPF_ReturnParm),
+                });
+            }
+            candidates.emplace_back(std::move(candidate));
+        }
+    } catch (...) {
+    }
+    return candidates;
+}
+
+std::vector<PropertyCandidateSnapshot> collect_base_property_metadata(
+    RC::Unreal::UObject* object)
+{
+    std::vector<PropertyCandidateSnapshot> candidates;
+    if (!object || !RC::Unreal::UObject::IsReal(object)) return candidates;
+    std::unordered_set<std::string> seen;
+    try {
+        for (auto* property : object->GetClassPrivate()->ForEachProperty()) {
+            if (!property || candidates.size() >= 64) continue;
+            auto name = RC::to_utf8_string(property->GetName());
+            if (!base_keyword_match(name) || !seen.insert(name).second) continue;
+            candidates.emplace_back(describe_property_candidate(property));
         }
     } catch (...) {
     }
@@ -1856,6 +1966,7 @@ const char* job_kind_name(JobKind kind)
     if (kind == JobKind::World) return "world";
     if (kind == JobKind::OnlinePlayers) return "online_players";
     if (kind == JobKind::Mutation) return "mutation";
+    if (kind == JobKind::BaseModules) return "base_modules";
     return "game_thread";
 }
 
@@ -1925,6 +2036,14 @@ bool return_parameter(RC::Unreal::FProperty* property)
            property->HasAnyPropertyFlags(CPF_ReturnParm);
 }
 
+bool output_parameter(RC::Unreal::FProperty* property)
+{
+    using namespace RC::Unreal;
+    return property && property->HasAnyPropertyFlags(CPF_Parm) &&
+           property->HasAnyPropertyFlags(CPF_OutParm) &&
+           !property->HasAnyPropertyFlags(CPF_ReturnParm);
+}
+
 class FunctionBuffer final
 {
   public:
@@ -1945,6 +2064,179 @@ class FunctionBuffer final
     RC::Unreal::UFunction* function_{};
     std::vector<std::uint8_t> storage_{};
 };
+
+std::string guid_string(const PlayerGuid& value)
+{
+    std::array<char, 33> buffer{};
+    std::snprintf(
+        buffer.data(), buffer.size(), "%08X%08X%08X%08X",
+        value.a, value.b, value.c, value.d);
+    return buffer.data();
+}
+
+bool call_pal_utility_object(
+    RC::Unreal::UObject* world, const TCHAR* function_name, RC::Unreal::UObject*& output)
+{
+    output = nullptr;
+    auto* utility = RC::Unreal::UObjectGlobals::StaticFindObject<RC::Unreal::UObject*>(
+        nullptr, nullptr, STR("/Script/Pal.Default__PalUtility"));
+    auto* function = utility && RC::Unreal::UObject::IsReal(utility)
+                         ? utility->GetFunctionByNameInChain(function_name)
+                         : nullptr;
+    auto* context = function
+                        ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(
+                              function->FindProperty(RC::Unreal::FName(
+                                  STR("WorldContextObject"), RC::Unreal::FNAME_Find)))
+                        : nullptr;
+    auto* result = function
+                       ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(
+                             function->GetReturnProperty())
+                       : nullptr;
+    if (!world || !RC::Unreal::UObject::IsReal(world) || !input_parameter(context) ||
+        !return_parameter(result) || !exact_parameter_count(function, 2) ||
+        function->GetParmsSize() <= 0 || function->GetParmsSize() > 4096) {
+        return false;
+    }
+    FunctionBuffer params(function);
+    context->SetObjectPropertyValue(
+        context->ContainerPtrToValuePtr<void>(params.data()), world);
+    utility->ProcessEvent(function, params.data());
+    auto* value = result->GetObjectPropertyValue(
+        result->ContainerPtrToValuePtr<void>(params.data()));
+    output = value && RC::Unreal::UObject::IsReal(value) ? value : nullptr;
+    return output != nullptr;
+}
+
+bool read_base_camp_ids(
+    RC::Unreal::UObject* manager, std::vector<PlayerGuid>& output)
+{
+    output.clear();
+    if (!manager || !RC::Unreal::UObject::IsReal(manager)) return false;
+    auto* function = manager->GetFunctionByNameInChain(STR("GetBaseCampIds"));
+    auto* array = function
+                      ? RC::Unreal::CastField<RC::Unreal::FArrayProperty>(
+                            function->FindProperty(
+                                RC::Unreal::FName(STR("OutIds"), RC::Unreal::FNAME_Find)))
+                      : nullptr;
+    auto* inner = array
+                      ? RC::Unreal::CastField<RC::Unreal::FStructProperty>(array->GetInner())
+                      : nullptr;
+    auto* inner_struct = inner ? inner->GetStruct().Get() : nullptr;
+    if (!array || !inner || !inner_struct || !output_parameter(array) ||
+        !exact_parameter_count(function, 1) ||
+        RC::to_utf8_string(inner_struct->GetFullName()) !=
+            "ScriptStruct /Script/CoreUObject.Guid" ||
+        inner->GetElementSize() != static_cast<std::int32_t>(sizeof(PlayerGuid)) ||
+        function->GetParmsSize() <= 0 || function->GetParmsSize() > 4096) {
+        return false;
+    }
+    FunctionBuffer params(function);
+    manager->ProcessEvent(function, params.data());
+    RC::Unreal::FScriptArrayHelper_InContainer values(array, params.data());
+    const auto count = values.Num();
+    if (count < 0 || count > 1024) return false;
+    output.reserve(static_cast<size_t>(count));
+    for (std::int32_t index = 0; index < count; ++index) {
+        PlayerGuid value{};
+        inner->CopyCompleteValue(&value, values.GetRawPtr(index));
+        output.emplace_back(value);
+    }
+    return true;
+}
+
+bool try_get_base_camp_model(
+    RC::Unreal::UObject* manager, const PlayerGuid& base_id,
+    RC::Unreal::UObject*& output)
+{
+    output = nullptr;
+    if (!manager || !RC::Unreal::UObject::IsReal(manager)) return false;
+    auto* function = manager->GetFunctionByNameInChain(STR("TryGetModel"));
+    auto* id = function
+                   ? RC::Unreal::CastField<RC::Unreal::FStructProperty>(
+                         function->FindProperty(
+                             RC::Unreal::FName(STR("BaseCampId"), RC::Unreal::FNAME_Find)))
+                   : nullptr;
+    auto* id_struct = id ? id->GetStruct().Get() : nullptr;
+    auto* model = function
+                      ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(
+                            function->FindProperty(
+                                RC::Unreal::FName(STR("OutModel"), RC::Unreal::FNAME_Find)))
+                      : nullptr;
+    auto* result = function
+                       ? RC::Unreal::CastField<RC::Unreal::FBoolProperty>(
+                             function->GetReturnProperty())
+                       : nullptr;
+    if (!id || !id_struct || !input_parameter(id) || !output_parameter(model) ||
+        !return_parameter(result) || !exact_parameter_count(function, 3) ||
+        RC::to_utf8_string(id_struct->GetFullName()) !=
+            "ScriptStruct /Script/CoreUObject.Guid" ||
+        id->GetElementSize() != static_cast<std::int32_t>(sizeof(PlayerGuid)) ||
+        function->GetParmsSize() <= 0 || function->GetParmsSize() > 4096) {
+        return false;
+    }
+    FunctionBuffer params(function);
+    id->CopyCompleteValue(id->ContainerPtrToValuePtr<void>(params.data()), &base_id);
+    manager->ProcessEvent(function, params.data());
+    auto* value = model->GetObjectPropertyValue(
+        model->ContainerPtrToValuePtr<void>(params.data()));
+    if (result->GetPropertyValueInContainer(params.data()) && value &&
+        RC::Unreal::UObject::IsReal(value)) {
+        output = value;
+    }
+    return output != nullptr;
+}
+
+void collect_base_modules(Job& job)
+{
+    auto* world = RC::Unreal::UObjectGlobals::FindFirstOf(STR("World"));
+    RC::Unreal::UObject* manager = nullptr;
+    if (!call_pal_utility_object(world, STR("GetBaseCampManager"), manager)) {
+        job.base_modules_error = "PalUtility.GetBaseCampManager ABI mismatch";
+        return;
+    }
+    job.base_camp_manager = describe_object(manager);
+    std::vector<PlayerGuid> ids;
+    if (!read_base_camp_ids(manager, ids)) {
+        job.base_modules_error = "PalBaseCampManager.GetBaseCampIds ABI mismatch";
+        return;
+    }
+    const auto base_limit = std::min<size_t>(ids.size(), 32);
+    for (size_t base_index = 0; base_index < base_limit; ++base_index) {
+        RC::Unreal::UObject* model = nullptr;
+        if (!try_get_base_camp_model(manager, ids[base_index], model)) continue;
+        BaseCampSnapshot base;
+        base.base_id = guid_string(ids[base_index]);
+        base.model = describe_object(model);
+        auto* modules_property = find_property(model, {STR("ModuleArray")});
+        auto* modules_array =
+            RC::Unreal::CastField<RC::Unreal::FArrayProperty>(modules_property);
+        auto* inner = modules_array
+                          ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(
+                                modules_array->GetInner())
+                          : nullptr;
+        if (!modules_array || !inner) {
+            job.base_modules_error = "BaseCampModel.ModuleArray ABI mismatch";
+            return;
+        }
+        RC::Unreal::FScriptArrayHelper_InContainer modules(modules_array, model);
+        const auto module_count = modules.Num();
+        if (module_count < 0 || module_count > 256) {
+            job.base_modules_error = "BaseCampModel.ModuleArray count is invalid";
+            return;
+        }
+        const auto module_limit = std::min<std::int32_t>(module_count, 64);
+        for (std::int32_t module_index = 0; module_index < module_limit; ++module_index) {
+            auto* module = inner->GetObjectPropertyValue(modules.GetRawPtr(module_index));
+            if (!module || !RC::Unreal::UObject::IsReal(module)) continue;
+            base.modules.emplace_back(BaseModuleSnapshot{
+                .object = describe_object(module),
+                .properties = collect_base_property_metadata(module),
+                .functions = collect_base_function_metadata(module),
+            });
+        }
+        job.base_camps.emplace_back(std::move(base));
+    }
+}
 
 bool invoke_noarg_object(
     RC::Unreal::UObject* object, const TCHAR* function_name, RC::Unreal::UObject*& output)
@@ -2476,7 +2768,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.37");
+        ModVersion = STR("0.1.38");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -2529,7 +2821,14 @@ class PalPanelBridge final : public RC::CppUserModBase
         }
         if (job_id.empty()) return;
 
-        if (job.kind == JobKind::Mutation) {
+        if (job.kind == JobKind::BaseModules) {
+            try {
+                collect_base_modules(job);
+            } catch (...) {
+                job.base_modules_error = "base module probe exception";
+                job.status = "failed";
+            }
+        } else if (job.kind == JobKind::Mutation) {
             try {
                 job.mutation_result = execute_mutation(job.mutation_request);
                 job.status = "completed";
@@ -2699,7 +2998,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.37\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.38\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -2712,7 +3011,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.37\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.38\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -2728,7 +3027,11 @@ class PalPanelBridge final : public RC::CppUserModBase
                              .count();
         const auto prefix = kind == JobKind::World
                                 ? "world_"
-                                : kind == JobKind::OnlinePlayers ? "players_" : kind == JobKind::Mutation ? "mutation_" : "probe_";
+                                : kind == JobKind::OnlinePlayers
+                                      ? "players_"
+                                      : kind == JobKind::Mutation
+                                            ? "mutation_"
+                                            : kind == JobKind::BaseModules ? "bases_" : "probe_";
         const auto id = std::string(prefix) + std::to_string(now) + "_" + std::to_string(++sequence_);
         std::scoped_lock lock(jobs_mutex_);
         if (jobs_.size() >= 64) {
@@ -2968,6 +3271,53 @@ class PalPanelBridge final : public RC::CppUserModBase
                 body << '}';
             }
             body << ']';
+        } else if (job.kind == JobKind::BaseModules) {
+            body << ",\"base_camp_manager\":{\"name\":\""
+                 << json_escape(job.base_camp_manager.name)
+                 << "\",\"full_name\":\"" << json_escape(job.base_camp_manager.full_name)
+                 << "\",\"class_name\":\"" << json_escape(job.base_camp_manager.class_name)
+                 << "\"},\"error\":\"" << json_escape(job.base_modules_error)
+                 << "\",\"base_count\":" << job.base_camps.size() << ",\"bases\":[";
+            for (size_t base_index = 0; base_index < job.base_camps.size(); ++base_index) {
+                if (base_index) body << ',';
+                const auto& base = job.base_camps[base_index];
+                body << "{\"base_id\":\"" << json_escape(base.base_id)
+                     << "\",\"model\":{\"name\":\"" << json_escape(base.model.name)
+                     << "\",\"full_name\":\"" << json_escape(base.model.full_name)
+                     << "\",\"class_name\":\"" << json_escape(base.model.class_name)
+                     << "\"},\"module_count\":" << base.modules.size() << ",\"modules\":[";
+                for (size_t module_index = 0; module_index < base.modules.size(); ++module_index) {
+                    if (module_index) body << ',';
+                    const auto& module = base.modules[module_index];
+                    body << "{\"object\":{\"name\":\"" << json_escape(module.object.name)
+                         << "\",\"full_name\":\"" << json_escape(module.object.full_name)
+                         << "\",\"class_name\":\"" << json_escape(module.object.class_name)
+                         << "\"},\"properties\":";
+                    append_property_metadata_json(body, module.properties);
+                    body << ",\"functions\":[";
+                    for (size_t function_index = 0; function_index < module.functions.size(); ++function_index) {
+                        if (function_index) body << ',';
+                        const auto& function = module.functions[function_index];
+                        body << "{\"name\":\"" << json_escape(function.name)
+                             << "\",\"full_name\":\"" << json_escape(function.full_name)
+                             << "\",\"params_size\":" << function.params_size
+                             << ",\"parameters\":[";
+                        for (size_t parameter_index = 0; parameter_index < function.parameters.size(); ++parameter_index) {
+                            if (parameter_index) body << ',';
+                            const auto& parameter = function.parameters[parameter_index];
+                            body << "{\"name\":\"" << json_escape(parameter.name)
+                                 << "\",\"kind\":\"" << json_escape(parameter.kind)
+                                 << "\",\"declared_type\":\"" << json_escape(parameter.declared_type)
+                                 << "\",\"size\":" << parameter.size
+                                 << ",\"return_value\":" << (parameter.return_value ? "true" : "false") << '}';
+                        }
+                        body << "]}";
+                    }
+                    body << "]}";
+                }
+                body << "]}";
+            }
+            body << ']';
         } else if (job.kind == JobKind::Mutation) {
             const auto& mutation = job.mutation_result;
             body << ",\"operation\":\"" << json_escape(mutation.operation)
@@ -3062,6 +3412,12 @@ class PalPanelBridge final : public RC::CppUserModBase
                        : "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
         } else if (first == "POST /v1/probe/game-thread HTTP/1.1") {
             const auto id = enqueue(JobKind::GameThread);
+            status = id.empty() ? 503 : 202;
+            body = id.empty()
+                       ? "{\"ok\":false,\"error\":{\"code\":\"job_queue_full\",\"message\":\"all job slots are queued or running\"}}"
+                       : "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
+        } else if (first == "POST /v1/bases/modules HTTP/1.1") {
+            const auto id = enqueue(JobKind::BaseModules);
             status = id.empty() ? 503 : 202;
             body = id.empty()
                        ? "{\"ok\":false,\"error\":{\"code\":\"job_queue_full\",\"message\":\"all job slots are queued or running\"}}"

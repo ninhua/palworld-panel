@@ -1,5 +1,18 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.38 据点设施模块探针
+
+- 新增只读 `POST /v1/bases/modules`，在游戏线程解析
+  `PalUtility.GetBaseCampManager -> GetBaseCampIds -> TryGetModel -> ModuleArray`。
+- 据点最多 32 个、每据点模块最多 64 个；数量或反射 ABI 不匹配时关闭路径。
+- 每个模块只返回对象身份，以及工作、任务、设施、分配、生产、配方、建造相关属性
+  与函数参数元数据；不调用未知模块函数，不改任务或帕鲁分配。
+- 已确认参考源码没有可靠的工作台任务/分配 setter 或服务器 RPC；本版先取得实机
+  工作台类与函数证据，再决定后续写接口。
+- 版本、README 和接口文档一次性同步为 `0.1.38`；不在本地编译。
+
+构建与实机结果：待 `deploy.py` 返回后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.37 携带帕鲁与终端帕鲁分离
 
 - 在线玩家结果新增 `party_pal_slots`/`party_pal_error`，从目标玩家所属

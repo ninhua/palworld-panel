@@ -15,7 +15,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.37`
+- PalPanelBridge：`0.1.38`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -63,7 +63,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.37",
+  "bridge_version": "0.1.38",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -346,6 +346,20 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 `item_set_count` 只保证当前运行时回读；实机已确认 Save + 重启后会恢复权威原值，
 因此不得把它当作持久化接口。持久增加物品使用游戏原生添加路径，删除继续使用面板
 已审计管理接口，直到确认安全的原生删除 ABI。
+
+## 据点设施模块探针（0.1.38）
+
+```text
+POST http://127.0.0.1:18083/v1/bases/modules
+GET  http://127.0.0.1:18083/v1/jobs/<job_id>
+```
+
+任务在游戏线程调用已验证的 `PalUtility.GetBaseCampManager`、
+`PalBaseCampManager.GetBaseCampIds` 和 `TryGetModel`，再读取有界 `ModuleArray`。
+每个模块返回对象身份，以及名称包含 work/worker/task/facility/assign/production/
+recipe/craft/build/queue 等关键词的属性和函数参数 ABI。该接口只读，不调用未知模块
+函数，也不设置生产任务或分配帕鲁；必须先用实机结果确认具体工作台类、服务器函数、
+复制通知和持久化链，才会开放写接口。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、
