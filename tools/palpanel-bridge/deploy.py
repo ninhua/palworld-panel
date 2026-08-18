@@ -32,6 +32,9 @@ import paramiko
 
 WORKFLOW = "PalPanelBridge build"
 ARTIFACT_PATTERN = re.compile(r"^PalPanelBridge-v([0-9]+(?:\.[0-9]+)*)-.*-server-package$")
+DEDICATED_SERVER_NAME_PATTERN = re.compile(
+    r"^\s*DedicatedServerName\s*=\s*([A-Za-z0-9_-]+)\s*$", re.MULTILINE | re.IGNORECASE
+)
 
 
 def command_json(arguments: list[str]) -> object:
@@ -298,6 +301,29 @@ def replace_with_retry(source: Path, target: Path, timeout_seconds: int = 90) ->
             time.sleep(1)
 
 
+def validate_local_world_binding(local_main: Path) -> tuple[Path, str]:
+    """Fail closed if the local server cannot prove which existing world it will load."""
+    pal_roots = [
+        parent for parent in local_main.resolve().parents
+        if parent.name.casefold() == "pal" and (parent / "Saved").is_dir()
+    ]
+    if len(pal_roots) != 1:
+        raise RuntimeError("could not uniquely derive the local Pal directory from --local-dll")
+    settings = pal_roots[0] / "Saved" / "Config" / "WindowsServer" / "GameUserSettings.ini"
+    try:
+        content = settings.read_text(encoding="utf-8")
+    except OSError as error:
+        raise RuntimeError(f"refusing to start: GameUserSettings.ini is unreadable: {error}") from error
+    match = DEDICATED_SERVER_NAME_PATTERN.search(content)
+    if not match:
+        raise RuntimeError("refusing to start: DedicatedServerName is missing from GameUserSettings.ini")
+    world_id = match.group(1)
+    level = pal_roots[0] / "Saved" / "SaveGames" / "0" / world_id / "Level.sav"
+    if not level.is_file() or level.stat().st_size <= 0:
+        raise RuntimeError(f"refusing to start: bound world has no non-empty Level.sav: {world_id}")
+    return settings, world_id
+
+
 def panel_request(panel_url: str, api_key: str, method: str, path: str, body: object | None = None, timeout_seconds: int = 120) -> dict[str, object]:
     url = panel_url.rstrip("/") + path
     data = json.dumps(body).encode("utf-8") if body is not None else None
@@ -342,6 +368,38 @@ def panel_lifecycle(panel_url: str, api_key: str, action: str) -> dict[str, obje
     if data.get("status") != expected_status and response.get("ok") is not True:
         raise RuntimeError(f"Panel {action} returned an unexpected response: {response}")
     return response
+
+
+def panel_safe_stop(
+    panel_url: str,
+    api_key: str,
+    message: str = "PalPanelBridge safe deployment",
+    timeout_seconds: int = 300,
+    poll_seconds: int = 3,
+) -> dict[str, object]:
+    submitted = panel_request(
+        panel_url,
+        api_key,
+        "POST",
+        "/api/server/safe-stop",
+        {"waittime": 5, "message": message},
+        timeout_seconds=30,
+    )
+    data = submitted.get("data") if isinstance(submitted.get("data"), dict) else {}
+    job_id = str(data.get("id", ""))
+    if not job_id or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", job_id):
+        raise RuntimeError(f"Panel safe-stop returned no valid job id: {submitted}")
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        job_response = panel_request(panel_url, api_key, "GET", f"/api/jobs/{job_id}", timeout_seconds=15)
+        job = job_response.get("data") if isinstance(job_response.get("data"), dict) else {}
+        status = str(job.get("status", ""))
+        if status == "completed":
+            return job_response
+        if status == "failed":
+            raise RuntimeError(f"Panel safe-stop failed: {job_response}")
+        time.sleep(poll_seconds)
+    raise TimeoutError(f"timed out waiting for Panel safe-stop job {job_id}")
 
 
 def wait_bridge_health(bridge_url: str, token: str, version: str, timeout_seconds: int = 600, poll_seconds: int = 10) -> dict[str, object]:
@@ -436,12 +494,21 @@ def main() -> None:
         panel_url = env_or_argument(args.panel_url, "PALPANEL_API_URL")
         api_key = env_or_argument(args.panel_api_key, "PALPANEL_API_KEY")
         bridge_token = env_or_argument(args.bridge_token, "PALPANEL_BRIDGE_TOKEN")
+        local_main = args.local_dll.resolve()
+        _, expected_world_id = validate_local_world_binding(local_main)
         stopped = False
+        safe_to_start = True
         local_backup: Path | None = None
         try:
-            panel_lifecycle(panel_url, api_key, "stop")
+            panel_safe_stop(panel_url, api_key)
             stopped = True
-            local_main = args.local_dll.resolve()
+            safe_to_start = False
+            _, stopped_world_id = validate_local_world_binding(local_main)
+            if stopped_world_id != expected_world_id:
+                raise RuntimeError(
+                    f"refusing to deploy: world binding changed from {expected_world_id} to {stopped_world_id}"
+                )
+            safe_to_start = True
             local_backup = deploy_local(dll, checksum, version, local_main)
             backup = str(local_backup)
             panel_lifecycle(panel_url, api_key, "start")
@@ -451,18 +518,27 @@ def main() -> None:
         except Exception:
             if local_backup is not None and local_backup.is_file():
                 if not stopped:
-                    panel_lifecycle(panel_url, api_key, "stop")
+                    panel_safe_stop(panel_url, api_key, "PalPanelBridge rollback")
                     stopped = True
+                safe_to_start = False
                 replace_with_retry(local_backup, local_main)
+                _, rollback_world_id = validate_local_world_binding(local_main)
+                if rollback_world_id != expected_world_id:
+                    raise RuntimeError(
+                        f"rollback completed but world binding changed to {rollback_world_id}; server remains stopped"
+                    )
+                safe_to_start = True
                 panel_lifecycle(panel_url, api_key, "start")
                 stopped = False
             raise
         finally:
-            if stopped:
+            if stopped and safe_to_start:
                 try:
                     panel_lifecycle(panel_url, api_key, "start")
                 except Exception as recovery_error:
                     print(f"WARNING: failed to restart server after deployment error: {recovery_error}", file=sys.stderr)
+            elif stopped:
+                print("WARNING: server remains stopped because the world binding could not be validated", file=sys.stderr)
     else:
         host = env_or_argument(args.host, "PALPANEL_SFTP_HOST")
         username = env_or_argument(args.username, "PALPANEL_SFTP_USERNAME")

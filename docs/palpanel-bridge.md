@@ -265,6 +265,10 @@ Delegate 元数据，优先返回技能、词条、种类、等级和状态字�
 通过参数或环境变量提供，不写入仓库；本地模式必须提供 Bridge Token，只有健康
 检查确认目标版本后脚本才报告成功。
 
+本地部署使用面板安全停服任务，不调用 Windows 强制 Stop。脚本在停服前和启动前
+分别校验 `GameUserSettings.ini` 可读、`DedicatedServerName` 非空且对应世界存在
+非空 `Level.sav`；校验失败时保持停服，禁止 PalServer 随机创建新世界。
+
 仅需验证 CI 和保存构建快照时使用 `--download-only`，该模式不会连接面板、不会
 停服或替换 DLL。工作流从 `src/main.cpp` 的 `ModVersion` 自动生成压缩包及
 Artifact 名称，避免版本号漏同步。

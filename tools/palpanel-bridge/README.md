@@ -237,6 +237,11 @@ atomically replaces only `dlls/main.dll`, restores the old DLL on failure,
 starts the game, and waits for `/v1/health` to report the expected version.
 `config.ini` is never modified. Secrets may also be supplied through
 `PALPANEL_API_KEY` and `PALPANEL_BRIDGE_TOKEN` environment variables.
+Local deployment uses the panel's safe-stop job, not force-stop. Before stopping
+and again before starting, it requires a readable `GameUserSettings.ini`, a
+non-empty `DedicatedServerName`, and an existing bound `Level.sav`. If the
+binding cannot be proven, the server remains stopped instead of creating a new
+world.
 Use `--download-only` when only CI waiting, artifact verification, and the
 versioned snapshot are needed; this mode never contacts the panel or changes
 the running server. The workflow derives the package version from

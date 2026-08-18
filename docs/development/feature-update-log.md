@@ -1,5 +1,19 @@
 # 功能移植更新记录
 
+## 2026-08-19：本地世界绑定恢复与部署停服保护
+
+事故与根因：
+
+- 0.1.32 部署前使用普通 `/api/server/stop`；Windows 后端实际通过 `TerminateJobObject`/`Kill` 强制结束 PalServer，不是游戏内保存退出。
+- `GameUserSettings.ini` 当时 ACL 为受保护空 DACL `D:PAI`，重启进程无法读取原 `DedicatedServerName=D755E4CC4E9B23F85AE4E2B865E19DBD`，于 02:52 创建新世界 `5AEE8D9446F10BC85FF5B8B0EAAB311C`。
+- 原世界、玩家文件和自动备份均未被覆盖；旧世界最后正常保存时间为 02:49。
+
+恢复与修复：
+
+- 通过面板 `/api/server/safe-stop` 等待任务完成；将两套世界、`PalWorldSettings.ini`、原 ACL 和 `GameUserSettings.ini` 备份到 `E:\PalPanelRuntime\recovery\world-restore-20260819-0301`。
+- 重置单个 `GameUserSettings.ini` ACL 后确认其内容仍绑定旧世界；启动后游戏 REST API 返回 `worldguid=D755E4CC4E9B23F85AE4E2B865E19DBD`，旧世界恢复成功。
+- `deploy.py --local-dll` 改用安全停服任务；停服前及启动前双重校验 `DedicatedServerName` 和对应非空 `Level.sav`。绑定不可验证时保持停服，不再自动启动新世界。
+
 ## 2026-08-19：PalPanelBridge 0.1.32 物品槽位数量读取
 
 已完成：
