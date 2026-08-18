@@ -15,7 +15,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.39`
+- PalPanelBridge：`0.1.40`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -63,7 +63,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.39",
+  "bridge_version": "0.1.40",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -364,6 +364,11 @@ recipe/craft/build/queue 等关键词的属性和函数参数 ABI。该接口只
 `0.1.39` 为相关数组/Map 增加有界元素数量，并返回一层 Map 键、值粗粒度类型和声明
 结构/对象类型。它用于展开 `MapObjectWorkInfoMap`、`FacilityUsageInfoSetMap` 的
 结构证据；反射递归固定限深，仍不读取条目内存或调用设施函数。
+
+`0.1.40` 继续只读展开一层数组/结构体字段，并以固定深度序列化 metadata 树，目标是
+确认 `PalBaseCampModuleResourceCollectWorkInfo` 内的工作对象、分配和状态字段。仍不读取
+Map 条目值，不调用工作函数；每个任务最多 4096 个 metadata 节点，超限返回
+`truncated=true`。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、

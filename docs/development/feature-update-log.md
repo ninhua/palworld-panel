@@ -1,5 +1,16 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.40 据点工作信息结构探针
+
+- 在 0.1.39 Map 键值类型基础上，只读展开一层数组/结构体字段；metadata 输出递归
+  固定最多 3 层，每个结构最多 32 个字段，并设置每任务 4096 节点总预算；超限返回
+  `truncated=true`。
+- 目标是确认 `PalBaseCampModuleResourceCollectWorkInfo` 内的工作对象、分配与状态字段，
+  仍不遍历 Map 条目或调用工作函数。
+- 版本、README 和接口文档一次性同步为 `0.1.40`；不在本地编译。
+
+构建与实机结果：待 `deploy.py` 返回后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.39 据点工作 Map 类型探针
 
 - 在 0.1.38 据点模块结果上增加数组/Map 有界元素数量、Map 键值粗粒度类型与声明
@@ -9,7 +20,13 @@
 - 本版仍不调用 `OnStartUseFacility_ServerInternal` 等候选函数，不设置工作安排。
 - 版本、README 和接口文档一次性同步为 `0.1.39`；不在本地编译。
 
-构建与实机结果：待 `deploy.py` 返回后补充。
+构建与部署结果（2026-08-19 05:15，中国时区）：GitHub Actions run
+`32186555233` 成功；DLL SHA256 为
+`a43b5cffce475320f41c0081eb4c817c3198ebc53455305b9f9c1eaa0de6e0e5`。
+
+实机结果：`MapObjectWorkInfoMap` 有 33 条，类型为
+`TMap<FGuid, PalBaseCampModuleResourceCollectWorkInfo>`；`FacilityUsageInfoSetMap` 当前
+0 条，值类型为 `PalBaseCampFacilityUsageInfoSet`；尚未读取条目或执行工作安排。
 
 ## 2026-08-19：PalPanelBridge 0.1.38 据点设施模块探针
 
