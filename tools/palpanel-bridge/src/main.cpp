@@ -2542,12 +2542,14 @@ void collect_base_modules(Job& job)
                     }
                 }
             }
-            if (work_snapshot.map_object_ids.empty()) {
-                if (include_metadata) seen_work_classes.erase(snapshot.class_name);
-                continue;
-            }
             if (!read_work_assignment_probe(work, work_snapshot)) {
                 work_snapshot.work_probe_error = "work assignment getter ABI mismatch";
+            }
+            if (work_snapshot.map_object_ids.empty() &&
+                work_snapshot.work_assign_info_count <= 0 &&
+                work_snapshot.assigned_character_count <= 0) {
+                if (include_metadata) seen_work_classes.erase(snapshot.class_name);
+                continue;
             }
         }
         if (!include_metadata) {
@@ -3110,7 +3112,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.43");
+        ModVersion = STR("0.1.44");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -3340,7 +3342,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.43\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.44\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -3353,7 +3355,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.43\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.44\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','

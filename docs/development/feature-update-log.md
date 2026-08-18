@@ -1,12 +1,27 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.44 活动设施工作探针
+
+- 保留当前据点映射工作；其他已加载工作仅当 `GetWorkAssignInfo` 或
+  `GetAssignedCharacters` 返回非零数量时输出，用于定位真实活动设施和工作帕鲁。
+- 空且与据点资源 Map 无关的工作对象不进入响应，保持 65536 字节以内；仍不调用写函数。
+- 版本、README 和接口文档同步为 `0.1.44`；不在本地编译。
+
+构建与实机结果：待 `deploy.py` 返回后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.43 据点工作响应收敛
 
 - 仅保留当前据点 33 条 `MapObjectWorkInfoMap` 能匹配到的工作实例，过滤全世界无关
   `PalWorkBase`，避免面板诊断响应超过 65536 字节；只读 ABI 与数量门禁不变。
 - 版本、README 和接口文档同步为 `0.1.43`；不在本地编译。
 
-构建与实机结果：待 `deploy.py` 返回后补充。
+构建与部署结果（2026-08-19 05:47，中国时区）：GitHub Actions run
+`32189334772` 成功；DLL SHA256 为
+`e68cfe82743bd2fea5cf49a1a88177f760ea2563a515786fcdecebcc8be57f3c`。
+
+实机结果：响应未截断、无 ABI 错误；1 个据点的 33 条工作全部匹配，包含 27 个
+`PalWorkDeforestFoliage` 和 6 个 `PalWorkCollectResource`。这 33 项当前分配信息与
+已分配角色数量均为 0；进入 0.1.44 定位 Map 之外的非零活动设施工作。
 
 ## 2026-08-19：PalPanelBridge 0.1.42 据点工作与分配只读关联
 
