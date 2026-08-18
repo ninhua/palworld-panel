@@ -20,7 +20,12 @@
   最终数量恢复，该测试不是 Bridge 直接写入。
 - 版本、README 和接口文档一次性同步为 `0.1.35`。
 
-构建与实机结果：待 GitHub Actions 成功并由 `deploy.py` 完成部署后补充；不在本地编译。
+构建与部署结果（2026-08-19 04:16，中国时区）：GitHub Actions run
+`32181105388` 成功；DLL SHA256 为
+`3bf4c1193e642d2459a56e254cc18f4b7c8e4c3d04911e446e28c6d246471e2a`。
+`deploy.py` 保存版本快照与旧 DLL 备份，保留 `config.ini`，通过面板安全重启；
+`/v1/health` 已确认 `bridge_version=0.1.35`、UE4SS 与游戏线程正常。
+重启后 04:17 查询在线人数为 0，尚未执行 Bridge 写入；等待玩家重新进入后做净零验证。
 
 ## 2026-08-19：PalPanelBridge 0.1.34 物品 ID 与帕鲁技能批量读取
 
