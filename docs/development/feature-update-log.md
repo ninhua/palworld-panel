@@ -1,5 +1,13 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.43 据点工作响应收敛
+
+- 仅保留当前据点 33 条 `MapObjectWorkInfoMap` 能匹配到的工作实例，过滤全世界无关
+  `PalWorkBase`，避免面板诊断响应超过 65536 字节；只读 ABI 与数量门禁不变。
+- 版本、README 和接口文档同步为 `0.1.43`；不在本地编译。
+
+构建与实机结果：待 `deploy.py` 返回后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.42 据点工作与分配只读关联
 
 - 最多读取 128 个已加载 `PalWorkBase` 实例，不再仅按类保留一个样本；通过完整
@@ -10,7 +18,14 @@
 - 不调用分配、取消分配、设施使用或生产 setter；版本与三份文档同步为 `0.1.42`，
   不在本地编译。
 
-构建与实机结果：待 `deploy.py` 返回后补充。
+构建与部署结果（2026-08-19 05:43，中国时区）：GitHub Actions run
+`32188989447` 成功；DLL SHA256 为
+`b6043f791912dad4589f9ef911464fbc6d7f827f3e3683680e7f15aabacb0aa9`。
+
+实机结果：`GetWorkId`、两个只读 out-array getter 均通过 ABI 门禁；
+`PalWorkAssignInfo` 字段确认为 `LocationIndex` 与 `WorkAssign`。设施 WorkId 可关联到对应
+`map_object_id`，当前已看到的分配数量为 0。由于同时返回全世界 128 个工作对象，面板
+诊断响应在 65536 字节截断，进入 0.1.43 做最小范围收敛。
 
 ## 2026-08-19：PalPanelBridge 0.1.41 据点工作条目与工作对象探针
 

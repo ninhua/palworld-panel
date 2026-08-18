@@ -15,7 +15,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.42`
+- PalPanelBridge：`0.1.43`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -63,7 +63,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.42",
+  "bridge_version": "0.1.43",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -379,6 +379,9 @@ Map 条目值，不调用工作函数；每个任务最多 4096 个 metadata 节
 后调用 `GetWorkId`、`GetWorkAssignInfo` 和 `GetAssignedCharacters` 三个只读 getter，返回
 每个实例的 WorkId、匹配设施对象 ID、分配信息数量、已分配角色槽数量，以及首类样本的结构/槽位 metadata。
 所有输出数组最多 256 项，参数结构或数量异常即关闭该对象路径；仍无任何写调用。
+
+`0.1.43` 只返回当前据点 `MapObjectWorkInfoMap` 引用的工作实例，过滤世界中无关的运输、
+采集等工作对象，避免面板诊断响应超过 65536 字节；读取和安全门禁不变。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、
