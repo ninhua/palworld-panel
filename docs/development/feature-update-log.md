@@ -1,5 +1,21 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.37 携带帕鲁与终端帕鲁分离
+
+- 在线玩家结果新增 `party_pal_slots`/`party_pal_error`，从目标玩家所属
+  `PalOtomoHolderComponentBase` 读取最多 20 个携带槽位。
+- 携带路径严格使用 `GetMaxOtomoNum`、`GetOtomoIndividualHandle`、
+  `TryGetIndividualParameter`、`GetPalId.InstanceId`，逐项校验反射 ABI。
+- 帕鲁修改新增必填 `pal_scope=party|storage`，两种位置不互相回退；当前召唤中的
+  携带帕鲁安全拒绝，要求先收回。
+- 实机字段探针只在 `PalPlayerOtomoData` 发现容器 ID，未猜测不存在证据的队伍数组；
+  使用已验证的 Holder 函数链定位真实携带对象。
+- 明确 `item_set_count` 仅运行时有效，不能作为持久化接口；物品持久增减继续走
+  游戏原生/面板审计路径，不使用负数添加或猜测删除函数。
+- 版本、README 和接口文档一次性同步为 `0.1.37`；不在本地编译。
+
+构建与实机结果：待 `deploy.py` 返回后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.36 帕鲁槽位 owner UID 兼容
 
 - 0.1.35 实机已确认背包由 Bridge 直接完成 Wood `994→995→994`，两次回读均成功，
@@ -11,7 +27,20 @@
 - 世界存档备份：`20260818T201935.957091600Z-manual.zip`。
 - 版本、README 和接口文档一次性同步为 `0.1.36`；不在本地编译。
 
-构建与实机结果：待 `deploy.py` 返回后补充。
+构建与部署结果（2026-08-19 04:28，中国时区）：GitHub Actions run
+`32181997917` 成功；DLL SHA256 为
+`0db5220869ce557646efa5985b12c9ffd93108d5f16a7e7f39fbde0533112501`。
+`deploy.py` 保存快照、备份旧 DLL、保留 `config.ini`，并通过面板安全重启。
+
+实机结果（2026-08-19 04:34，中国时区）：
+
+- 帕鲁等级成功 `1→2→1`；HP 个体值成功 `79→80→79`。
+- 被动词条 `PAL_Sanity_Up_1` 成功删除并加回；最终等级、个体值和词条均恢复。
+- 最终在线读取：等级 1、被动 `[PAL_Sanity_Up_1]`、Wood 994。
+- 0.1.35 的 Wood `994→9999` 运行时回读成功且客户端可见，但执行 Save 并重启后
+  恢复为 994，确认直接写 `StackCount` 没有进入持久化链；后续改用游戏原生增减 API。
+- 备份任务首次被 PalServer 重写的 39 个空 ACL INI 阻断；仅恢复这些确定文件的
+  父级继承后，备份 `20260818T203441.870956000Z-manual.zip` 成功。
 
 ## 2026-08-19：PalPanelBridge 0.1.35 受限写任务
 

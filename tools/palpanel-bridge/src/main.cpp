@@ -65,6 +65,7 @@ struct MutationRequest
     bool confirm{};
     std::string player_uid{};
     std::string instance_id{};
+    std::string pal_scope{};
     std::int32_t container_index{-1};
     std::int32_t slot_index{-1};
     std::int32_t expected_stack_count{-1};
@@ -108,6 +109,7 @@ struct CachedLocationSnapshot
 struct PalSlotSnapshot
 {
     bool found{};
+    std::int32_t slot_index{-1};
     std::string individual_id{};
     bool slot_object_found{};
     ObjectSnapshot slot_object{};
@@ -226,6 +228,8 @@ struct OnlinePlayerSnapshot
     ObjectSnapshot pal_container{};
     PalSlotArraySnapshot pal_slot_array{};
     PalSlotArraySnapshot pal_non_empty_slot_array{};
+    PalSlotArraySnapshot party_pal_slots{};
+    std::string party_pal_error{};
     bool inventory_helper_found{};
     ObjectSnapshot inventory_helper{};
     bool otomo_found{};
@@ -1379,6 +1383,9 @@ void append_game_state_player_states(
     }
 }
 
+PalSlotArraySnapshot read_party_pal_slots(
+    RC::Unreal::UObject* player_state, std::string& error);
+
 void populate_player_state(
     RC::Unreal::UObject* player_state, OnlinePlayerSnapshot& player,
     bool metadata_probe = false, bool collect_metadata = false)
@@ -1392,6 +1399,7 @@ void populate_player_state(
     const auto uid_ok = read_player_guid(player_state, player.player_uid);
     const auto name_ok = read_account_name(player_state, player.account_name);
     read_cached_player_details(player_state, player, collect_metadata);
+    player.party_pal_slots = read_party_pal_slots(player_state, player.party_pal_error);
     if (!uid_ok || !name_ok) {
         player.identity_error = !uid_ok && !name_ok
                                     ? "PlayerUId and AccountName are unavailable"
@@ -1643,6 +1651,8 @@ bool parse_mutation_request(std::string_view input, MutationRequest& request, st
         }
     } else if (request.operation == "pal_replace_passive") {
         if (!json_string(values, "instance_id", request.instance_id) || !json_string(values, "passive_skill_id", request.passive_skill_id) ||
+            !json_string(values, "pal_scope", request.pal_scope) ||
+            (request.pal_scope != "party" && request.pal_scope != "storage") ||
             !json_string(values, "expected_character_id", request.expected_character_id) ||
             !json_bool(values, "add_passive", request.add_passive) || !normalize_guid(request.instance_id) ||
             !valid_name_id(request.passive_skill_id) || !valid_name_id(request.expected_character_id)) {
@@ -1668,6 +1678,8 @@ bool parse_mutation_request(std::string_view input, MutationRequest& request, st
         }
     } else if (request.operation == "pal_set_stats") {
         if (!json_string(values, "instance_id", request.instance_id) || !normalize_guid(request.instance_id) ||
+            !json_string(values, "pal_scope", request.pal_scope) ||
+            (request.pal_scope != "party" && request.pal_scope != "storage") ||
             !json_string(values, "expected_character_id", request.expected_character_id) ||
             !valid_name_id(request.expected_character_id) || !json_string(values, "field", request.value_field) ||
             !json_int(values, "expected_value", request.expected_value) || !json_int(values, "value", request.value) ||
@@ -1741,6 +1753,7 @@ void append_pal_slot_array_json(std::ostringstream& body, const PalSlotArraySnap
         if (index > 0) body << ',';
         const auto& slot = slot_array.slots[index];
         body << "{\"found\":" << (slot.found ? "true" : "false")
+             << ",\"slot_index\":" << slot.slot_index
              << ",\"individual_id\":\"" << json_escape(slot.individual_id)
              << "\",\"handle_player_uid\":\""
              << json_escape(slot.handle_player_uid)
@@ -1910,6 +1923,263 @@ bool return_parameter(RC::Unreal::FProperty* property)
     using namespace RC::Unreal;
     return property && property->HasAnyPropertyFlags(CPF_Parm) &&
            property->HasAnyPropertyFlags(CPF_ReturnParm);
+}
+
+class FunctionBuffer final
+{
+  public:
+    explicit FunctionBuffer(RC::Unreal::UFunction* function)
+        : function_(function), storage_(function ? static_cast<size_t>(function->GetParmsSize()) : 0)
+    {
+        if (function_) function_->InitializeStruct(storage_.data());
+    }
+
+    ~FunctionBuffer()
+    {
+        if (function_) function_->DestroyStruct(storage_.data());
+    }
+
+    void* data() { return storage_.data(); }
+
+  private:
+    RC::Unreal::UFunction* function_{};
+    std::vector<std::uint8_t> storage_{};
+};
+
+bool invoke_noarg_object(
+    RC::Unreal::UObject* object, const TCHAR* function_name, RC::Unreal::UObject*& output)
+{
+    output = nullptr;
+    if (!object || !RC::Unreal::UObject::IsReal(object)) return false;
+    auto* function = object->GetFunctionByNameInChain(function_name);
+    auto* result = function
+                       ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(
+                             function->GetReturnProperty())
+                       : nullptr;
+    if (!result || !exact_parameter_count(function, 1) || !return_parameter(result) ||
+        function->GetParmsSize() <= 0 || function->GetParmsSize() > 4096) {
+        return false;
+    }
+    FunctionBuffer params(function);
+    object->ProcessEvent(function, params.data());
+    auto* value = result->GetObjectPropertyValue(
+        result->ContainerPtrToValuePtr<void>(params.data()));
+    output = value && RC::Unreal::UObject::IsReal(value) ? value : nullptr;
+    return true;
+}
+
+bool invoke_noarg_int(
+    RC::Unreal::UObject* object, const TCHAR* function_name, std::int32_t& output)
+{
+    if (!object || !RC::Unreal::UObject::IsReal(object)) return false;
+    auto* function = object->GetFunctionByNameInChain(function_name);
+    auto* result = function
+                       ? RC::Unreal::CastField<RC::Unreal::FIntProperty>(
+                             function->GetReturnProperty())
+                       : nullptr;
+    if (!result || !exact_parameter_count(function, 1) || !return_parameter(result) ||
+        function->GetParmsSize() <= 0 || function->GetParmsSize() > 4096) {
+        return false;
+    }
+    FunctionBuffer params(function);
+    object->ProcessEvent(function, params.data());
+    output = result->GetPropertyValueInContainer(params.data());
+    return true;
+}
+
+bool invoke_int_object(
+    RC::Unreal::UObject* object, const TCHAR* function_name, const TCHAR* input_name,
+    std::int32_t input_value, RC::Unreal::UObject*& output)
+{
+    output = nullptr;
+    if (!object || !RC::Unreal::UObject::IsReal(object)) return false;
+    auto* function = object->GetFunctionByNameInChain(function_name);
+    auto* input = function
+                      ? RC::Unreal::CastField<RC::Unreal::FIntProperty>(
+                            function->FindProperty(
+                                RC::Unreal::FName(input_name, RC::Unreal::FNAME_Find)))
+                      : nullptr;
+    auto* result = function
+                       ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(
+                             function->GetReturnProperty())
+                       : nullptr;
+    if (!input_parameter(input) || !return_parameter(result) ||
+        !exact_parameter_count(function, 2) || function->GetParmsSize() <= 0 ||
+        function->GetParmsSize() > 4096) {
+        return false;
+    }
+    FunctionBuffer params(function);
+    input->SetPropertyValueInContainer(params.data(), input_value);
+    object->ProcessEvent(function, params.data());
+    auto* value = result->GetObjectPropertyValue(
+        result->ContainerPtrToValuePtr<void>(params.data()));
+    output = value && RC::Unreal::UObject::IsReal(value) ? value : nullptr;
+    return true;
+}
+
+bool read_parameter_instance_id(RC::Unreal::UObject* parameter, std::string& output)
+{
+    output.clear();
+    if (!parameter || !RC::Unreal::UObject::IsReal(parameter)) return false;
+    auto* function = parameter->GetFunctionByNameInChain(STR("GetPalId"));
+    auto* result = function
+                       ? RC::Unreal::CastField<RC::Unreal::FStructProperty>(
+                             function->GetReturnProperty())
+                       : nullptr;
+    auto* result_struct = result ? result->GetStruct().Get() : nullptr;
+    auto* instance_property = result_struct
+                                  ? find_struct_property(
+                                        result_struct,
+                                        {STR("InstanceId"), STR("InstanceID")})
+                                  : nullptr;
+    auto* instance_struct_property =
+        RC::Unreal::CastField<RC::Unreal::FStructProperty>(instance_property);
+    auto* instance_struct = instance_struct_property
+                                ? instance_struct_property->GetStruct().Get()
+                                : nullptr;
+    if (!result || !return_parameter(result) || !exact_parameter_count(function, 1) ||
+        !instance_property || !instance_struct ||
+        RC::to_utf8_string(instance_struct->GetFullName()) !=
+            "ScriptStruct /Script/CoreUObject.Guid" ||
+        instance_property->GetSize() < static_cast<std::int32_t>(sizeof(PlayerGuid)) ||
+        function->GetParmsSize() <= 0 || function->GetParmsSize() > 4096) {
+        return false;
+    }
+    FunctionBuffer params(function);
+    parameter->ProcessEvent(function, params.data());
+    auto* pal_id = result->ContainerPtrToValuePtr<void>(params.data());
+    PlayerGuid value{};
+    std::memcpy(
+        &value,
+        instance_property->ContainerPtrToValuePtr<void>(pal_id),
+        sizeof(value));
+    std::array<char, 33> buffer{};
+    std::snprintf(
+        buffer.data(), buffer.size(), "%08X%08X%08X%08X",
+        value.a, value.b, value.c, value.d);
+    output = buffer.data();
+    return output != "00000000000000000000000000000000";
+}
+
+RC::Unreal::UObject* find_party_holder(
+    RC::Unreal::UObject* player_state, std::string& error)
+{
+    std::vector<RC::Unreal::UObject*> holders;
+    std::unordered_set<RC::Unreal::UObject*> seen;
+    append_instances("PalOtomoHolderComponentBase", holders, seen);
+    RC::Unreal::UObject* matched = nullptr;
+    for (auto* holder : holders) {
+        RC::Unreal::UObject* pawn = nullptr;
+        if (!invoke_noarg_object(holder, STR("TryGetOwnerControlledPawn"), pawn) || !pawn) {
+            continue;
+        }
+        auto* controller = read_object_property(pawn, {STR("Controller")});
+        if (!controller) invoke_noarg_object(pawn, STR("GetController"), controller);
+        auto* owner_state = read_object_property(controller, {STR("PlayerState")});
+        if (owner_state != player_state) continue;
+        if (matched && matched != holder) {
+            error = "multiple party holders matched player_uid";
+            return nullptr;
+        }
+        matched = holder;
+    }
+    if (!matched) error = "party holder was not found for player_uid";
+    return matched;
+}
+
+RC::Unreal::UObject* find_party_pal_parameter(
+    RC::Unreal::UObject* player_state, const std::string& instance_id,
+    bool reject_spawned, std::string& error)
+{
+    auto* holder = find_party_holder(player_state, error);
+    if (!holder) return nullptr;
+    std::int32_t slot_count = 0;
+    if (!invoke_noarg_int(holder, STR("GetMaxOtomoNum"), slot_count) ||
+        slot_count < 1 || slot_count > 20) {
+        error = "party slot count ABI mismatch";
+        return nullptr;
+    }
+    RC::Unreal::UObject* spawned_handle = nullptr;
+    const auto spawn_state_known = invoke_noarg_object(
+        holder, STR("TryGetSpawnedOtomoHandle"), spawned_handle);
+    if (reject_spawned && !spawn_state_known) {
+        error = "party spawned-state ABI mismatch";
+        return nullptr;
+    }
+    for (std::int32_t index = 0; index < slot_count; ++index) {
+        RC::Unreal::UObject* handle = nullptr;
+        if (!invoke_int_object(
+                holder,
+                STR("GetOtomoIndividualHandle"),
+                STR("SlotIndex"),
+                index,
+                handle) ||
+            !handle) {
+            continue;
+        }
+        RC::Unreal::UObject* parameter = nullptr;
+        if (!invoke_noarg_object(
+                handle, STR("TryGetIndividualParameter"), parameter) || !parameter) {
+            continue;
+        }
+        std::string actual_instance_id;
+        if (!read_parameter_instance_id(parameter, actual_instance_id) ||
+            actual_instance_id != instance_id) {
+            continue;
+        }
+        if (reject_spawned && spawn_state_known && spawned_handle == handle) {
+            error = "party Pal is currently spawned; recall it before mutation";
+            return nullptr;
+        }
+        return parameter;
+    }
+    error = "party Pal instance_id was not found for player_uid";
+    return nullptr;
+}
+
+PalSlotArraySnapshot read_party_pal_slots(
+    RC::Unreal::UObject* player_state, std::string& error)
+{
+    PalSlotArraySnapshot snapshot;
+    auto* holder = find_party_holder(player_state, error);
+    if (!holder) return snapshot;
+    std::int32_t slot_count = 0;
+    if (!invoke_noarg_int(holder, STR("GetMaxOtomoNum"), slot_count) ||
+        slot_count < 1 || slot_count > 20) {
+        error = "party slot count ABI mismatch";
+        return snapshot;
+    }
+    snapshot.found = true;
+    snapshot.slot_count = slot_count;
+    for (std::int32_t index = 0; index < slot_count; ++index) {
+        RC::Unreal::UObject* handle = nullptr;
+        if (!invoke_int_object(
+                holder,
+                STR("GetOtomoIndividualHandle"),
+                STR("SlotIndex"),
+                index,
+                handle) ||
+            !handle) {
+            continue;
+        }
+        RC::Unreal::UObject* parameter = nullptr;
+        if (!invoke_noarg_object(
+                handle, STR("TryGetIndividualParameter"), parameter) || !parameter) {
+            continue;
+        }
+        PalSlotSnapshot slot;
+        slot.found = true;
+        slot.slot_index = index;
+        slot.handle_found = true;
+        slot.handle = describe_object(handle);
+        slot.replicate_parameter_found = true;
+        slot.replicate_parameter = describe_object(parameter);
+        read_parameter_instance_id(parameter, slot.individual_id);
+        read_pal_parameter_functions(parameter, slot);
+        snapshot.slots.emplace_back(std::move(slot));
+    }
+    error.clear();
+    return snapshot;
 }
 
 RC::Unreal::UObject* find_player_state_by_uid(const std::string& uid)
@@ -2127,7 +2397,11 @@ MutationResult execute_mutation(const MutationRequest& request)
         result.error = "write verification failed"; result.status = restored == before ? "rolled_back" : "rollback_failed"; return result;
     }
     std::string error;
-    auto* parameter = find_pal_parameter(player_state, request.player_uid, request.instance_id, error);
+    auto* parameter = request.pal_scope == "party"
+                          ? find_party_pal_parameter(
+                                player_state, request.instance_id, true, error)
+                          : find_pal_parameter(
+                                player_state, request.player_uid, request.instance_id, error);
     if (!parameter) { result.error = error; return result; }
     std::string actual_character_id;
     if (!read_character_id_strict(parameter, actual_character_id) ||
@@ -2202,7 +2476,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.36");
+        ModVersion = STR("0.1.37");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -2262,6 +2536,7 @@ class PalPanelBridge final : public RC::CppUserModBase
                 append_log(
                     "mutation operation=" + job.mutation_request.operation +
                     " player_uid=" + job.mutation_request.player_uid +
+                    " pal_scope=" + job.mutation_request.pal_scope +
                     " status=" + job.mutation_result.status);
             }
             catch (...) { job.mutation_result.operation = job.mutation_request.operation; job.mutation_result.status = "failed"; job.mutation_result.error = "mutation exception"; job.status = "failed"; }
@@ -2424,7 +2699,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.36\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.37\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -2437,7 +2712,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.36\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.37\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -2643,6 +2918,10 @@ class PalPanelBridge final : public RC::CppUserModBase
                   append_pal_slot_array_json(body, player.pal_slot_array);
                   body << ",\"pal_non_empty_slot_array\":";
                   append_pal_slot_array_json(body, player.pal_non_empty_slot_array);
+                  body << ",\"party_pal_slots\":";
+                  append_pal_slot_array_json(body, player.party_pal_slots);
+                  body << ",\"party_pal_error\":\""
+                       << json_escape(player.party_pal_error) << '"';
                  body << ",\"inventory_containers\":[";
                  for (size_t container_index = 0; container_index < player.inventory_containers.size(); ++container_index) {
                      if (container_index > 0) body << ',';

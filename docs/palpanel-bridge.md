@@ -15,7 +15,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.36`
+- PalPanelBridge：`0.1.37`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -63,7 +63,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.36",
+  "bridge_version": "0.1.37",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -303,6 +303,7 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
   "confirm": true,
   "player_uid": "32位玩家UID",
   "instance_id": "32位帕鲁实例ID",
+  "pal_scope": "storage",
   "expected_character_id": "BadCatgirl",
   "expected_passive_skill_ids": ["PAL_Sanity_Up_1"],
   "passive_skill_id": "待修改词条ID",
@@ -318,6 +319,7 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
   "confirm": true,
   "player_uid": "32位玩家UID",
   "instance_id": "32位帕鲁实例ID",
+  "pal_scope": "storage",
   "expected_character_id": "BadCatgirl",
   "field": "Talent_HP",
   "expected_value": 0,
@@ -335,6 +337,15 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 `0.1.36` 兼容实机帕鲁槽位中 owner UID 为全零的结构。目标仍先限定在指定在线玩家
 自己的 `PalStorage`，再强制核对实例 ID、`character_id` 和原值/原词条列表；其他
 不匹配的非零 owner UID 仍拒绝。
+
+`0.1.37` 在在线玩家结果新增 `party_pal_slots`/`party_pal_error`，通过目标玩家所属
+`PalOtomoHolderComponentBase` 的队伍槽、Handle、参数对象和实例 ID 读取人物携带帕鲁。
+帕鲁修改新增必填 `pal_scope`：`party` 只修改携带队伍，`storage` 只修改终端帕鲁盒，
+二者不会互相回退。当前已召唤出战的携带帕鲁必须先收回，避免修改运行实体时状态分叉。
+
+`item_set_count` 只保证当前运行时回读；实机已确认 Save + 重启后会恢复权威原值，
+因此不得把它当作持久化接口。持久增加物品使用游戏原生添加路径，删除继续使用面板
+已审计管理接口，直到确认安全的原生删除 ABI。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、
