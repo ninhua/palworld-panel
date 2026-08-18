@@ -261,17 +261,16 @@ job ID through `/v1/jobs/<job_id>`; a successful result reports the current
 World object's name, full name, and class without changing the object.
 
 `POST /v1/players/online` enumerates live `PalPlayerController` instances on
-the game thread and reads the associated PlayerState account name, PlayerUID,
-and Pawn metadata. Native and blueprint controller class names are both checked;
+the game thread and returns the associated PlayerState identity, Pawn, location,
+guild/base summary, inventory containers and stack counts, and bounded Pal-box
+slot details. Native and blueprint controller class names are both checked;
 when no controller is visible, live PlayerState objects are returned as a
-read-only fallback. The primary fallback calls Palworld's reflected
-`PalUtility.GetAllPlayerStates` with the current World context. It does not read
-inventory or Pal data and never modifies the objects.
+read-only fallback. The endpoint never modifies the objects.
 
-`POST /v1/players/online/metadata` reuses the same enumeration and identity reads, but
-only returns top-level metadata under `top_level_property_metadata.player_state` and
-`.pawn`. Use it to discover candidate field names before a separately reviewed
-value-reading change.
+`POST /v1/players/online/metadata` reuses the same enumeration and returns bounded
+`detail_property_metadata` for the confirmed guild, inventory, item-slot, Pal storage,
+Pal handle, Pal parameter, and related structures. Use it to discover candidate field
+names before a separately reviewed value-reading change.
 
 Every JSON response includes `response_time_unix_ms` and `response_time_china`.
 Jobs also preserve their queue time, game-thread execution time, and tick count

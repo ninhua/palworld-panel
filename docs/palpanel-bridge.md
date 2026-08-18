@@ -129,10 +129,9 @@ GET http://127.0.0.1:18083/v1/jobs/<job_id>
 解析关联的 `PlayerState` 与 Pawn。如果 Controller 暂时不可见，则回退枚举
 `PalPlayerState` 与 `BP_PalPlayerState_C`。结果增加 `controller_object_count`、
 `player_state_object_count` 和每项的 `source`，用于区分 Controller 与 PlayerState
-来源。`0.1.10` 还会以当前 World 为上下文只读调用帕鲁原生反射函数
-`PalUtility.GetAllPlayerStates`，返回 `pal_utility_available`、
-`pal_utility_player_state_count` 和 `pal_utility_error`。当前阶段不读取 SteamID、
-背包或帕鲁数据，也不修改对象。
+来源。还会以当前 World 为上下文只读调用 `PalUtility.GetAllPlayerStates` 作为回退。
+当前版本返回 UID、Pawn、位置、公会/据点、背包容器及堆叠数、受限帕鲁槽位详情，
+但不会修改对象、背包、帕鲁或存档。
 
 字段发现接口：
 
