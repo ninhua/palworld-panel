@@ -15,7 +15,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.35`
+- PalPanelBridge：`0.1.36`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -63,7 +63,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.35",
+  "bridge_version": "0.1.36",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -331,6 +331,10 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 `error` 和 `rollback_status`。任一目标身份或预期原值不一致都不会写入。
 物品增删继续使用面板已有的 PalDefender 审计接口；它会产生 RCON 命令日志，
 不属于 Bridge 直接修改。DLL 部署备份不等于世界存档备份。
+
+`0.1.36` 兼容实机帕鲁槽位中 owner UID 为全零的结构。目标仍先限定在指定在线玩家
+自己的 `PalStorage`，再强制核对实例 ID、`character_id` 和原值/原词条列表；其他
+不匹配的非零 owner UID 仍拒绝。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、

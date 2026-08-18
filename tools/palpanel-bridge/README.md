@@ -24,7 +24,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.35-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.36-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -50,7 +50,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.35-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.36-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -231,6 +231,11 @@ verification failure triggers an inverse write or snapshot restore and reports
 `rolled_back` or `rollback_failed`. Item creation/removal remains on the panel's
 existing audited PalDefender API. Back up the world save before any accepted
 mutation; DLL deployment backup does not back up save data.
+
+Version `0.1.36` accepts the all-zero owner GUID used by live Pal storage slots.
+The slot remains scoped through the selected online player's own `PalStorage`,
+and mutation still requires the exact Pal instance ID, character ID, and current
+value/list. Any other non-matching owner GUID remains rejected.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with
