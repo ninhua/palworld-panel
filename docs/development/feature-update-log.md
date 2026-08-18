@@ -1,5 +1,17 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.42 据点工作与分配只读关联
+
+- 最多读取 128 个已加载 `PalWorkBase` 实例，不再仅按类保留一个样本；通过完整
+  `FGuid` ABI 校验调用 `GetWorkId`，用于关联 0.1.41 的设施对象工作映射。
+- 严格校验并调用只读 `GetWorkAssignInfo(out PalWorkAssignInfo[])` 与
+  `GetAssignedCharacters(out PalIndividualCharacterSlot[])`；数组各限 256 项，返回数量、
+  借用槽对象身份及每类首个结构/槽位 metadata，不持有或释放游戏对象。
+- 不调用分配、取消分配、设施使用或生产 setter；版本与三份文档同步为 `0.1.42`，
+  不在本地编译。
+
+构建与实机结果：待 `deploy.py` 返回后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.41 据点工作条目与工作对象探针
 
 - 严格校验 `MapObjectWorkInfoMap` 的键、值及 `WorkId` 均符合已确认 ABI 后，有界读取
@@ -9,7 +21,15 @@
 - 仍为只读探针，不调用设施使用、生产或帕鲁分配函数；版本、README 和接口文档一次性
   同步为 `0.1.41`，不在本地编译。
 
-构建与实机结果：待 `deploy.py` 返回后补充。
+构建与部署结果（2026-08-19 05:31，中国时区）：GitHub Actions run
+`32187942626` 成功；DLL SHA256 为
+`7b0378524559f92047aeef385836c6fc77dbf4dc5f9ab6cac6b3d505756f34ec`。
+
+实机结果：据点 `4D89F67843C3C9655D4C02B314977A92` 返回完整 33 条
+`map_object_id -> work_id`，无截断、无错误；已加载工作类包括资源采集、运输、伐木、
+等级对象采集和工作进度。共同只读入口确认为 `GetWorkId() -> Guid`、
+`GetWorkAssignInfo(out PalWorkAssignInfo[])` 与
+`GetAssignedCharacters(out PalIndividualCharacterSlot[])`，据此进入 0.1.42。
 
 ## 2026-08-19：PalPanelBridge 0.1.40 据点工作信息结构探针
 
