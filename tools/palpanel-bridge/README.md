@@ -23,7 +23,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.30-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.31-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -49,7 +49,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.30-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.31-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -191,6 +191,13 @@ object from its real `Handle`, expose `ReplicateHandleID` as bounded raw hex,
 and expand `ReplicateIndividualParameter`, handle, ID-struct, and base-camp-ID
 metadata. The probe remains read-only and inspects at most 16 item containers
 and 10 pal slots.
+
+Version `0.1.31` treats newly connected players as `initializing` until UID,
+inventory, and pal storage are available. Inventory slots use the confirmed
+`ItemSlotArray` field. Pal details use `CachedNonEmptySlots_InServer` instead
+of scanning the first empty entries of the 960-slot box, and `PalInstanceID`
+is decoded as its `PlayerUId` and `InstanceId` GUID fields without exposing the
+structure's `DebugName` memory.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with

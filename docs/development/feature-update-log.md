@@ -1,5 +1,20 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.31 登录同步、物品槽位与非空帕鲁
+
+已完成：
+
+- 实机确认玩家进入约 30 秒内可能只有 Controller/Pawn，UID 为零且背包、帕鲁、公会引用为空；新增 `player_data_ready`/`player_data_state`，明确区分 `initializing` 与 `ready`，避免把暂态空数据当最终结果缓存。
+- 背包确认 6 个 `PalItemContainer`，真实槽位字段为 `ItemSlotArray`（`PalItemSlot[]`）；改用该字段返回槽位数量并展开首个槽位元数据。
+- 帕鲁仓库总槽位 960，前 10 个为空；改读 `PalStorage.CachedNonEmptySlots_InServer` 并新增 `pal_non_empty_slot_array`，直接检查最多 10 个非空帕鲁槽位。
+- `PalInstanceID` 确认为 `PlayerUId`、`InstanceId`、`DebugName`；仅解析两个 GUID，`individual_id` 返回 `InstanceId`，不再输出整块结构原始内存。
+- 版本、README、接口文档、紧凑查询输出一次性统一为 `0.1.31`。
+
+验证计划：
+
+- GitHub Actions 成功后由本地部署脚本自动校验、停服替换、启动并确认 `/v1/health` 为 0.1.31。
+- 玩家在线且 `player_data_state=ready` 时调用一次 metadata，确认 `PalItemSlot`、非空帕鲁 Handle 与参数对象字段。
+
 ## 2026-08-19：PalPanelBridge 0.1.30 背包、帕鲁与据点合并探针
 
 已完成：

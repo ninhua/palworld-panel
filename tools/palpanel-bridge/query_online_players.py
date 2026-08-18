@@ -131,6 +131,8 @@ def compact_job(job: dict[str, Any]) -> dict[str, Any]:
             "account_name": player.get("account_name"),
             "player_uid": player.get("player_uid"),
             "identity_error": player.get("identity_error"),
+            "player_data_ready": player.get("player_data_ready"),
+            "player_data_state": player.get("player_data_state"),
             "controller": {
                 "name": player.get("name"),
                 "full_name": player.get("full_name"),
@@ -163,6 +165,7 @@ def compact_job(job: dict[str, Any]) -> dict[str, Any]:
             "pal_container_found": player.get("pal_container_found"),
             "pal_container": player.get("pal_container"),
             "pal_slot_array": player.get("pal_slot_array"),
+            "pal_non_empty_slot_array": player.get("pal_non_empty_slot_array"),
             "otomo_found": player.get("otomo_found"),
             "otomo": player.get("otomo"),
             "inventory_containers": player.get("inventory_containers"),

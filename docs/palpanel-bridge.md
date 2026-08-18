@@ -13,7 +13,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.30`
+- PalPanelBridge：`0.1.31`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.30",
+  "bridge_version": "0.1.31",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -246,6 +246,12 @@ metadata 探针新增 `detail_property_metadata.pal_container` 以便下一步�
 `Handle`，返回 `ReplicateHandleID` 的受限十六进制值，并展开
 `ReplicateIndividualParameter`、Handle、ID 结构和 `BaseCampIds` 元素结构的
 元数据。全部逻辑仍为只读，每次最多检查 10 个帕鲁槽位。
+
+`0.1.31` 增加 `player_data_ready`/`player_data_state`：玩家刚进入且 UID、背包、
+帕鲁存储尚未同步时明确返回 `initializing`，同步完成后返回 `ready`。背包槽位改读
+实机确认的 `ItemSlotArray`；帕鲁详情改读 `CachedNonEmptySlots_InServer`，避免只取
+960 槽位中的前 10 个空槽。`PalInstanceID` 仅解析内部 `PlayerUId` 和
+`InstanceId` 两个 GUID，不输出含 `DebugName` 的整块原始内存。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、
