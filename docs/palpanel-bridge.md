@@ -252,6 +252,10 @@ metadata 探针新增 `detail_property_metadata.pal_container` 以便下一步�
 重新启动并等待健康检查返回目标版本；不会修改 `config.ini`。面板与 Bridge 密钥
 通过参数或环境变量提供，不写入仓库；本地模式必须提供 Bridge Token，只有健康
 检查确认目标版本后脚本才报告成功。
+
+仅需验证 CI 和保存构建快照时使用 `--download-only`，该模式不会连接面板、不会
+停服或替换 DLL。工作流从 `src/main.cpp` 的 `ModVersion` 自动生成压缩包及
+Artifact 名称，避免版本号漏同步。
 位置字段仅接受完整类型名 `ScriptStruct /Script/CoreUObject.Vector`、12 或 24
 字节属性，并对三个坐标执行有限值校验；失败时不输出伪位置值并返回
 `cached_location_error`。公会对象仅在 `UObject::IsReal` 成功时返回。

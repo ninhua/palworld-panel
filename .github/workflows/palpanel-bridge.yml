@@ -88,13 +88,25 @@ jobs:
             -OutputDir "$env:RUNNER_TEMP\palpanel-bridge-build" `
             -RustCompiler $rustc
 
+      - name: Resolve bridge version
+        id: bridge-version
+        shell: pwsh
+        run: |
+          $source = Get-Content -LiteralPath "tools/palpanel-bridge/src/main.cpp" -Raw
+          $match = [regex]::Match($source, 'ModVersion\s*=\s*STR\("([0-9]+(?:\.[0-9]+)+)"\)')
+          if (-not $match.Success) {
+            throw "Could not resolve PalPanelBridge version from src/main.cpp"
+          }
+          "version=$($match.Groups[1].Value)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Create server-ready mod package
         shell: pwsh
         run: |
           $artifact = "$env:RUNNER_TEMP\palpanel-bridge-build\artifact\PalPanelBridge"
           $packageRoot = "$env:RUNNER_TEMP\palpanel-bridge-package"
           $package = Join-Path $packageRoot "PalPanelBridge"
-          $zip = "$env:RUNNER_TEMP\PalPanelBridge-v0.1.29-ue4ss-c838a8ac.zip"
+          $version = '${{ steps.bridge-version.outputs.version }}'
+          $zip = "$env:RUNNER_TEMP\PalPanelBridge-v$version-ue4ss-c838a8ac.zip"
           New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
           Copy-Item -LiteralPath $artifact -Destination $package -Recurse
           Copy-Item -LiteralPath "$package\config.ini.example" -Destination "$package\config.ini"
@@ -125,7 +137,7 @@ jobs:
 
       - uses: actions/upload-artifact@v6
         with:
-          name: PalPanelBridge-v0.1.29-ue4ss-c838a8ac-server-package
+          name: PalPanelBridge-v${{ steps.bridge-version.outputs.version }}-ue4ss-c838a8ac-server-package
           if-no-files-found: error
           retention-days: 14
-          path: ${{ runner.temp }}/PalPanelBridge-v0.1.29-ue4ss-c838a8ac.zip
+          path: ${{ runner.temp }}/PalPanelBridge-v${{ steps.bridge-version.outputs.version }}-ue4ss-c838a8ac.zip

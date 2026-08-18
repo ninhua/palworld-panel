@@ -261,12 +261,12 @@ def deploy_local(dll: Path, checksum: str, version: str, local_main: Path) -> Pa
         shutil.copy2(dll, local_temp)
         if sha256(local_temp) != checksum:
             raise RuntimeError("temporary local DLL checksum mismatch")
-        local_main.replace(local_backup)
+        replace_with_retry(local_main, local_backup)
         moved_original = True
         try:
-            local_temp.replace(local_main)
+            replace_with_retry(local_temp, local_main)
         except Exception:
-            local_backup.replace(local_main)
+            replace_with_retry(local_backup, local_main)
             moved_original = False
             raise
         if sha256(local_main) != checksum:
@@ -276,12 +276,26 @@ def deploy_local(dll: Path, checksum: str, version: str, local_main: Path) -> Pa
     finally:
         if moved_original and not deployed_ok:
             try:
-                local_backup.replace(local_main)
+                replace_with_retry(local_backup, local_main)
             except OSError as rollback_error:
                 raise RuntimeError(
                     f"local DLL deployment failed and rollback also failed: {rollback_error}"
                 ) from rollback_error
         local_temp.unlink(missing_ok=True)
+
+
+def replace_with_retry(source: Path, target: Path, timeout_seconds: int = 90) -> None:
+    """Atomically replace a Windows path after the game process releases it."""
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        try:
+            source.replace(target)
+            return
+        except OSError as error:
+            locked = isinstance(error, PermissionError) or getattr(error, "winerror", None) in {5, 32}
+            if not locked or time.monotonic() >= deadline:
+                raise
+            time.sleep(1)
 
 
 def panel_request(panel_url: str, api_key: str, method: str, path: str, body: object | None = None, timeout_seconds: int = 120) -> dict[str, object]:
@@ -375,6 +389,7 @@ def main() -> None:
     parser.add_argument("--panel-api-key", default=os.environ.get("PALPANEL_API_KEY", ""))
     parser.add_argument("--bridge-url", default=os.environ.get("PALPANEL_BRIDGE_URL", "http://127.0.0.1:18083"))
     parser.add_argument("--bridge-token", default=os.environ.get("PALPANEL_BRIDGE_TOKEN", ""))
+    parser.add_argument("--download-only", action="store_true", help="wait, download, and verify without deploying")
     parser.add_argument("--restart", action="store_true", help="restart the game server via the panel API after deploying")
     args = parser.parse_args()
 
@@ -404,6 +419,17 @@ def main() -> None:
     run_id = int(run["databaseId"])
     _, artifact_name, version = resolve_artifact(args.repo, run_id)
     dll, checksum, local_root = download_and_verify(args.repo, run_id, artifact_name, version, output_root)
+    if args.download_only:
+        print(json.dumps({
+            "ok": True,
+            "version": version,
+            "run_id": run_id,
+            "run_url": run["url"],
+            "sha256": checksum,
+            "local_package": str(local_root),
+            "deployed": False,
+        }, ensure_ascii=True, indent=2))
+        return
     restarted = False
     health: dict[str, object] | None = None
     if args.local_dll is not None:
@@ -427,7 +453,7 @@ def main() -> None:
                 if not stopped:
                     panel_lifecycle(panel_url, api_key, "stop")
                     stopped = True
-                local_backup.replace(local_main)
+                replace_with_retry(local_backup, local_main)
                 panel_lifecycle(panel_url, api_key, "start")
                 stopped = False
             raise

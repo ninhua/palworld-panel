@@ -222,6 +222,10 @@ atomically replaces only `dlls/main.dll`, restores the old DLL on failure,
 starts the game, and waits for `/v1/health` to report the expected version.
 `config.ini` is never modified. Secrets may also be supplied through
 `PALPANEL_API_KEY` and `PALPANEL_BRIDGE_TOKEN` environment variables.
+Use `--download-only` when only CI waiting, artifact verification, and the
+versioned snapshot are needed; this mode never contacts the panel or changes
+the running server. The workflow derives the package version from
+`ModVersion` in `src/main.cpp` so artifact names cannot silently lag behind.
 
 Calling `/v1/runtime` twice should show an increasing
 `game_thread_tick_count`. It also reports the last game-thread tick time and

@@ -8,12 +8,18 @@
 - 背包改为从 helper 的 `Containers` 对象数组读取，返回最多 16 个容器、对象身份和 `Slots`/`ItemSlots`/`SlotArray` 数量；metadata 同时展开首个容器与首个槽位元素。
 - 帕鲁槽位区分 `slot_object` 与真实 `handle`，读取 `ReplicateHandleID` 受限原始十六进制值，并返回 `ReplicateIndividualParameter` 对象；metadata 同时展开 Handle、参数对象、ID 结构字段。
 - 据点 metadata 新增 `BaseCampIds` 元素结构；本地部署脚本新增停服、SHA-256 校验、原子替换、健康失败回滚、面板启动及 Bridge 版本健康检查流程，保留 `config.ini`；查询脚本在 Windows 强制 UTF-8 输出。
+- 修复工作流包名硬编码为 0.1.29：改为从 `src/main.cpp` 的 `ModVersion` 自动解析；部署脚本增加 Windows DLL 解锁等待和 `--download-only`，工具修复验证不再触发服务器重启。
 - 版本与 README、接口文档一次性统一为 `0.1.30`；所有人类可读时间继续使用中国时区。
 
 验证计划：
 
 - 仅通过 `PalPanelBridge build` 构建；CI 成功后由 `deploy.py --local-dll` 自动下载、校验、停服替换、启动并等待 `/v1/health` 返回 `bridge_version=0.1.30`。
 - 玩家在线时调用一次 `POST /v1/players/online/metadata`，确认物品槽位字段、帕鲁 Handle/参数字段及据点 ID 结构，再进入实际物品和帕鲁详情读取。
+
+实际结果（2026-08-19 02:24，中国时区）：
+
+- 0.1.30 DLL 已加载，`/v1/health` 返回 `bridge_version=0.1.30`、`unreal_initialized=true`、`game_thread_tick_seen=true`。
+- 首次 metadata 调用完成，但服务器重启后在线玩家数为 0；待玩家重新进入后复测详细字段。
 
 ## 2026-08-19：PalPanelBridge 0.1.29 本地运行时诊断（帕鲁槽位对象 + 背包容器入口）
 
