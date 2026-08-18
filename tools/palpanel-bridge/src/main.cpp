@@ -2582,12 +2582,13 @@ void collect_base_modules(Job& job)
         job.loaded_work_objects.emplace_back(std::move(work_snapshot));
     }
     std::unordered_set<std::string> seen_candidate_classes;
-    RC::Unreal::UObjectGlobals::ForEachUObject([&](RC::Unreal::UObject* object, ...) {
+    RC::Unreal::UObjectGlobals::ForEachUObject([&](
+        RC::Unreal::UObject* object, RC::Unreal::int32, RC::Unreal::int32) -> RC::LoopAction {
         if (!object || !RC::Unreal::UObject::IsReal(object) ||
             job.base_work_candidates.size() >= 32) {
             return job.base_work_candidates.size() >= 32
-                       ? RC::Unreal::LoopAction::Break
-                       : RC::Unreal::LoopAction::Continue;
+                       ? RC::LoopAction::Break
+                       : RC::LoopAction::Continue;
         }
         const auto snapshot = describe_object(object);
         auto lower = snapshot.class_name + " " + snapshot.name;
@@ -2600,7 +2601,7 @@ void collect_base_modules(Job& job)
                                    lower.find("facility") != std::string::npos ||
                                    lower.find("work") != std::string::npos);
         if (!base_related && lower.find("workassign") == std::string::npos) {
-            return RC::Unreal::LoopAction::Continue;
+            return RC::LoopAction::Continue;
         }
         const bool include_metadata = seen_candidate_classes.insert(snapshot.class_name).second;
         auto properties = include_metadata
@@ -2628,7 +2629,7 @@ void collect_base_modules(Job& job)
             .properties = std::move(properties),
             .functions = std::move(functions),
         });
-        return RC::Unreal::LoopAction::Continue;
+        return RC::LoopAction::Continue;
     });
 }
 
