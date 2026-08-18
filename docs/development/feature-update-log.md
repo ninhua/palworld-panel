@@ -26,6 +26,8 @@
   被动 `Deffence_up1`；终端非空缓存为 0，确认两条路径已分离。
 - 使用 `pal_scope=party` 成功完成等级 `1→2→1`、HP 个体值 `34→35→34`、
   被动删除后加回；最终全部恢复，未触碰终端帕鲁。
+- 按用户要求再次修改并保留结果：携带 `AmaterasuWolf` 等级 `1→2`、HP 个体值
+  `34→35`、删除 `Deffence_up1`；三项回读成功并调用服务器 Save，不再恢复原值。
 - 测试前备份 `20260818T205221.265196900Z-manual.zip` 成功。
 - 据点调查已确认可从 `PalBaseCampManager -> BaseCampModel.ModuleArray` 读取设施模块；
   尚未找到工作台任务或帕鲁分配的可靠服务器 setter/RPC，当前不执行未知字段写入。
