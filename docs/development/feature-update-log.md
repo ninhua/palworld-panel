@@ -1,5 +1,19 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.32 物品槽位数量读取
+
+已完成：
+
+- 每个背包容器读取最多 32 个 `ItemSlotArray` 对象，返回槽位对象、`SlotIndex` 与 `StackCount`。
+- metadata 新增 `inventory_item_id_struct`，展开首个 `PalItemId` 内部字段；不猜测或复制可能含非平凡对象的整块结构内存。
+- 有效帕鲁参数尝试读取昵称、等级、Rank、经验、HP/最大 HP、饱食度和理智；参数 metadata 排除 Delegate，优先保留种类、技能、被动、工作适应性和状态字段。
+- 版本、README、接口文档一次性统一为 `0.1.32`。
+
+验证计划：
+
+- CI 成功后部署并在 `player_data_state=ready` 时确认各容器槽位数量、堆叠数和 `PalItemId` 字段。
+- 当前角色的 `CachedNonEmptySlots_InServer` 仍返回 0，因此以实际 `SlotArray` 非零实例为主；验证 Handle、参数对象及数值字段。
+
 ## 2026-08-19：PalPanelBridge 0.1.31 登录同步、物品槽位与非空帕鲁
 
 已完成：
@@ -14,6 +28,8 @@
 
 - GitHub Actions 成功后由本地部署脚本自动校验、停服替换、启动并确认 `/v1/health` 为 0.1.31。
 - 玩家在线且 `player_data_state=ready` 时调用一次 metadata，确认 `PalItemSlot`、非空帕鲁 Handle 与参数对象字段。
+
+实际结果（2026-08-19 02:44，中国时区）：`player_data_state=ready`；6 个背包容器可读，`PalItemSlot` 字段确认包含 `SlotIndex`、`ItemId`、`StackCount`、`DynamicItemData`；终端 `SlotArray` 首槽读到实例 ID `746BB6C84A4D2045267D388D9CBF6AC8`，Handle 与 `ReplicateIndividualParameter` 有效；`CachedNonEmptySlots_InServer` 仍为 0，不能作为唯一非空来源；据点数已变为 1。
 
 ## 2026-08-19：PalPanelBridge 0.1.30 背包、帕鲁与据点合并探针
 
