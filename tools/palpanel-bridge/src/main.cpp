@@ -328,6 +328,7 @@ struct Job
     std::string base_modules_error{};
     bool base_modules_truncated{};
     std::vector<BaseModuleSnapshot> loaded_work_objects{};
+    std::vector<BaseModuleSnapshot> base_work_candidates{};
 };
 
 struct PlayerGuid
@@ -2580,6 +2581,55 @@ void collect_base_modules(Job& job)
         }
         job.loaded_work_objects.emplace_back(std::move(work_snapshot));
     }
+    std::unordered_set<std::string> seen_candidate_classes;
+    RC::Unreal::UObjectGlobals::ForEachUObject([&](RC::Unreal::UObject* object, ...) {
+        if (!object || !RC::Unreal::UObject::IsReal(object) ||
+            job.base_work_candidates.size() >= 32) {
+            return job.base_work_candidates.size() >= 32
+                       ? RC::Unreal::LoopAction::Break
+                       : RC::Unreal::LoopAction::Continue;
+        }
+        const auto snapshot = describe_object(object);
+        auto lower = snapshot.class_name + " " + snapshot.name;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
+        const bool base_related = lower.find("basecamp") != std::string::npos &&
+                                  (lower.find("worker") != std::string::npos ||
+                                   lower.find("assign") != std::string::npos ||
+                                   lower.find("facility") != std::string::npos ||
+                                   lower.find("work") != std::string::npos);
+        if (!base_related && lower.find("workassign") == std::string::npos) {
+            return RC::Unreal::LoopAction::Continue;
+        }
+        const bool include_metadata = seen_candidate_classes.insert(snapshot.class_name).second;
+        auto properties = include_metadata
+                              ? collect_base_property_metadata(object)
+                              : std::vector<PropertyCandidateSnapshot>{};
+        auto functions = include_metadata
+                             ? collect_base_function_metadata(object)
+                             : std::vector<FunctionCandidateSnapshot>{};
+        size_t object_nodes = 1;
+        for (const auto& property : properties) {
+            object_nodes += property_metadata_node_count(property);
+        }
+        for (const auto& function : functions) {
+            object_nodes += 1 + function.parameters.size();
+        }
+        if (metadata_nodes + object_nodes > max_metadata_nodes) {
+            job.base_modules_truncated = true;
+            properties.clear();
+            functions.clear();
+        } else {
+            metadata_nodes += object_nodes;
+        }
+        job.base_work_candidates.emplace_back(BaseModuleSnapshot{
+            .object = snapshot,
+            .properties = std::move(properties),
+            .functions = std::move(functions),
+        });
+        return RC::Unreal::LoopAction::Continue;
+    });
 }
 
 bool invoke_noarg_object(
@@ -3112,7 +3162,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.44");
+        ModVersion = STR("0.1.45");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -3342,7 +3392,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.44\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.45\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -3355,7 +3405,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.44\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.45\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -3719,6 +3769,36 @@ class PalPanelBridge final : public RC::CppUserModBase
                 body << "],\"assigned_character_metadata\":";
                 append_property_metadata_json(body, object.assigned_character_metadata);
                 body << '}';
+            }
+            body << "],\"base_work_candidates\":[";
+            for (size_t candidate_index = 0; candidate_index < job.base_work_candidates.size(); ++candidate_index) {
+                if (candidate_index) body << ',';
+                const auto& candidate = job.base_work_candidates[candidate_index];
+                body << "{\"object\":{\"name\":\"" << json_escape(candidate.object.name)
+                     << "\",\"full_name\":\"" << json_escape(candidate.object.full_name)
+                     << "\",\"class_name\":\"" << json_escape(candidate.object.class_name)
+                     << "\"},\"properties\":";
+                append_property_metadata_json(body, candidate.properties);
+                body << ",\"functions\":[";
+                for (size_t function_index = 0; function_index < candidate.functions.size(); ++function_index) {
+                    if (function_index) body << ',';
+                    const auto& function = candidate.functions[function_index];
+                    body << "{\"name\":\"" << json_escape(function.name)
+                         << "\",\"full_name\":\"" << json_escape(function.full_name)
+                         << "\",\"params_size\":" << function.params_size
+                         << ",\"parameters\":[";
+                    for (size_t parameter_index = 0; parameter_index < function.parameters.size(); ++parameter_index) {
+                        if (parameter_index) body << ',';
+                        const auto& parameter = function.parameters[parameter_index];
+                        body << "{\"name\":\"" << json_escape(parameter.name)
+                             << "\",\"kind\":\"" << json_escape(parameter.kind)
+                             << "\",\"declared_type\":\"" << json_escape(parameter.declared_type)
+                             << "\",\"size\":" << parameter.size
+                             << ",\"return_value\":" << (parameter.return_value ? "true" : "false") << '}';
+                    }
+                    body << "]}";
+                }
+                body << "]}";
             }
             body << ']';
         } else if (job.kind == JobKind::Mutation) {
