@@ -1,5 +1,16 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.39 据点工作 Map 类型探针
+
+- 在 0.1.38 据点模块结果上增加数组/Map 有界元素数量、Map 键值粗粒度类型与声明
+  类型；仅展开一层且固定反射限深，不遍历未知条目内存。
+- 目标是确认 `MapObjectWorkInfoMap`、`FacilityUsageInfoSetMap`、`FacilityCounts`
+  的键值结构，随后才能按确定 ABI 读取实际工作台与分配记录。
+- 本版仍不调用 `OnStartUseFacility_ServerInternal` 等候选函数，不设置工作安排。
+- 版本、README 和接口文档一次性同步为 `0.1.39`；不在本地编译。
+
+构建与实机结果：待 `deploy.py` 返回后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.38 据点设施模块探针
 
 - 新增只读 `POST /v1/bases/modules`，在游戏线程解析
@@ -11,7 +22,15 @@
   工作台类与函数证据，再决定后续写接口。
 - 版本、README 和接口文档一次性同步为 `0.1.38`；不在本地编译。
 
-构建与实机结果：待 `deploy.py` 返回后补充。
+构建与部署结果（2026-08-19 05:08，中国时区）：GitHub Actions run
+`32185914699` 成功；DLL SHA256 为
+`df59c9f01a44fff8e3eebc4e5ebe2b8b73536bb57181be14ef001864102e61f5`。
+
+实机结果：读取 1 个据点 `4D89F67843C3C9655D4C02B314977A92`、9 个模块；发现
+`PalBaseCampModuleResourceCollector.MapObjectWorkInfoMap`、
+`PalBaseCampModuleFacilityReservation.FacilityUsageInfoSetMap`，以及候选服务器函数
+`OnStartUseFacility_ServerInternal(Model, IndividualHandle)`、
+`OnFinishUseFacility_ServerInternal(Model)`。当前仍缺 Map 条目类型与实际 Model，未写入。
 
 ## 2026-08-19：PalPanelBridge 0.1.37 携带帕鲁与终端帕鲁分离
 

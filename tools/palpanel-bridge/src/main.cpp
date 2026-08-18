@@ -366,7 +366,8 @@ RC::Unreal::UObject* read_object_property(
     return value && RC::Unreal::UObject::IsReal(value) ? value : nullptr;
 }
 
-PropertyCandidateSnapshot describe_property_candidate(RC::Unreal::FProperty* property)
+PropertyCandidateSnapshot describe_property_candidate(
+    RC::Unreal::FProperty* property, size_t depth = 0)
 {
     PropertyCandidateSnapshot snapshot;
     if (!property) return snapshot;
@@ -378,8 +379,21 @@ PropertyCandidateSnapshot describe_property_candidate(RC::Unreal::FProperty* pro
                 snapshot.declared_type = RC::to_utf8_string(object_class->GetName());
             }
         }
-    } else if (RC::Unreal::CastField<RC::Unreal::FMapProperty>(property)) {
+    } else if (auto* map_property = RC::Unreal::CastField<RC::Unreal::FMapProperty>(property)) {
         snapshot.kind = "map";
+        if (depth >= 2) {
+            snapshot.declared_type = "map";
+            return snapshot;
+        }
+        auto key = describe_property_candidate(map_property->GetKeyProp(), depth + 1);
+        auto value = describe_property_candidate(map_property->GetValueProp(), depth + 1);
+        snapshot.declared_type = "map<" + key.kind;
+        if (!key.declared_type.empty()) snapshot.declared_type += ":" + key.declared_type;
+        snapshot.declared_type += "," + value.kind;
+        if (!value.declared_type.empty()) snapshot.declared_type += ":" + value.declared_type;
+        snapshot.declared_type += ">";
+        snapshot.nested_candidates.emplace_back(std::move(key));
+        snapshot.nested_candidates.emplace_back(std::move(value));
     } else if (auto* object_property = RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(property)) {
         snapshot.kind = "object";
         if (auto* object_class = object_property->GetPropertyClass().Get(); object_class) {
@@ -518,7 +532,23 @@ std::vector<PropertyCandidateSnapshot> collect_base_property_metadata(
             if (!property || candidates.size() >= 64) continue;
             auto name = RC::to_utf8_string(property->GetName());
             if (!base_keyword_match(name) || !seen.insert(name).second) continue;
-            candidates.emplace_back(describe_property_candidate(property));
+            auto candidate = describe_property_candidate(property);
+            if (auto* map_property = RC::Unreal::CastField<RC::Unreal::FMapProperty>(property)) {
+                auto* map = map_property->ContainerPtrToValuePtr<RC::Unreal::FScriptMap>(object);
+                const auto count = map ? map->Num() : -1;
+                if (count >= 0 && count <= 100000) {
+                    candidate.collection_count_available = true;
+                    candidate.collection_count = count;
+                }
+            } else if (auto* array_property = RC::Unreal::CastField<RC::Unreal::FArrayProperty>(property)) {
+                RC::Unreal::FScriptArrayHelper_InContainer values(array_property, object);
+                const auto count = values.Num();
+                if (count >= 0 && count <= 100000) {
+                    candidate.collection_count_available = true;
+                    candidate.collection_count = count;
+                }
+            }
+            candidates.emplace_back(std::move(candidate));
         }
     } catch (...) {
     }
@@ -1850,7 +1880,20 @@ void append_property_metadata_json(
         const auto& candidate = metadata[index];
         body << "{\"name\":\"" << json_escape(candidate.name)
              << "\",\"kind\":\"" << json_escape(candidate.kind)
-             << "\",\"declared_type\":\"" << json_escape(candidate.declared_type) << "\"}";
+             << "\",\"declared_type\":\"" << json_escape(candidate.declared_type)
+             << "\",\"collection_count_available\":"
+             << (candidate.collection_count_available ? "true" : "false")
+             << ",\"collection_count\":" << candidate.collection_count
+             << ",\"nested_candidates\":[";
+        for (size_t nested_index = 0; nested_index < candidate.nested_candidates.size(); ++nested_index) {
+            if (nested_index) body << ',';
+            const auto& nested = candidate.nested_candidates[nested_index];
+            body << "{\"name\":\"" << json_escape(nested.name)
+                 << "\",\"kind\":\"" << json_escape(nested.kind)
+                 << "\",\"declared_type\":\"" << json_escape(nested.declared_type)
+                 << "\"}";
+        }
+        body << "]}";
     }
     body << ']';
 }
@@ -2768,7 +2811,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.38");
+        ModVersion = STR("0.1.39");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -2998,7 +3041,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.38\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.39\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -3011,7 +3054,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.38\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.39\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
