@@ -74,8 +74,13 @@ struct PalSlotSnapshot
 {
     bool found{};
     std::string individual_id{};
+    bool slot_object_found{};
+    ObjectSnapshot slot_object{};
     bool handle_found{};
     ObjectSnapshot handle{};
+    bool replicate_parameter_found{};
+    ObjectSnapshot replicate_parameter{};
+    std::string replicate_handle_id_hex{};
 };
 
 struct PalSlotArraySnapshot
@@ -173,7 +178,13 @@ struct OnlinePlayerSnapshot
     std::vector<PropertyCandidateSnapshot> pal_storage_property_metadata{};
     std::vector<PropertyCandidateSnapshot> pal_container_property_metadata{};
     std::vector<PropertyCandidateSnapshot> inventory_helper_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> inventory_container_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> inventory_slot_property_metadata{};
     std::vector<PropertyCandidateSnapshot> pal_slot_object_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> pal_handle_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> pal_parameter_property_metadata{};
+    std::vector<PropertyCandidateSnapshot> pal_handle_id_struct_metadata{};
+    std::vector<PropertyCandidateSnapshot> base_camp_id_struct_metadata{};
     std::vector<PropertyCandidateSnapshot> otomo_property_metadata{};
     bool detail_property_metadata_collected{};
 };
@@ -464,6 +475,67 @@ std::vector<PropertyCandidateSnapshot> collect_keyword_property_metadata(
     return metadata;
 }
 
+std::vector<PropertyCandidateSnapshot> collect_struct_metadata(RC::Unreal::UStruct* structure)
+{
+    constexpr size_t metadata_limit = 64;
+    std::vector<PropertyCandidateSnapshot> metadata;
+    if (!structure) return metadata;
+    try {
+        for (auto* property : structure->ForEachProperty()) {
+            if (!property || metadata.size() >= metadata_limit) break;
+            metadata.emplace_back(describe_property_candidate(property));
+        }
+    } catch (...) {
+    }
+    return metadata;
+}
+
+std::vector<PropertyCandidateSnapshot> collect_struct_property_metadata(
+    RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names)
+{
+    auto* property = find_property(object, names);
+    auto* struct_property = RC::Unreal::CastField<RC::Unreal::FStructProperty>(property);
+    return collect_struct_metadata(struct_property ? struct_property->GetStruct().Get() : nullptr);
+}
+
+std::vector<PropertyCandidateSnapshot> collect_array_element_metadata(
+    RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names)
+{
+    auto* property = find_property(object, names);
+    auto* array_property = RC::Unreal::CastField<RC::Unreal::FArrayProperty>(property);
+    if (!array_property) return {};
+    if (auto* inner_struct = RC::Unreal::CastField<RC::Unreal::FStructProperty>(array_property->GetInner())) {
+        return collect_struct_metadata(inner_struct->GetStruct().Get());
+    }
+    auto* inner_object = RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(array_property->GetInner());
+    if (!inner_object) return {};
+    RC::Unreal::FScriptArrayHelper_InContainer values(array_property, object);
+    if (values.Num() <= 0) return {};
+    auto* element = values.GetRawPtr(0);
+    auto* value = element ? inner_object->GetObjectPropertyValue(element) : nullptr;
+    return value && RC::Unreal::UObject::IsReal(value)
+               ? collect_top_level_property_metadata(value)
+               : std::vector<PropertyCandidateSnapshot>{};
+}
+
+bool read_struct_property_hex(
+    RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names, std::string& output)
+{
+    auto* property = find_property(object, names);
+    if (!RC::Unreal::CastField<RC::Unreal::FStructProperty>(property)) return false;
+    const auto size = property->GetSize();
+    const auto* value = static_cast<const unsigned char*>(
+        property->ContainerPtrToValuePtr<void>(object));
+    if (!value || size <= 0 || size > 128) return false;
+    static constexpr char digits[] = "0123456789ABCDEF";
+    output.resize(static_cast<size_t>(size) * 2);
+    for (std::int32_t index = 0; index < size; ++index) {
+        output[static_cast<size_t>(index) * 2] = digits[value[index] >> 4];
+        output[static_cast<size_t>(index) * 2 + 1] = digits[value[index] & 0x0F];
+    }
+    return true;
+}
+
 bool read_guid_property(
     RC::Unreal::UObject* object, std::initializer_list<const TCHAR*> names, std::string& output)
 {
@@ -558,6 +630,9 @@ bool read_number_property(
 PalSlotArraySnapshot read_pal_slot_array(
     RC::Unreal::UObject* container,
     std::vector<PropertyCandidateSnapshot>& slot_object_metadata,
+    std::vector<PropertyCandidateSnapshot>& handle_metadata,
+    std::vector<PropertyCandidateSnapshot>& parameter_metadata,
+    std::vector<PropertyCandidateSnapshot>& handle_id_metadata,
     bool collect_metadata)
 {
     PalSlotArraySnapshot snapshot;
@@ -583,20 +658,37 @@ PalSlotArraySnapshot read_pal_slot_array(
         if (inner_object_property) {
             auto* slot_object = inner_object_property->GetObjectPropertyValue(element);
             if (slot_object && RC::Unreal::UObject::IsReal(slot_object)) {
-                slot.handle_found = true;
-                slot.handle = describe_object(slot_object);
+                slot.slot_object_found = true;
+                slot.slot_object = describe_object(slot_object);
                 if (collect_metadata && index == 0) {
                     slot_object_metadata = collect_keyword_property_metadata(
                         slot_object,
                         {"individual", "handle", "slot", "id", "character", "order", "lock"});
+                    handle_id_metadata = collect_struct_property_metadata(
+                        slot_object, {STR("ReplicateHandleID")});
                 }
-                auto* id_property = find_property(slot_object, {STR("IndividualId"), STR("IndividualID")});
-                if (id_property && id_property->GetSize() >= static_cast<std::int32_t>(sizeof(PlayerGuid))) {
-                    PlayerGuid value{};
-                    std::memcpy(&value, id_property->ContainerPtrToValuePtr<void>(slot_object), sizeof(value));
-                    std::array<char, 33> buffer{};
-                    std::snprintf(buffer.data(), buffer.size(), "%08X%08X%08X%08X", value.a, value.b, value.c, value.d);
-                    slot.individual_id = buffer.data();
+                read_struct_property_hex(
+                    slot_object,
+                    {STR("ReplicateHandleID"), STR("IndividualId"), STR("IndividualID")},
+                    slot.replicate_handle_id_hex);
+                slot.individual_id = slot.replicate_handle_id_hex;
+                auto* handle = read_object_property(slot_object, {STR("Handle")});
+                slot.handle_found = handle && RC::Unreal::UObject::IsReal(handle);
+                if (slot.handle_found) {
+                    slot.handle = describe_object(handle);
+                    if (collect_metadata && index == 0) {
+                        handle_metadata = collect_top_level_property_metadata(handle);
+                    }
+                }
+                auto* parameter = read_object_property(
+                    slot_object, {STR("ReplicateIndividualParameter")});
+                slot.replicate_parameter_found =
+                    parameter && RC::Unreal::UObject::IsReal(parameter);
+                if (slot.replicate_parameter_found) {
+                    slot.replicate_parameter = describe_object(parameter);
+                    if (collect_metadata && index == 0) {
+                        parameter_metadata = collect_top_level_property_metadata(parameter);
+                    }
                 }
             }
         } else if (slot_struct) {
@@ -623,24 +715,42 @@ PalSlotArraySnapshot read_pal_slot_array(
 }
 
 std::vector<ItemContainerSnapshot> read_inventory_containers(
-    RC::Unreal::UObject* inventory, bool collect_metadata)
+    RC::Unreal::UObject* inventory_helper,
+    bool collect_metadata,
+    std::vector<PropertyCandidateSnapshot>& container_metadata,
+    std::vector<PropertyCandidateSnapshot>& slot_metadata)
 {
     std::vector<ItemContainerSnapshot> containers;
-    if (!inventory || !RC::Unreal::UObject::IsReal(inventory)) return containers;
-    constexpr std::array<const TCHAR*, 6> names{
-        STR("EssentialContainer"), STR("PlayerInventoryContainer"), STR("EquipmentContainer"),
-        STR("LoadoutContainer"), STR("ItemContainer"), STR("InventoryContainer")};
-    for (const auto* name : names) {
-        auto* container = read_object_property(inventory, {name});
-        if (!container) continue;
+    if (!inventory_helper || !RC::Unreal::UObject::IsReal(inventory_helper)) return containers;
+    auto* property = find_property(inventory_helper, {STR("Containers")});
+    auto* array_property = RC::Unreal::CastField<RC::Unreal::FArrayProperty>(property);
+    auto* inner_object = array_property
+                             ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(array_property->GetInner())
+                             : nullptr;
+    if (!array_property || !inner_object) return containers;
+    RC::Unreal::FScriptArrayHelper_InContainer values(array_property, inventory_helper);
+    const auto count = values.Num();
+    if (count < 0 || count > 100000) return containers;
+    constexpr std::int32_t max_containers = 16;
+    const auto limit = count < max_containers ? count : max_containers;
+    for (std::int32_t index = 0; index < limit; ++index) {
+        auto* element = values.GetRawPtr(index);
+        auto* container = element ? inner_object->GetObjectPropertyValue(element) : nullptr;
+        if (!container || !RC::Unreal::UObject::IsReal(container)) continue;
         ItemContainerSnapshot snapshot;
         snapshot.found = true;
         snapshot.container = describe_object(container);
-        snapshot.slot_count = read_array_property_count(container, {STR("Slots"), STR("ItemSlots")});
+        snapshot.slot_count = read_array_property_count(
+            container, {STR("Slots"), STR("ItemSlots"), STR("SlotArray")});
         if (collect_metadata) {
             snapshot.container_property_metadata = collect_keyword_property_metadata(
                 container,
                 {"slot", "item", "container", "equipment", "loadout", "weapon", "armor"});
+            if (container_metadata.empty()) {
+                container_metadata = collect_top_level_property_metadata(container);
+                slot_metadata = collect_array_element_metadata(
+                    container, {STR("Slots"), STR("ItemSlots"), STR("SlotArray")});
+            }
         }
         containers.emplace_back(std::move(snapshot));
     }
@@ -698,16 +808,22 @@ void read_cached_player_details(
     player.inventory_found = inventory && RC::Unreal::UObject::IsReal(inventory);
     if (player.inventory_found) {
         player.inventory = describe_object(inventory);
-        player.inventory_container_count =
-            read_array_property_count(inventory, {STR("Containers")});
         player.inventory_weight_found =
             read_number_property(inventory, {STR("NowItemWeight")}, player.now_item_weight) &&
             read_number_property(inventory, {STR("MaxInventoryWeight")}, player.max_inventory_weight);
-        player.inventory_containers = read_inventory_containers(inventory, collect_metadata);
         auto* inventory_helper = read_object_property(inventory, {STR("InventoryMultiHelper")});
         player.inventory_helper_found =
             inventory_helper && RC::Unreal::UObject::IsReal(inventory_helper);
-        if (player.inventory_helper_found) player.inventory_helper = describe_object(inventory_helper);
+        if (player.inventory_helper_found) {
+            player.inventory_helper = describe_object(inventory_helper);
+            player.inventory_container_count =
+                read_array_property_count(inventory_helper, {STR("Containers")});
+            player.inventory_containers = read_inventory_containers(
+                inventory_helper,
+                collect_metadata,
+                player.inventory_container_property_metadata,
+                player.inventory_slot_property_metadata);
+        }
     }
 
     auto* pal_storage = read_object_property(player_state, {STR("PalStorage")});
@@ -720,7 +836,12 @@ void read_cached_player_details(
         if (player.pal_container_found) {
             player.pal_container = describe_object(pal_container);
             player.pal_slot_array = read_pal_slot_array(
-                pal_container, player.pal_slot_object_property_metadata, collect_metadata);
+                pal_container,
+                player.pal_slot_object_property_metadata,
+                player.pal_handle_property_metadata,
+                player.pal_parameter_property_metadata,
+                player.pal_handle_id_struct_metadata,
+                collect_metadata);
         }
     }
 
@@ -735,6 +856,8 @@ void read_cached_player_details(
                 guild,
                 {"name", "guild", "group", "admin", "master", "member", "owner", "rank",
                  "base", "camp", "territory", "map"});
+            player.base_camp_id_struct_metadata = collect_array_element_metadata(
+                guild, {STR("BaseCampIds")});
         }
         if (player.inventory_found) {
             player.inventory_property_metadata = collect_keyword_property_metadata(
@@ -1104,12 +1227,34 @@ void append_pal_slot_array_json(std::ostringstream& body, const PalSlotArraySnap
         const auto& slot = slot_array.slots[index];
         body << "{\"found\":" << (slot.found ? "true" : "false")
              << ",\"individual_id\":\"" << json_escape(slot.individual_id)
-             << "\",\"handle_found\":" << (slot.handle_found ? "true" : "false")
+             << "\",\"replicate_handle_id_hex\":\""
+             << json_escape(slot.replicate_handle_id_hex)
+             << "\",\"slot_object_found\":"
+             << (slot.slot_object_found ? "true" : "false")
+             << ",\"slot_object\":";
+        if (slot.slot_object_found) {
+            body << "{\"name\":\"" << json_escape(slot.slot_object.name)
+                 << "\",\"full_name\":\"" << json_escape(slot.slot_object.full_name)
+                 << "\",\"class_name\":\"" << json_escape(slot.slot_object.class_name) << "\"}";
+        } else {
+            body << "null";
+        }
+        body << ",\"handle_found\":" << (slot.handle_found ? "true" : "false")
              << ",\"handle\":";
         if (slot.handle_found) {
             body << "{\"name\":\"" << json_escape(slot.handle.name)
                  << "\",\"full_name\":\"" << json_escape(slot.handle.full_name)
                  << "\",\"class_name\":\"" << json_escape(slot.handle.class_name) << "\"}";
+        } else {
+            body << "null";
+        }
+        body << ",\"replicate_parameter_found\":"
+             << (slot.replicate_parameter_found ? "true" : "false")
+             << ",\"replicate_parameter\":";
+        if (slot.replicate_parameter_found) {
+            body << "{\"name\":\"" << json_escape(slot.replicate_parameter.name)
+                 << "\",\"full_name\":\"" << json_escape(slot.replicate_parameter.full_name)
+                 << "\",\"class_name\":\"" << json_escape(slot.replicate_parameter.class_name) << "\"}";
         } else {
             body << "null";
         }
@@ -1176,7 +1321,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.29");
+        ModVersion = STR("0.1.30");
         ModDescription = STR("Read-only localhost HTTP and UE object diagnostics");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -1392,7 +1537,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.29\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.30\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -1405,7 +1550,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.29\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.30\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -1625,12 +1770,24 @@ class PalPanelBridge final : public RC::CppUserModBase
                         append_property_metadata_json(body, player.inventory_all_property_metadata);
                         body << ",\"inventory_helper\":";
                         append_property_metadata_json(body, player.inventory_helper_property_metadata);
+                        body << ",\"inventory_container\":";
+                        append_property_metadata_json(body, player.inventory_container_property_metadata);
+                        body << ",\"inventory_slot\":";
+                        append_property_metadata_json(body, player.inventory_slot_property_metadata);
                         body << ",\"pal_storage\":";
                         append_property_metadata_json(body, player.pal_storage_property_metadata);
                         body << ",\"pal_container\":";
                         append_property_metadata_json(body, player.pal_container_property_metadata);
                         body << ",\"pal_slot_object\":";
                         append_property_metadata_json(body, player.pal_slot_object_property_metadata);
+                        body << ",\"pal_handle\":";
+                        append_property_metadata_json(body, player.pal_handle_property_metadata);
+                        body << ",\"pal_parameter\":";
+                        append_property_metadata_json(body, player.pal_parameter_property_metadata);
+                        body << ",\"pal_handle_id_struct\":";
+                        append_property_metadata_json(body, player.pal_handle_id_struct_metadata);
+                        body << ",\"base_camp_id_struct\":";
+                        append_property_metadata_json(body, player.base_camp_id_struct_metadata);
                         body << ",\"otomo\":";
                         append_property_metadata_json(body, player.otomo_property_metadata);
                         body << ",\"character_parameter\":";

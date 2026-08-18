@@ -13,7 +13,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.29`
+- PalPanelBridge：`0.1.30`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -61,7 +61,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.29",
+  "bridge_version": "0.1.30",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -239,6 +239,19 @@ metadata 探针新增 `detail_property_metadata.pal_container` 以便下一步�
 `detail_property_metadata.pal_slot_object`（首个 `PalIndividualCharacterSlot`
 对象的关键词属性），用于确认个体 ID 与物品槽位字段名后再读取实际帕鲁/物品
 内容。
+
+`0.1.30` 根据实机确认路径一次展开背包、帕鲁与据点诊断：背包容器从
+`InventoryMultiHelper.Containers` 对象数组读取，返回最多 16 个容器及槽位数组
+规模，并为首个容器、首个物品槽位返回属性元数据；帕鲁槽位区分槽位对象与真实
+`Handle`，返回 `ReplicateHandleID` 的受限十六进制值，并展开
+`ReplicateIndividualParameter`、Handle、ID 结构和 `BaseCampIds` 元素结构的
+元数据。全部逻辑仍为只读，每次最多检查 10 个帕鲁槽位。
+
+本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
+对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、
+重新启动并等待健康检查返回目标版本；不会修改 `config.ini`。面板与 Bridge 密钥
+通过参数或环境变量提供，不写入仓库；本地模式必须提供 Bridge Token，只有健康
+检查确认目标版本后脚本才报告成功。
 位置字段仅接受完整类型名 `ScriptStruct /Script/CoreUObject.Vector`、12 或 24
 字节属性，并对三个坐标执行有限值校验；失败时不输出伪位置值并返回
 `cached_location_error`。公会对象仅在 `UObject::IsReal` 成功时返回。

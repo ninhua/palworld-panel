@@ -1,5 +1,20 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.30 背包、帕鲁与据点合并探针
+
+已完成：
+
+- 0.1.29 本地实机确认：`InventoryMultiHelper.Containers` 是 `PalItemContainer[]`；帕鲁槽位包含 `Handle`、`ReplicateHandleID` 和 `ReplicateIndividualParameter`；公会对象包含 `BaseCampIds`/`BaseCampLevel`。
+- 背包改为从 helper 的 `Containers` 对象数组读取，返回最多 16 个容器、对象身份和 `Slots`/`ItemSlots`/`SlotArray` 数量；metadata 同时展开首个容器与首个槽位元素。
+- 帕鲁槽位区分 `slot_object` 与真实 `handle`，读取 `ReplicateHandleID` 受限原始十六进制值，并返回 `ReplicateIndividualParameter` 对象；metadata 同时展开 Handle、参数对象、ID 结构字段。
+- 据点 metadata 新增 `BaseCampIds` 元素结构；本地部署脚本新增停服、SHA-256 校验、原子替换、健康失败回滚、面板启动及 Bridge 版本健康检查流程，保留 `config.ini`；查询脚本在 Windows 强制 UTF-8 输出。
+- 版本与 README、接口文档一次性统一为 `0.1.30`；所有人类可读时间继续使用中国时区。
+
+验证计划：
+
+- 仅通过 `PalPanelBridge build` 构建；CI 成功后由 `deploy.py --local-dll` 自动下载、校验、停服替换、启动并等待 `/v1/health` 返回 `bridge_version=0.1.30`。
+- 玩家在线时调用一次 `POST /v1/players/online/metadata`，确认物品槽位字段、帕鲁 Handle/参数字段及据点 ID 结构，再进入实际物品和帕鲁详情读取。
+
 ## 2026-08-19：PalPanelBridge 0.1.29 本地运行时诊断（帕鲁槽位对象 + 背包容器入口）
 
 已完成：

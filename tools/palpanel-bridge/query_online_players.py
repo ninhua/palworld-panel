@@ -14,6 +14,10 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="replace")
+
 DEFAULT_PANEL_URL = "http://play.simpfun.cn:12559"
 DIAGNOSTIC_PATH = "/api/system/diagnostics/http"
 BRIDGE_PLAYERS_URL = "http://127.0.0.1:18083/v1/players/online"

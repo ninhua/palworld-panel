@@ -23,7 +23,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.29-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.30-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -49,7 +49,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.29-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.30-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -183,6 +183,15 @@ the metadata probe returns `detail_property_metadata.inventory_helper` and
 object's keyword properties) so the individual-id and item-slot field names can
 be confirmed before reading actual pal/item contents.
 
+Version `0.1.30` follows the confirmed runtime paths in one bounded probe.
+Inventory containers are read from `InventoryMultiHelper.Containers`; the
+response reports each container and its slot-array size. Metadata probes expand
+the first container and first slot element. Pal slots now distinguish the slot
+object from its real `Handle`, expose `ReplicateHandleID` as bounded raw hex,
+and expand `ReplicateIndividualParameter`, handle, ID-struct, and base-camp-ID
+metadata. The probe remains read-only and inspects at most 16 item containers
+and 10 pal slots.
+
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with
 UE4SS's `TSuperStructRange` and `TFieldRange<FProperty>` using
@@ -205,6 +214,14 @@ Without `--run-id`, the helper binds to the current Git commit, waits up to 45
 minutes for its Action to appear and finish, and checks every 30 seconds. A
 failed build is never deployed; failed-step output is saved as
 `PalPanelBridge-failed-run-<id>.log` and returned to the caller.
+
+For a panel-managed local Windows server, pass `--local-dll` together with
+`--panel-url`, `--panel-api-key`, and `--bridge-token`. The same
+helper waits for CI and verifies the artifact, asks the panel to stop the game,
+atomically replaces only `dlls/main.dll`, restores the old DLL on failure,
+starts the game, and waits for `/v1/health` to report the expected version.
+`config.ini` is never modified. Secrets may also be supplied through
+`PALPANEL_API_KEY` and `PALPANEL_BRIDGE_TOKEN` environment variables.
 
 Calling `/v1/runtime` twice should show an increasing
 `game_thread_tick_count`. It also reports the last game-thread tick time and

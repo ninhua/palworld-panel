@@ -21,7 +21,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -247,6 +247,43 @@ def deploy(dll: Path, checksum: str, version: str, host: str, port: int, usernam
         transport.close()
 
 
+def deploy_local(dll: Path, checksum: str, version: str, local_main: Path) -> Path:
+    """Atomically replace a stopped local server's DLL and keep a rollback copy."""
+    local_main = local_main.resolve()
+    if not local_main.is_file():
+        raise RuntimeError(f"local DLL does not exist: {local_main}")
+    timestamp = datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%dT%H%M%S+0800")
+    local_temp = local_main.with_name(f"main.dll.upload-v{version}-{timestamp}")
+    local_backup = local_main.with_name(f"main.dll.bak-before-v{version}-{timestamp}")
+    moved_original = False
+    deployed_ok = False
+    try:
+        shutil.copy2(dll, local_temp)
+        if sha256(local_temp) != checksum:
+            raise RuntimeError("temporary local DLL checksum mismatch")
+        local_main.replace(local_backup)
+        moved_original = True
+        try:
+            local_temp.replace(local_main)
+        except Exception:
+            local_backup.replace(local_main)
+            moved_original = False
+            raise
+        if sha256(local_main) != checksum:
+            raise RuntimeError("deployed local DLL checksum mismatch")
+        deployed_ok = True
+        return local_backup
+    finally:
+        if moved_original and not deployed_ok:
+            try:
+                local_backup.replace(local_main)
+            except OSError as rollback_error:
+                raise RuntimeError(
+                    f"local DLL deployment failed and rollback also failed: {rollback_error}"
+                ) from rollback_error
+        local_temp.unlink(missing_ok=True)
+
+
 def panel_request(panel_url: str, api_key: str, method: str, path: str, body: object | None = None, timeout_seconds: int = 120) -> dict[str, object]:
     url = panel_url.rstrip("/") + path
     data = json.dumps(body).encode("utf-8") if body is not None else None
@@ -282,6 +319,39 @@ def panel_restart(panel_url: str, api_key: str, version: str, timeout_seconds: i
     raise RuntimeError(f"Panel restart returned an unexpected response: {submitted}")
 
 
+def panel_lifecycle(panel_url: str, api_key: str, action: str) -> dict[str, object]:
+    response = panel_request(panel_url, api_key, "POST", f"/api/server/{action}", timeout_seconds=300)
+    data = response.get("data") if isinstance(response.get("data"), dict) else {}
+    expected_status = {"start": "started", "stop": "stopped"}.get(action)
+    if expected_status is None:
+        raise ValueError(f"unsupported panel lifecycle action: {action}")
+    if data.get("status") != expected_status and response.get("ok") is not True:
+        raise RuntimeError(f"Panel {action} returned an unexpected response: {response}")
+    return response
+
+
+def wait_bridge_health(bridge_url: str, token: str, version: str, timeout_seconds: int = 600, poll_seconds: int = 10) -> dict[str, object]:
+    deadline = time.monotonic() + timeout_seconds
+    last_error = "not started"
+    while time.monotonic() < deadline:
+        request = Request(
+            bridge_url.rstrip("/") + "/v1/health",
+            headers={"Authorization": f"Bearer {token}"},
+            method="GET",
+        )
+        try:
+            with urlopen(request, timeout=10) as response:
+                payload = json.loads(response.read(1024 * 1024).decode("utf-8"))
+            actual = str(payload.get("bridge_version", payload.get("version", ""))) if isinstance(payload, dict) else ""
+            if actual == version:
+                return payload
+            last_error = f"bridge version is {actual or 'unknown'}, expected {version}"
+        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
+            last_error = type(error).__name__
+        time.sleep(poll_seconds)
+    raise TimeoutError(f"timed out waiting for PalPanelBridge v{version}: {last_error}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", type=int)
@@ -300,8 +370,11 @@ def main() -> None:
     parser.add_argument("--username")
     parser.add_argument("--fingerprint")
     parser.add_argument("--remote-dir", default=os.environ.get("PALPANEL_SFTP_REMOTE_DIR", "/palworld_win/server/Pal/Binaries/Win64/ue4ss/Mods/PalPanelBridge/dlls"))
+    parser.add_argument("--local-dll", type=Path, help="local server main.dll; stops and starts the server around atomic replacement")
     parser.add_argument("--panel-url", default=os.environ.get("PALPANEL_API_URL", ""))
     parser.add_argument("--panel-api-key", default=os.environ.get("PALPANEL_API_KEY", ""))
+    parser.add_argument("--bridge-url", default=os.environ.get("PALPANEL_BRIDGE_URL", "http://127.0.0.1:18083"))
+    parser.add_argument("--bridge-token", default=os.environ.get("PALPANEL_BRIDGE_TOKEN", ""))
     parser.add_argument("--restart", action="store_true", help="restart the game server via the panel API after deploying")
     args = parser.parse_args()
 
@@ -331,18 +404,51 @@ def main() -> None:
     run_id = int(run["databaseId"])
     _, artifact_name, version = resolve_artifact(args.repo, run_id)
     dll, checksum, local_root = download_and_verify(args.repo, run_id, artifact_name, version, output_root)
-    host = env_or_argument(args.host, "PALPANEL_SFTP_HOST")
-    username = env_or_argument(args.username, "PALPANEL_SFTP_USERNAME")
-    fingerprint = env_or_argument(args.fingerprint, "PALPANEL_SFTP_HOSTKEY_SHA256")
-    password = os.environ.get("PALPANEL_SFTP_PASSWORD") or getpass.getpass("SFTP password: ")
-    backup = deploy(dll, checksum, version, host, args.port, username, password, fingerprint, args.remote_dir)
     restarted = False
-    if args.restart:
+    health: dict[str, object] | None = None
+    if args.local_dll is not None:
         panel_url = env_or_argument(args.panel_url, "PALPANEL_API_URL")
         api_key = env_or_argument(args.panel_api_key, "PALPANEL_API_KEY")
-        restart_result = panel_restart(panel_url, api_key, version)
-        restarted = True
-        print(f"Panel restart submitted: {restart_result}", flush=True)
+        bridge_token = env_or_argument(args.bridge_token, "PALPANEL_BRIDGE_TOKEN")
+        stopped = False
+        local_backup: Path | None = None
+        try:
+            panel_lifecycle(panel_url, api_key, "stop")
+            stopped = True
+            local_main = args.local_dll.resolve()
+            local_backup = deploy_local(dll, checksum, version, local_main)
+            backup = str(local_backup)
+            panel_lifecycle(panel_url, api_key, "start")
+            stopped = False
+            restarted = True
+            health = wait_bridge_health(args.bridge_url, bridge_token, version)
+        except Exception:
+            if local_backup is not None and local_backup.is_file():
+                if not stopped:
+                    panel_lifecycle(panel_url, api_key, "stop")
+                    stopped = True
+                local_backup.replace(local_main)
+                panel_lifecycle(panel_url, api_key, "start")
+                stopped = False
+            raise
+        finally:
+            if stopped:
+                try:
+                    panel_lifecycle(panel_url, api_key, "start")
+                except Exception as recovery_error:
+                    print(f"WARNING: failed to restart server after deployment error: {recovery_error}", file=sys.stderr)
+    else:
+        host = env_or_argument(args.host, "PALPANEL_SFTP_HOST")
+        username = env_or_argument(args.username, "PALPANEL_SFTP_USERNAME")
+        fingerprint = env_or_argument(args.fingerprint, "PALPANEL_SFTP_HOSTKEY_SHA256")
+        password = os.environ.get("PALPANEL_SFTP_PASSWORD") or getpass.getpass("SFTP password: ")
+        backup = deploy(dll, checksum, version, host, args.port, username, password, fingerprint, args.remote_dir)
+        if args.restart:
+            panel_url = env_or_argument(args.panel_url, "PALPANEL_API_URL")
+            api_key = env_or_argument(args.panel_api_key, "PALPANEL_API_KEY")
+            restart_result = panel_restart(panel_url, api_key, version)
+            restarted = True
+            print(f"Panel restart submitted: {restart_result}", flush=True)
     print(json.dumps({
         "ok": True,
         "version": version,
@@ -350,9 +456,10 @@ def main() -> None:
         "run_url": run["url"],
         "sha256": checksum,
         "local_package": str(local_root),
-        "remote_backup": backup,
+        "backup": backup,
         "config_preserved": True,
         "server_restarted": restarted,
+        "health": health,
     }, ensure_ascii=True, indent=2))
 
 
