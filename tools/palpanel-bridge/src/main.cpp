@@ -152,9 +152,15 @@ struct FunctionCandidateSnapshot;
 
 struct BaseModuleSnapshot
 {
+    struct WorkEntry
+    {
+        std::string map_object_id{};
+        std::string work_id{};
+    };
     ObjectSnapshot object{};
     std::vector<PropertyCandidateSnapshot> properties{};
     std::vector<FunctionCandidateSnapshot> functions{};
+    std::vector<WorkEntry> work_entries{};
 };
 
 struct BaseCampSnapshot
@@ -313,6 +319,7 @@ struct Job
     std::vector<BaseCampSnapshot> base_camps{};
     std::string base_modules_error{};
     bool base_modules_truncated{};
+    std::vector<BaseModuleSnapshot> loaded_work_objects{};
 };
 
 struct PlayerGuid
@@ -2253,6 +2260,75 @@ bool try_get_base_camp_model(
     return output != nullptr;
 }
 
+bool read_resource_work_entries(
+    RC::Unreal::UObject* module, std::vector<BaseModuleSnapshot::WorkEntry>& output)
+{
+    output.clear();
+    auto* map_property = module
+                             ? RC::Unreal::CastField<RC::Unreal::FMapProperty>(
+                                   find_property(module, {STR("MapObjectWorkInfoMap")}))
+                             : nullptr;
+    auto* key_property = map_property
+                             ? RC::Unreal::CastField<RC::Unreal::FStructProperty>(
+                                   map_property->GetKeyProp())
+                             : nullptr;
+    auto* value_property = map_property
+                               ? RC::Unreal::CastField<RC::Unreal::FStructProperty>(
+                                     map_property->GetValueProp())
+                               : nullptr;
+    auto* key_struct = key_property ? key_property->GetStruct().Get() : nullptr;
+    auto* value_struct = value_property ? value_property->GetStruct().Get() : nullptr;
+    auto* work_id_property = value_struct
+                                 ? RC::Unreal::CastField<RC::Unreal::FStructProperty>(
+                                       find_struct_property(value_struct, {STR("WorkId")}))
+                                 : nullptr;
+    auto* work_id_struct = work_id_property ? work_id_property->GetStruct().Get() : nullptr;
+    auto* map = map_property
+                    ? map_property->ContainerPtrToValuePtr<RC::Unreal::FScriptMap>(module)
+                    : nullptr;
+    if (!map_property || !key_property || !value_property || !key_struct || !value_struct ||
+        !work_id_property || !work_id_struct || !map ||
+        RC::to_utf8_string(key_struct->GetFullName()) !=
+            "ScriptStruct /Script/CoreUObject.Guid" ||
+        RC::to_utf8_string(value_struct->GetFullName()) !=
+            "ScriptStruct /Script/Pal.PalBaseCampModuleResourceCollectWorkInfo" ||
+        RC::to_utf8_string(work_id_struct->GetFullName()) !=
+            "ScriptStruct /Script/CoreUObject.Guid" ||
+        key_property->GetSize() != static_cast<std::int32_t>(sizeof(PlayerGuid)) ||
+        work_id_property->GetSize() != static_cast<std::int32_t>(sizeof(PlayerGuid))) {
+        return false;
+    }
+    const auto count = map->Num();
+    const auto max_index = map->GetMaxIndex();
+    if (count < 0 || count > 256 || max_index < 0 || max_index > 1024) return false;
+    const auto layout = RC::Unreal::FScriptMap::GetScriptLayout(
+        key_property->GetSize(), key_property->GetMinAlignment(),
+        value_property->GetSize(), value_property->GetMinAlignment());
+    output.reserve(static_cast<size_t>(count));
+    for (std::int32_t index = 0; index < max_index; ++index) {
+        if (!map->IsValidIndex(index)) continue;
+        auto* entry = map->GetData(index, layout);
+        auto* value = value_property->ContainerPtrToValuePtr<void>(entry);
+        PlayerGuid map_object_id{};
+        PlayerGuid work_id{};
+        key_property->CopyCompleteValue(
+            &map_object_id, key_property->ContainerPtrToValuePtr<void>(entry));
+        work_id_property->CopyCompleteValue(
+            &work_id, work_id_property->ContainerPtrToValuePtr<void>(value));
+        const auto map_object_text = guid_string(map_object_id);
+        const auto work_text = guid_string(work_id);
+        if (map_object_text == "00000000000000000000000000000000" ||
+            work_text == "00000000000000000000000000000000") {
+            continue;
+        }
+        output.emplace_back(BaseModuleSnapshot::WorkEntry{
+            .map_object_id = map_object_text,
+            .work_id = work_text,
+        });
+    }
+    return static_cast<std::int32_t>(output.size()) == count;
+}
+
 void collect_base_modules(Job& job)
 {
     constexpr size_t max_metadata_nodes = 4096;
@@ -2301,6 +2377,13 @@ void collect_base_modules(Job& job)
             if (!module || !RC::Unreal::UObject::IsReal(module)) continue;
             auto properties = collect_base_property_metadata(module);
             auto functions = collect_base_function_metadata(module);
+            std::vector<BaseModuleSnapshot::WorkEntry> work_entries;
+            if (RC::to_utf8_string(module->GetClassPrivate()->GetName()) ==
+                    "PalBaseCampModuleResourceCollector" &&
+                !read_resource_work_entries(module, work_entries)) {
+                job.base_modules_error = "MapObjectWorkInfoMap entry ABI mismatch";
+                return;
+            }
             size_t module_nodes = 1;
             for (const auto& property : properties) {
                 module_nodes += property_metadata_node_count(property);
@@ -2318,9 +2401,41 @@ void collect_base_modules(Job& job)
                 .object = describe_object(module),
                 .properties = std::move(properties),
                 .functions = std::move(functions),
+                .work_entries = std::move(work_entries),
             });
         }
         job.base_camps.emplace_back(std::move(base));
+    }
+    if (stop) return;
+    std::vector<RC::Unreal::UObject*> work_objects;
+    std::unordered_set<RC::Unreal::UObject*> seen_work_objects;
+    append_instances("PalWorkBase", work_objects, seen_work_objects);
+    std::unordered_set<std::string> seen_work_classes;
+    for (auto* work : work_objects) {
+        if (!work || job.loaded_work_objects.size() >= 64) continue;
+        const auto snapshot = describe_object(work);
+        if (snapshot.class_name.empty() || !seen_work_classes.insert(snapshot.class_name).second) {
+            continue;
+        }
+        auto properties = collect_base_property_metadata(work);
+        auto functions = collect_base_function_metadata(work);
+        size_t object_nodes = 1;
+        for (const auto& property : properties) {
+            object_nodes += property_metadata_node_count(property);
+        }
+        for (const auto& function : functions) {
+            object_nodes += 1 + function.parameters.size();
+        }
+        if (metadata_nodes + object_nodes > max_metadata_nodes) {
+            job.base_modules_truncated = true;
+            break;
+        }
+        metadata_nodes += object_nodes;
+        job.loaded_work_objects.emplace_back(BaseModuleSnapshot{
+            .object = snapshot,
+            .properties = std::move(properties),
+            .functions = std::move(functions),
+        });
     }
 }
 
@@ -2854,7 +2969,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.40");
+        ModVersion = STR("0.1.41");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -3084,7 +3199,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.40\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.41\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -3097,7 +3212,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.40\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.41\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -3399,6 +3514,43 @@ class PalPanelBridge final : public RC::CppUserModBase
                                  << ",\"return_value\":" << (parameter.return_value ? "true" : "false") << '}';
                         }
                         body << "]}";
+                    }
+                    body << "],\"work_entries\":[";
+                    for (size_t entry_index = 0; entry_index < module.work_entries.size(); ++entry_index) {
+                        if (entry_index) body << ',';
+                        const auto& entry = module.work_entries[entry_index];
+                        body << "{\"map_object_id\":\"" << json_escape(entry.map_object_id)
+                             << "\",\"work_id\":\"" << json_escape(entry.work_id) << "\"}";
+                    }
+                    body << "]}";
+                }
+                body << "]}";
+            }
+            body << "],\"loaded_work_objects\":[";
+            for (size_t object_index = 0; object_index < job.loaded_work_objects.size(); ++object_index) {
+                if (object_index) body << ',';
+                const auto& object = job.loaded_work_objects[object_index];
+                body << "{\"object\":{\"name\":\"" << json_escape(object.object.name)
+                     << "\",\"full_name\":\"" << json_escape(object.object.full_name)
+                     << "\",\"class_name\":\"" << json_escape(object.object.class_name)
+                     << "\"},\"properties\":";
+                append_property_metadata_json(body, object.properties);
+                body << ",\"functions\":[";
+                for (size_t function_index = 0; function_index < object.functions.size(); ++function_index) {
+                    if (function_index) body << ',';
+                    const auto& function = object.functions[function_index];
+                    body << "{\"name\":\"" << json_escape(function.name)
+                         << "\",\"full_name\":\"" << json_escape(function.full_name)
+                         << "\",\"params_size\":" << function.params_size
+                         << ",\"parameters\":[";
+                    for (size_t parameter_index = 0; parameter_index < function.parameters.size(); ++parameter_index) {
+                        if (parameter_index) body << ',';
+                        const auto& parameter = function.parameters[parameter_index];
+                        body << "{\"name\":\"" << json_escape(parameter.name)
+                             << "\",\"kind\":\"" << json_escape(parameter.kind)
+                             << "\",\"declared_type\":\"" << json_escape(parameter.declared_type)
+                             << "\",\"size\":" << parameter.size
+                             << ",\"return_value\":" << (parameter.return_value ? "true" : "false") << '}';
                     }
                     body << "]}";
                 }

@@ -1,5 +1,16 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.41 据点工作条目与工作对象探针
+
+- 严格校验 `MapObjectWorkInfoMap` 的键、值及 `WorkId` 均符合已确认 ABI 后，有界读取
+  最多 256 条 `map_object_id -> work_id`，数量或结构异常时关闭路径。
+- 新增 `loaded_work_objects`，按类去重返回最多 64 个已加载 `PalWorkBase` 样本的相关
+  属性和函数 ABI，与据点模块共享 4096 metadata 节点预算。
+- 仍为只读探针，不调用设施使用、生产或帕鲁分配函数；版本、README 和接口文档一次性
+  同步为 `0.1.41`，不在本地编译。
+
+构建与实机结果：待 `deploy.py` 返回后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.40 据点工作信息结构探针
 
 - 在 0.1.39 Map 键值类型基础上，只读展开一层数组/结构体字段；metadata 输出递归
@@ -9,7 +20,13 @@
   仍不遍历 Map 条目或调用工作函数。
 - 版本、README 和接口文档一次性同步为 `0.1.40`；不在本地编译。
 
-构建与实机结果：待 `deploy.py` 返回后补充。
+构建与部署结果（2026-08-19 05:45，中国时区）：GitHub Actions run
+`32187084150` 成功；DLL SHA256 为
+`4898ab8edf790b9b3c03ae6d0ab2562a50ba86d42be59c620afd4afd6d309175`。
+
+实机结果：`PalBaseCampModuleResourceCollectWorkInfo` 只有 `WorkId: Guid`；因此 33 条
+`MapObjectWorkInfoMap` 记录表示“地图设施对象 GUID → WorkId GUID”。
+`FacilityUsageInfoSetMap.InfoMap` 与 `FacilityCounts` 当前均为 0；本版尚未读取 Map 条目。
 
 ## 2026-08-19：PalPanelBridge 0.1.39 据点工作 Map 类型探针
 
