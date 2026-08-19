@@ -8,7 +8,15 @@
   `WorkerTasks` 实例的相关属性和函数 metadata，不调用任务函数。
 - 版本、README 和接口文档同步为 `0.1.49`；不在本地编译。
 
-构建与实机结果：待 `deploy.py` 返回后补充。
+构建与部署结果（2026-08-19 16:25，中国时区）：GitHub Actions run
+`32232398142` 成功；DLL SHA256 为
+`603cf36cec580565161d45caba6b27e91a4a7ce90a042f0aeb475989c9d7e77e`。
+
+实机结果：任务完成且无截断/错误；WorkerDirector 的角色容器有效，`SlotArray` 数量为
+1，但当前槽没有 Handle 或参数对象（多次重启后尚未加载实际据点工人）；
+`RequiredAssignWorks` 数量仍为 23，结构字段本版未展开；`WorkerTasks` 读取到 1 个
+`PalBaseCampWorkerTask_IgnitionTorchAtNight`。下一步在玩家上线并靠近据点后复测工人槽，
+同时改用 `GetCharacterHandleSlots` 和完整结构字段枚举。
 
 ## 2026-08-19：PalPanelBridge 0.1.48 定向 Worker/Assign 探针
 
