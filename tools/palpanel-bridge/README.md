@@ -24,7 +24,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.48-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.49-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -50,7 +50,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.48-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.49-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -292,6 +292,10 @@ excluding `/Script` enum, function, delegate, and struct definitions.
 Version `0.1.48` removes the global object-array scan and uses bounded `FindAllOf`
 queries for seven confirmed worker/assignment classes. This avoids long game-thread
 stalls while retaining the targeted runtime metadata probe.
+
+Version `0.1.49` reads the worker director's character container with the existing
+bounded Pal-slot reader, expands `PalBaseCampWorkAssignRequest` metadata, and reports
+up to 16 worker-task objects with reflected ABI. It remains read-only.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with

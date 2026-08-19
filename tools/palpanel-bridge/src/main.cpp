@@ -329,6 +329,14 @@ struct Job
     bool base_modules_truncated{};
     std::vector<BaseModuleSnapshot> loaded_work_objects{};
     std::vector<BaseModuleSnapshot> base_work_candidates{};
+    ObjectSnapshot base_worker_character_container{};
+    PalSlotArraySnapshot base_worker_slots{};
+    std::vector<PropertyCandidateSnapshot> base_worker_slot_metadata{};
+    std::vector<PropertyCandidateSnapshot> base_worker_handle_metadata{};
+    std::vector<PropertyCandidateSnapshot> base_worker_parameter_metadata{};
+    std::vector<PropertyCandidateSnapshot> base_worker_handle_id_metadata{};
+    std::vector<PropertyCandidateSnapshot> required_assign_work_metadata{};
+    std::vector<BaseModuleSnapshot> base_worker_tasks{};
 };
 
 struct PlayerGuid
@@ -2624,6 +2632,38 @@ void collect_base_modules(Job& job)
             .properties = std::move(properties),
             .functions = std::move(functions),
         });
+        if (snapshot.class_name == "PalBaseCampWorkerDirector") {
+            auto* container = read_object_property(object, {STR("CharacterContainer")});
+            if (container && RC::Unreal::UObject::IsReal(container)) {
+                job.base_worker_character_container = describe_object(container);
+                job.base_worker_slots = read_pal_slot_array(
+                    container, {STR("SlotArray")}, job.base_worker_slot_metadata,
+                    job.base_worker_handle_metadata, job.base_worker_parameter_metadata,
+                    job.base_worker_handle_id_metadata, true);
+            }
+            job.required_assign_work_metadata = collect_array_element_metadata(
+                object, {STR("RequiredAssignWorks")});
+            auto* tasks_property = RC::Unreal::CastField<RC::Unreal::FArrayProperty>(
+                find_property(object, {STR("WorkerTasks")}));
+            auto* tasks_inner = tasks_property
+                                    ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(
+                                          tasks_property->GetInner())
+                                    : nullptr;
+            if (tasks_property && tasks_inner) {
+                RC::Unreal::FScriptArrayHelper_InContainer tasks(tasks_property, object);
+                const auto task_count = tasks.Num();
+                const auto task_limit = std::min<std::int32_t>(task_count, 16);
+                for (std::int32_t index = 0; index < task_limit; ++index) {
+                    auto* task = tasks_inner->GetObjectPropertyValue(tasks.GetRawPtr(index));
+                    if (!task || !RC::Unreal::UObject::IsReal(task)) continue;
+                    job.base_worker_tasks.emplace_back(BaseModuleSnapshot{
+                        .object = describe_object(task),
+                        .properties = collect_base_property_metadata(task),
+                        .functions = collect_base_function_metadata(task),
+                    });
+                }
+            }
+        }
     }
 }
 
@@ -3157,7 +3197,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.48");
+        ModVersion = STR("0.1.49");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -3387,7 +3427,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.48\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.49\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -3400,7 +3440,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.48\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.49\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -3778,6 +3818,52 @@ class PalPanelBridge final : public RC::CppUserModBase
                 for (size_t function_index = 0; function_index < candidate.functions.size(); ++function_index) {
                     if (function_index) body << ',';
                     const auto& function = candidate.functions[function_index];
+                    body << "{\"name\":\"" << json_escape(function.name)
+                         << "\",\"full_name\":\"" << json_escape(function.full_name)
+                         << "\",\"params_size\":" << function.params_size
+                         << ",\"parameters\":[";
+                    for (size_t parameter_index = 0; parameter_index < function.parameters.size(); ++parameter_index) {
+                        if (parameter_index) body << ',';
+                        const auto& parameter = function.parameters[parameter_index];
+                        body << "{\"name\":\"" << json_escape(parameter.name)
+                             << "\",\"kind\":\"" << json_escape(parameter.kind)
+                             << "\",\"declared_type\":\"" << json_escape(parameter.declared_type)
+                             << "\",\"size\":" << parameter.size
+                             << ",\"return_value\":" << (parameter.return_value ? "true" : "false") << '}';
+                    }
+                    body << "]}";
+                }
+                body << "]}";
+            }
+            body << "],\"base_worker_character_container\":{\"name\":\""
+                 << json_escape(job.base_worker_character_container.name)
+                 << "\",\"full_name\":\"" << json_escape(job.base_worker_character_container.full_name)
+                 << "\",\"class_name\":\"" << json_escape(job.base_worker_character_container.class_name)
+                 << "\"},\"base_worker_slots\":";
+            append_pal_slot_array_json(body, job.base_worker_slots);
+            body << ",\"base_worker_slot_metadata\":";
+            append_property_metadata_json(body, job.base_worker_slot_metadata);
+            body << ",\"base_worker_handle_metadata\":";
+            append_property_metadata_json(body, job.base_worker_handle_metadata);
+            body << ",\"base_worker_parameter_metadata\":";
+            append_property_metadata_json(body, job.base_worker_parameter_metadata);
+            body << ",\"base_worker_handle_id_metadata\":";
+            append_property_metadata_json(body, job.base_worker_handle_id_metadata);
+            body << ",\"required_assign_work_metadata\":";
+            append_property_metadata_json(body, job.required_assign_work_metadata);
+            body << ",\"base_worker_tasks\":[";
+            for (size_t task_index = 0; task_index < job.base_worker_tasks.size(); ++task_index) {
+                if (task_index) body << ',';
+                const auto& task = job.base_worker_tasks[task_index];
+                body << "{\"object\":{\"name\":\"" << json_escape(task.object.name)
+                     << "\",\"full_name\":\"" << json_escape(task.object.full_name)
+                     << "\",\"class_name\":\"" << json_escape(task.object.class_name)
+                     << "\"},\"properties\":";
+                append_property_metadata_json(body, task.properties);
+                body << ",\"functions\":[";
+                for (size_t function_index = 0; function_index < task.functions.size(); ++function_index) {
+                    if (function_index) body << ',';
+                    const auto& function = task.functions[function_index];
                     body << "{\"name\":\"" << json_escape(function.name)
                          << "\",\"full_name\":\"" << json_escape(function.full_name)
                          << "\",\"params_size\":" << function.params_size

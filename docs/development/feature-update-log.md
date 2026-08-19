@@ -1,5 +1,15 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.49 据点工人、分配请求与任务读取
+
+- 从 `PalBaseCampWorkerDirector.CharacterContainer.SlotArray` 使用既有有界帕鲁槽读取器
+  返回据点工人；复用 Handle/参数/实例 ID ABI 门禁，最多输出 10 槽详情。
+- 展开 `RequiredAssignWorks` 的 `PalBaseCampWorkAssignRequest` 结构；读取最多 16 个
+  `WorkerTasks` 实例的相关属性和函数 metadata，不调用任务函数。
+- 版本、README 和接口文档同步为 `0.1.49`；不在本地编译。
+
+构建与实机结果：待 `deploy.py` 返回后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.48 定向 Worker/Assign 探针
 
 - 删除全局 UObject 遍历，改为定向查找 `PalBaseCampWorkerDirector`、Battle、
@@ -8,7 +18,14 @@
 - 保留 `/Game/`、CDO 与只读 metadata 门禁；版本和三份文档同步为 `0.1.48`，不在
   本地编译。
 
-构建与实机结果：待 `deploy.py` 返回后补充。
+构建与部署结果（2026-08-19 16:20，中国时区）：GitHub Actions run
+`32231986709` 成功；DLL SHA256 为
+`0c6238b90fdbb86630f6e9e4ac48ab676636d69a5ca2af7c0cbaa64788757e9a`。
+
+实机结果：任务约 2 秒完成、无截断、无错误；读取 4 个实例。WorkerDirector 的
+`CharacterContainer` 有效，`RequiredAssignWorks=23`、`WorkerTasks=1`；WorkCollection
+的 `WorkIds=30`。确认 `GetCharacterHandleSlots`、`OnRequiredAssignWork_ServerInternal`
+与 `OnNotifiedUnassignWork_ServerInternal` 精确 ABI，进入 0.1.49 读取实际工人与请求结构。
 
 ## 2026-08-19：PalPanelBridge 0.1.47 世界运行对象过滤
 
