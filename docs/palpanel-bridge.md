@@ -15,7 +15,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.45`
+- PalPanelBridge：`0.1.46`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -63,7 +63,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.45",
+  "bridge_version": "0.1.46",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -388,6 +388,9 @@ Map 条目值，不调用工作函数；每个任务最多 4096 个 metadata 节
 
 `0.1.45` 新增最多 32 个已加载据点 Worker/Assign/Facility 与 `PalWorkAssign` 候选对象，
 按类仅返回首个相关属性和函数 ABI，其余只返回身份；该部分不调用任何候选函数。
+
+`0.1.46` 过滤反射 `Class` 对象和 `Default__` 类默认对象，只保留运行时实例，避免类定义
+占满 32 个候选名额；其他范围与只读限制不变。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、

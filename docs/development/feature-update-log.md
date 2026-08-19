@@ -1,5 +1,13 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.46 据点 Worker 运行实例探针
+
+- 过滤 `class_name=Class` 的反射类定义和 `Default__` 类默认对象，只保留运行时
+  Worker/Assign/Facility 候选实例，避免占满 32 项上限。
+- 版本、README 和接口文档同步为 `0.1.46`；不在本地编译，仍不调用候选函数。
+
+构建与实机结果：待 `deploy.py` 返回后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.45 据点 Worker/Assign 对象探针
 
 - 在游戏线程有界扫描已加载对象，最多返回 32 个类名/对象名匹配据点 Worker、Assign、
@@ -7,7 +15,15 @@
 - 只读 metadata，不调用候选函数；与现有模块/工作 metadata 共享 4096 节点预算。
 - 版本、README 和接口文档同步为 `0.1.45`；不在本地编译。
 
-构建与实机结果：待 `deploy.py` 返回后补充。
+构建过程：首次 run `32190089731` 因误用 `RC::Unreal::LoopAction` 编译失败；只按失败
+步骤日志改为 SDK 实际的 `RC::LoopAction` 后，run `32190313188` 成功。DLL SHA256 为
+`c28f1e78b38657530be4cce5dbb92020a5ba3fd3e38ef6ba3d733f98d3988766`，于
+2026-08-19 16:07（中国时区）安全部署并重启。
+
+实机结果：响应未截断，但 32 项候选均为反射类定义；确认关键类名包含
+`PalBaseCampWorkerDirector`、`PalBaseCampWorkCollection`、
+`PalBaseCampWorkCollectionReplicationList` 与 `PalBaseCampGroupedWorkBase`，进入
+0.1.46 过滤类定义并读取实际实例。
 
 ## 2026-08-19：PalPanelBridge 0.1.44 活动设施工作探针
 
