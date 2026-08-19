@@ -8,6 +8,18 @@
   接受 `byte` 或 `int32`，仍保留参数数量、缓冲区大小和等级范围门禁。
 - 版本和三份文档同步为 `0.1.51`；不在本地编译，仅由 GitHub Actions 构建。
 
+构建与部署结果（2026-08-19 17:05，中国时区）：GitHub Actions run
+`32235581758` 成功；DLL SHA256 为
+`e78f64974ac8d86ecc91dff909890944f4944ad546b6cced7e9dd095ae1f70cb`。`deploy.py`
+完成快照保存、旧 DLL 备份、原子替换、面板重启和 0.1.51 健康检查，`config.ini`
+保持不变。
+
+实机结果：`/v1/bases/workers` 完成且无错误，返回据点
+`4D89F67843C3C9655D4C02B314977A92`、1 个 Worker、1 个 WorkerTask。测试阿努比斯
+`5C47471E455508BF80A131A6643551B9` 为 50 级，运行时工作适应性仅返回
+`Handcraft=10`、`Mining=10`、`Transport=10`，`current_works=[]`。由此确认
+PalDefender `ExtraWorkSuitabilities` 只强化该帕鲁原生工作类型，不能新增缺失类型。
+
 ## 2026-08-19：PalPanelBridge 0.1.50 据点帕鲁精简读取
 
 - 新增 `POST /v1/bases/workers`，只读取据点 ID、WorkerDirector 槽、WorkerTask 和实际

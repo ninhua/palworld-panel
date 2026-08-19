@@ -420,6 +420,11 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 等级返回接受 `byte` 或 `int32`。仍只调用两个只读 getter，不放宽参数数量、尺寸和
 返回值范围门禁。
 
+实机对 PalDefender 创建的“全工作测试”阿努比斯读取到
+`Handcraft=10`、`Mining=10`、`Transport=10`，其余类型未由游戏运行时 getter 返回。
+这证明 `ExtraWorkSuitabilities` 能强化原生工作类型，但不能给该帕鲁新增原本不存在的
+工作类型；接口按游戏权威运行时结果返回，不伪造其余 10 类。
+
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、
 重新启动并等待健康检查返回目标版本；不会修改 `config.ini`。面板与 Bridge 密钥
