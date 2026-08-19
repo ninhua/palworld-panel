@@ -2581,31 +2581,22 @@ void collect_base_modules(Job& job)
         }
         job.loaded_work_objects.emplace_back(std::move(work_snapshot));
     }
+    std::vector<RC::Unreal::UObject*> candidate_objects;
+    std::unordered_set<RC::Unreal::UObject*> seen_candidate_objects;
+    for (const auto class_name : {
+             "PalBaseCampWorkerDirector", "PalBaseCampWorkerDirectorBattle",
+             "PalBaseCampWorkCollection", "PalBaseCampWorkCollectionReplicationList",
+             "PalBaseCampGroupedWorkBase", "PalBaseCampGroupedWorkFarm", "PalWorkAssign"}) {
+        append_instances(class_name, candidate_objects, seen_candidate_objects);
+    }
     std::unordered_set<std::string> seen_candidate_classes;
-    RC::Unreal::UObjectGlobals::ForEachUObject([&](
-        RC::Unreal::UObject* object, RC::Unreal::int32, RC::Unreal::int32) -> RC::LoopAction {
+    for (auto* object : candidate_objects) {
         if (!object || !RC::Unreal::UObject::IsReal(object) ||
-            job.base_work_candidates.size() >= 32) {
-            return job.base_work_candidates.size() >= 32
-                       ? RC::LoopAction::Break
-                       : RC::LoopAction::Continue;
-        }
+            job.base_work_candidates.size() >= 32) continue;
         const auto snapshot = describe_object(object);
         if (snapshot.class_name == "Class" || snapshot.name.rfind("Default__", 0) == 0 ||
             snapshot.full_name.find("/Game/") == std::string::npos) {
-            return RC::LoopAction::Continue;
-        }
-        auto lower = snapshot.class_name + " " + snapshot.name;
-        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char character) {
-            return static_cast<char>(std::tolower(character));
-        });
-        const bool base_related = lower.find("basecamp") != std::string::npos &&
-                                  (lower.find("worker") != std::string::npos ||
-                                   lower.find("assign") != std::string::npos ||
-                                   lower.find("facility") != std::string::npos ||
-                                   lower.find("work") != std::string::npos);
-        if (!base_related && lower.find("workassign") == std::string::npos) {
-            return RC::LoopAction::Continue;
+            continue;
         }
         const bool include_metadata = seen_candidate_classes.insert(snapshot.class_name).second;
         auto properties = include_metadata
@@ -2633,8 +2624,7 @@ void collect_base_modules(Job& job)
             .properties = std::move(properties),
             .functions = std::move(functions),
         });
-        return RC::LoopAction::Continue;
-    });
+    }
 }
 
 bool invoke_noarg_object(
@@ -3167,7 +3157,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.47");
+        ModVersion = STR("0.1.48");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -3397,7 +3387,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.47\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.48\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -3410,7 +3400,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.47\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.48\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','

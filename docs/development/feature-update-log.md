@@ -1,12 +1,27 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.48 定向 Worker/Assign 探针
+
+- 删除全局 UObject 遍历，改为定向查找 `PalBaseCampWorkerDirector`、Battle、
+  `PalBaseCampWorkCollection`、ReplicationList、GroupedWork Base/Farm 和
+  `PalWorkAssign` 七类实例；最多返回 32 项。
+- 保留 `/Game/`、CDO 与只读 metadata 门禁；版本和三份文档同步为 `0.1.48`，不在
+  本地编译。
+
+构建与实机结果：待 `deploy.py` 返回后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.47 世界运行对象过滤
 
 - Worker/Assign 候选完整路径必须属于 `/Game/`，排除 `/Script` 下的 Enum、Function、
   DelegateFunction、ScriptStruct 等反射定义；其余 32 项上限和只读约束不变。
 - 版本、README 和接口文档同步为 `0.1.47`；不在本地编译。
 
-构建与实机结果：待 `deploy.py` 返回后补充。
+构建与部署结果（2026-08-19 16:15，中国时区）：GitHub Actions run
+`32231518606` 成功；DLL SHA256 为
+`7f5530c3d17502bc4f03e2daedc6173d15e07dc404e951a779a6fc1e81c87501`。
+
+实机结果：全局 UObject 遍历在游戏线程运行超过 60 秒且任务无法结束；已立即通过面板
+API 重启恢复服务器，未执行写操作。该实现判定不可接受，0.1.48 改为已知类名定向查找。
 
 ## 2026-08-19：PalPanelBridge 0.1.46 据点 Worker 运行实例探针
 
