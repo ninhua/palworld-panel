@@ -15,7 +15,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.50`
+- PalPanelBridge：`0.1.51`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -63,7 +63,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.50",
+  "bridge_version": "0.1.51",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -415,6 +415,10 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 `current_works`。工作关联只采用 `PalWorkBase.GetAssignedCharacters()` 返回的槽对象，
 不把 WorkerTask 类型猜成当前工作。该接口不返回反射 metadata，避免面板代理 64 KiB
 截断；原 `/v1/bases/modules` 继续作为详细诊断接口。
+
+`0.1.51` 修正本服工作类型参数的反射 ABI：输入接受尺寸严格为 1 字节的枚举属性，
+等级返回接受 `byte` 或 `int32`。仍只调用两个只读 getter，不放宽参数数量、尺寸和
+返回值范围门禁。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、

@@ -2226,11 +2226,8 @@ bool invoke_byte_int(
 {
     if (!object || !RC::Unreal::UObject::IsReal(object)) return false;
     auto* function = object->GetFunctionByNameInChain(function_name);
-    auto* result = function
-                       ? RC::Unreal::CastField<RC::Unreal::FIntProperty>(
-                             function->GetReturnProperty())
-                       : nullptr;
-    RC::Unreal::FByteProperty* input = nullptr;
+    auto* result = function ? function->GetReturnProperty() : nullptr;
+    RC::Unreal::FProperty* input = nullptr;
     if (function) {
         for (auto* property : RC::Unreal::TFieldRange<RC::Unreal::FProperty>(
                  function, RC::Unreal::EFieldIterationFlags::IncludeDeprecated)) {
@@ -2238,20 +2235,31 @@ bool invoke_byte_int(
                 property->HasAnyPropertyFlags(RC::Unreal::CPF_ReturnParm)) {
                 continue;
             }
-            input = RC::Unreal::CastField<RC::Unreal::FByteProperty>(property);
+            input = property;
             break;
         }
     }
     if (!input_parameter(input) || !return_parameter(result) ||
+        input->GetSize() != static_cast<std::int32_t>(sizeof(input_value)) ||
         !exact_parameter_count(function, 2) || function->GetParmsSize() <= 0 ||
         function->GetParmsSize() > 4096) {
         return false;
     }
     FunctionBuffer params(function);
-    input->SetPropertyValueInContainer(params.data(), input_value);
+    std::memcpy(
+        input->ContainerPtrToValuePtr<void>(params.data()),
+        &input_value, sizeof(input_value));
     object->ProcessEvent(function, params.data());
-    output = result->GetPropertyValueInContainer(params.data());
-    return true;
+    if (auto* int_result = RC::Unreal::CastField<RC::Unreal::FIntProperty>(result)) {
+        output = int_result->GetPropertyValueInContainer(params.data());
+        return true;
+    }
+    if (auto* byte_result = RC::Unreal::CastField<RC::Unreal::FByteProperty>(result)) {
+        output = static_cast<std::int32_t>(
+            byte_result->GetPropertyValueInContainer(params.data()));
+        return true;
+    }
+    return false;
 }
 
 std::string guid_string(const PlayerGuid& value)
@@ -3415,7 +3423,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.50");
+        ModVersion = STR("0.1.51");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -3652,7 +3660,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.50\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.51\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -3665,7 +3673,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.50\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.51\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','

@@ -1,5 +1,13 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.51 工作适应性枚举 ABI 修复
+
+- 0.1.50 实机精简接口成功返回 1 个据点和 1 只 `Anubis`，响应无截断/错误，但
+  `work_suitabilities` 为空；确认原 `FByteProperty` 类型门禁未匹配本服枚举反射。
+- 输入改为“唯一非返回参数且尺寸严格为 1 字节”，兼容 `FEnumProperty`；返回等级只
+  接受 `byte` 或 `int32`，仍保留参数数量、缓冲区大小和等级范围门禁。
+- 版本和三份文档同步为 `0.1.51`；不在本地编译，仅由 GitHub Actions 构建。
+
 ## 2026-08-19：PalPanelBridge 0.1.50 据点帕鲁精简读取
 
 - 新增 `POST /v1/bases/workers`，只读取据点 ID、WorkerDirector 槽、WorkerTask 和实际
