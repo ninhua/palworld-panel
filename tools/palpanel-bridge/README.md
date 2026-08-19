@@ -24,7 +24,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.46-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.47-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -50,7 +50,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.46-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.47-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -285,6 +285,9 @@ identity plus relevant reflected metadata and never calls candidate functions.
 
 Version `0.1.46` excludes reflected class definitions and `Default__` class
 defaults from that search so the bounded result contains runtime instances.
+
+Version `0.1.47` further requires candidate full names to belong to `/Game/`,
+excluding `/Script` enum, function, delegate, and struct definitions.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with

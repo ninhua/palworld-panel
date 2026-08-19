@@ -1,12 +1,27 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.47 世界运行对象过滤
+
+- Worker/Assign 候选完整路径必须属于 `/Game/`，排除 `/Script` 下的 Enum、Function、
+  DelegateFunction、ScriptStruct 等反射定义；其余 32 项上限和只读约束不变。
+- 版本、README 和接口文档同步为 `0.1.47`；不在本地编译。
+
+构建与实机结果：待 `deploy.py` 返回后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.46 据点 Worker 运行实例探针
 
 - 过滤 `class_name=Class` 的反射类定义和 `Default__` 类默认对象，只保留运行时
   Worker/Assign/Facility 候选实例，避免占满 32 项上限。
 - 版本、README 和接口文档同步为 `0.1.46`；不在本地编译，仍不调用候选函数。
 
-构建与实机结果：待 `deploy.py` 返回后补充。
+构建与部署结果（2026-08-19 16:11，中国时区）：GitHub Actions run
+`32231215876` 成功；DLL SHA256 为
+`3303edc420a487380dc657e5a95e33d80dd579938b8957c5b78a72426da82986`。
+
+实机结果：过滤 Class/CDO 后仍有 32 个 `/Script` 反射对象占满上限，包括
+`FindWorkAssignableObject`、`GetWorkAssign`、`PalBaseCampWorkAssignRequest`、
+`GetTargetBaseCampWorkerCharacterContainer` 和 `CollectBaseCampWorkerInfo`；进入 0.1.47
+只保留 `/Game/` 世界运行对象。
 
 ## 2026-08-19：PalPanelBridge 0.1.45 据点 Worker/Assign 对象探针
 

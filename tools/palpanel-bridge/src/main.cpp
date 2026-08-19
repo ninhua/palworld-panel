@@ -2591,7 +2591,8 @@ void collect_base_modules(Job& job)
                        : RC::LoopAction::Continue;
         }
         const auto snapshot = describe_object(object);
-        if (snapshot.class_name == "Class" || snapshot.name.rfind("Default__", 0) == 0) {
+        if (snapshot.class_name == "Class" || snapshot.name.rfind("Default__", 0) == 0 ||
+            snapshot.full_name.find("/Game/") == std::string::npos) {
             return RC::LoopAction::Continue;
         }
         auto lower = snapshot.class_name + " " + snapshot.name;
@@ -3166,7 +3167,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.46");
+        ModVersion = STR("0.1.47");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -3396,7 +3397,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.46\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.47\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -3409,7 +3410,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.46\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.47\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
