@@ -24,7 +24,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.49-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.50-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -50,7 +50,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.49-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.50-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -79,6 +79,7 @@ curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/player
 curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/players/online/metadata
 curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/probe/game-thread
 curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/bases/modules
+curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/bases/workers
 curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
   --data @mutation.json http://127.0.0.1:18083/v1/mutations
 curl -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/jobs/<job_id>
@@ -296,6 +297,12 @@ stalls while retaining the targeted runtime metadata probe.
 Version `0.1.49` reads the worker director's character container with the existing
 bounded Pal-slot reader, expands `PalBaseCampWorkAssignRequest` metadata, and reports
 up to 16 worker-task objects with reflected ABI. It remains read-only.
+
+Version `0.1.50` adds the compact read-only `POST /v1/bases/workers` task. It returns
+base IDs, bounded worker Pal details, all positive ranks reported by the 13 runtime
+work-suitability getters, and actual work objects linked through
+`GetAssignedCharacters`. It omits reflection metadata so panel proxy responses stay
+well below 64 KiB; `/v1/bases/modules` remains available for diagnostics.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with

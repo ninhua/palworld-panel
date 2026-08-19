@@ -1,5 +1,19 @@
 # 功能移植更新记录
 
+## 2026-08-19：PalPanelBridge 0.1.50 据点帕鲁精简读取
+
+- 新增 `POST /v1/bases/workers`，只读取据点 ID、WorkerDirector 槽、WorkerTask 和实际
+  分配关系，不返回模块/函数/属性 metadata，解决面板代理 65536 字节截断。
+- 对每只据点帕鲁有界调用 `GetWorkSuitabilityRankWithCharacterRank`，不兼容时回退
+  `GetWorkSuitabilityRank`，读取 13 类工作适应性的正数等级。
+- 通过 `PalWorkBase.GetAssignedCharacters()` 的槽对象身份关联 `current_works`；不把
+  WorkerTask 类名误当成当前工作，不调用任何据点写函数。
+- 实机升级前已在 0.1.49 直接 Bridge 响应确认：据点
+  `4D89F67843C3C9655D4C02B314977A92` 当前有 1 只 `Anubis`，实例
+  `5C47471E455508BF80A131A6643551B9`，等级 50。
+- 版本、README 和接口文档一次性同步为 `0.1.50`；不在本地编译，仅由 GitHub Actions
+  构建。构建、部署和实机响应待本次 CI 后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.49 据点工人、分配请求与任务读取
 
 - 从 `PalBaseCampWorkerDirector.CharacterContainer.SlotArray` 使用既有有界帕鲁槽读取器

@@ -15,7 +15,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.49`
+- PalPanelBridge：`0.1.50`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -63,7 +63,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.49",
+  "bridge_version": "0.1.50",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -402,6 +402,19 @@ Director、WorkCollection、GroupedWork 与 `PalWorkAssign`。该路径保持 32
 `0.1.49` 使用现有有界帕鲁槽读取器解析 WorkerDirector 的 `CharacterContainer.SlotArray`，
 返回据点工人实例/名称/等级等已验证字段；同时展开 `PalBaseCampWorkAssignRequest` 结构，
 并返回最多 16 个 `WorkerTasks` 实例的只读属性与函数 ABI。
+
+`0.1.50` 新增精简只读任务：
+
+```text
+POST http://127.0.0.1:18083/v1/bases/workers
+GET  http://127.0.0.1:18083/v1/jobs/<job_id>
+```
+
+结果仅返回据点 ID、最多 64 个 Worker 槽、最多 16 个 WorkerTask，以及每只帕鲁的
+实例 ID、种类、名称、等级、被动/主动技能、13 类工作适应性正数等级和实际关联的
+`current_works`。工作关联只采用 `PalWorkBase.GetAssignedCharacters()` 返回的槽对象，
+不把 WorkerTask 类型猜成当前工作。该接口不返回反射 metadata，避免面板代理 64 KiB
+截断；原 `/v1/bases/modules` 继续作为详细诊断接口。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、

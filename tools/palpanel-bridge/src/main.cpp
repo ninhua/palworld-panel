@@ -58,6 +58,7 @@ enum class JobKind
     OnlinePlayers,
     Mutation,
     BaseModules,
+    BaseWorkers,
 };
 
 struct MutationRequest
@@ -107,6 +108,19 @@ struct CachedLocationSnapshot
     std::string error{};
 };
 
+struct WorkSuitabilitySnapshot
+{
+    std::uint8_t id{};
+    std::string name{};
+    std::int32_t rank{};
+};
+
+struct CurrentWorkSnapshot
+{
+    std::string work_id{};
+    std::string class_name{};
+};
+
 struct PalSlotSnapshot
 {
     bool found{};
@@ -138,6 +152,8 @@ struct PalSlotSnapshot
     std::string character_id{};
     std::vector<std::string> passive_skill_ids{};
     std::vector<std::uint16_t> equipped_waza_ids{};
+    std::vector<WorkSuitabilitySnapshot> work_suitabilities{};
+    std::vector<CurrentWorkSnapshot> current_works{};
 };
 
 struct PalSlotArraySnapshot
@@ -973,6 +989,10 @@ enum class PalWazaId : std::uint16_t
 {
 };
 
+bool invoke_byte_int(
+    RC::Unreal::UObject* object, const TCHAR* function_name,
+    std::uint8_t input_value, std::int32_t& output);
+
 void read_pal_parameter_functions(RC::Unreal::UObject* parameter, PalSlotSnapshot& slot)
 {
     if (!parameter || !RC::Unreal::UObject::IsReal(parameter)) return;
@@ -1065,6 +1085,32 @@ void read_pal_parameter_functions(RC::Unreal::UObject* parameter, PalSlotSnapsho
     }
 }
 
+void read_work_suitabilities(RC::Unreal::UObject* parameter, PalSlotSnapshot& slot)
+{
+    if (!parameter || !RC::Unreal::UObject::IsReal(parameter)) return;
+    static constexpr std::array<std::string_view, 13> suitability_names{
+        "EmitFlame", "Watering", "Seeding", "GenerateElectricity", "Handcraft",
+        "Collection", "Deforest", "Mining", "OilExtraction", "ProductMedicine",
+        "Cool", "Transport", "MonsterFarm"};
+    for (std::uint8_t id = 1; id <= suitability_names.size(); ++id) {
+        try {
+            std::int32_t rank = 0;
+            if ((!invoke_byte_int(
+                     parameter, STR("GetWorkSuitabilityRankWithCharacterRank"), id, rank) &&
+                 !invoke_byte_int(parameter, STR("GetWorkSuitabilityRank"), id, rank)) ||
+                rank <= 0 || rank > 100) {
+                continue;
+            }
+            slot.work_suitabilities.emplace_back(WorkSuitabilitySnapshot{
+                .id = id,
+                .name = std::string(suitability_names[id - 1]),
+                .rank = rank,
+            });
+        } catch (...) {
+        }
+    }
+}
+
 PalSlotArraySnapshot read_pal_slot_array(
     RC::Unreal::UObject* owner,
     std::initializer_list<const TCHAR*> property_names,
@@ -1151,6 +1197,7 @@ PalSlotArraySnapshot read_pal_slot_array(
                     read_string_property(
                         parameter, {STR("NickName"), STR("Nickname")}, slot.nickname);
                     read_pal_parameter_functions(parameter, slot);
+                    read_work_suitabilities(parameter, slot);
                     if (collect_metadata && index == 0) {
                         parameter_metadata = collect_data_property_metadata(
                             parameter,
@@ -2019,6 +2066,22 @@ void append_pal_slot_array_json(std::ostringstream& body, const PalSlotArraySnap
             if (skill_index > 0) body << ',';
             body << slot.equipped_waza_ids[skill_index];
         }
+        body << "],\"work_suitabilities\":[";
+        for (size_t suitability_index = 0;
+             suitability_index < slot.work_suitabilities.size(); ++suitability_index) {
+            if (suitability_index > 0) body << ',';
+            const auto& suitability = slot.work_suitabilities[suitability_index];
+            body << "{\"id\":" << static_cast<unsigned int>(suitability.id)
+                 << ",\"name\":\"" << json_escape(suitability.name)
+                 << "\",\"rank\":" << suitability.rank << '}';
+        }
+        body << "],\"current_works\":[";
+        for (size_t work_index = 0; work_index < slot.current_works.size(); ++work_index) {
+            if (work_index > 0) body << ',';
+            const auto& work = slot.current_works[work_index];
+            body << "{\"work_id\":\"" << json_escape(work.work_id)
+                 << "\",\"class_name\":\"" << json_escape(work.class_name) << "\"}";
+        }
         body << "]}";
         body << '}';
     }
@@ -2058,6 +2121,7 @@ const char* job_kind_name(JobKind kind)
     if (kind == JobKind::OnlinePlayers) return "online_players";
     if (kind == JobKind::Mutation) return "mutation";
     if (kind == JobKind::BaseModules) return "base_modules";
+    if (kind == JobKind::BaseWorkers) return "base_workers";
     return "game_thread";
 }
 
@@ -2155,6 +2219,40 @@ class FunctionBuffer final
     RC::Unreal::UFunction* function_{};
     std::vector<std::uint8_t> storage_{};
 };
+
+bool invoke_byte_int(
+    RC::Unreal::UObject* object, const TCHAR* function_name,
+    std::uint8_t input_value, std::int32_t& output)
+{
+    if (!object || !RC::Unreal::UObject::IsReal(object)) return false;
+    auto* function = object->GetFunctionByNameInChain(function_name);
+    auto* result = function
+                       ? RC::Unreal::CastField<RC::Unreal::FIntProperty>(
+                             function->GetReturnProperty())
+                       : nullptr;
+    RC::Unreal::FByteProperty* input = nullptr;
+    if (function) {
+        for (auto* property : RC::Unreal::TFieldRange<RC::Unreal::FProperty>(
+                 function, RC::Unreal::EFieldIterationFlags::IncludeDeprecated)) {
+            if (!property || !property->HasAnyPropertyFlags(RC::Unreal::CPF_Parm) ||
+                property->HasAnyPropertyFlags(RC::Unreal::CPF_ReturnParm)) {
+                continue;
+            }
+            input = RC::Unreal::CastField<RC::Unreal::FByteProperty>(property);
+            break;
+        }
+    }
+    if (!input_parameter(input) || !return_parameter(result) ||
+        !exact_parameter_count(function, 2) || function->GetParmsSize() <= 0 ||
+        function->GetParmsSize() > 4096) {
+        return false;
+    }
+    FunctionBuffer params(function);
+    input->SetPropertyValueInContainer(params.data(), input_value);
+    object->ProcessEvent(function, params.data());
+    output = result->GetPropertyValueInContainer(params.data());
+    return true;
+}
 
 std::string guid_string(const PlayerGuid& value)
 {
@@ -2372,39 +2470,11 @@ bool read_work_id(RC::Unreal::UObject* work, std::string& output)
     return output != "00000000000000000000000000000000";
 }
 
-bool read_work_assignment_probe(RC::Unreal::UObject* work, BaseModuleSnapshot& snapshot)
+bool read_assigned_characters(RC::Unreal::UObject* work, BaseModuleSnapshot& snapshot)
 {
-    auto* info_function = work
-                              ? work->GetFunctionByNameInChain(STR("GetWorkAssignInfo"))
-                              : nullptr;
-    auto* info_array = info_function
-                           ? RC::Unreal::CastField<RC::Unreal::FArrayProperty>(
-                                 info_function->FindProperty(RC::Unreal::FName(
-                                     STR("OutWorkAssignInfo"), RC::Unreal::FNAME_Find)))
-                           : nullptr;
-    auto* info_inner = info_array
-                           ? RC::Unreal::CastField<RC::Unreal::FStructProperty>(
-                                 info_array->GetInner())
-                           : nullptr;
-    auto* info_struct = info_inner ? info_inner->GetStruct().Get() : nullptr;
-    if (!info_array || !info_inner || !info_struct || !output_parameter(info_array) ||
-        !exact_parameter_count(info_function, 1) ||
-        RC::to_utf8_string(info_struct->GetFullName()) !=
-            "ScriptStruct /Script/Pal.PalWorkAssignInfo" ||
-        info_function->GetParmsSize() != 16) {
-        return false;
-    }
-    {
-        FunctionBuffer params(info_function);
-        work->ProcessEvent(info_function, params.data());
-        RC::Unreal::FScriptArrayHelper_InContainer values(info_array, params.data());
-        const auto count = values.Num();
-        if (count < 0 || count > 256) return false;
-        snapshot.work_assign_info_count = count;
-        snapshot.work_assign_info_metadata = collect_struct_metadata(info_struct);
-    }
-
-    auto* character_function = work->GetFunctionByNameInChain(STR("GetAssignedCharacters"));
+    auto* character_function = work
+                                   ? work->GetFunctionByNameInChain(STR("GetAssignedCharacters"))
+                                   : nullptr;
     auto* character_array = character_function
                                 ? RC::Unreal::CastField<RC::Unreal::FArrayProperty>(
                                       character_function->FindProperty(RC::Unreal::FName(
@@ -2438,6 +2508,40 @@ bool read_work_assignment_probe(RC::Unreal::UObject* work, BaseModuleSnapshot& s
         }
     }
     return true;
+}
+
+bool read_work_assignment_probe(RC::Unreal::UObject* work, BaseModuleSnapshot& snapshot)
+{
+    auto* info_function = work
+                              ? work->GetFunctionByNameInChain(STR("GetWorkAssignInfo"))
+                              : nullptr;
+    auto* info_array = info_function
+                           ? RC::Unreal::CastField<RC::Unreal::FArrayProperty>(
+                                 info_function->FindProperty(RC::Unreal::FName(
+                                     STR("OutWorkAssignInfo"), RC::Unreal::FNAME_Find)))
+                           : nullptr;
+    auto* info_inner = info_array
+                           ? RC::Unreal::CastField<RC::Unreal::FStructProperty>(
+                                 info_array->GetInner())
+                           : nullptr;
+    auto* info_struct = info_inner ? info_inner->GetStruct().Get() : nullptr;
+    if (!info_array || !info_inner || !info_struct || !output_parameter(info_array) ||
+        !exact_parameter_count(info_function, 1) ||
+        RC::to_utf8_string(info_struct->GetFullName()) !=
+            "ScriptStruct /Script/Pal.PalWorkAssignInfo" ||
+        info_function->GetParmsSize() != 16) {
+        return false;
+    }
+    {
+        FunctionBuffer params(info_function);
+        work->ProcessEvent(info_function, params.data());
+        RC::Unreal::FScriptArrayHelper_InContainer values(info_array, params.data());
+        const auto count = values.Num();
+        if (count < 0 || count > 256) return false;
+        snapshot.work_assign_info_count = count;
+        snapshot.work_assign_info_metadata = collect_struct_metadata(info_struct);
+    }
+    return read_assigned_characters(work, snapshot);
 }
 
 void collect_base_modules(Job& job)
@@ -2661,6 +2765,120 @@ void collect_base_modules(Job& job)
                         .properties = collect_base_property_metadata(task),
                         .functions = collect_base_function_metadata(task),
                     });
+                }
+            }
+        }
+    }
+}
+
+void collect_base_workers(Job& job)
+{
+    auto* world = RC::Unreal::UObjectGlobals::FindFirstOf(STR("World"));
+    RC::Unreal::UObject* manager = nullptr;
+    if (!call_pal_utility_object(world, STR("GetBaseCampManager"), manager)) {
+        job.base_modules_error = "PalUtility.GetBaseCampManager ABI mismatch";
+        return;
+    }
+    job.base_camp_manager = describe_object(manager);
+    std::vector<PlayerGuid> ids;
+    if (!read_base_camp_ids(manager, ids)) {
+        job.base_modules_error = "PalBaseCampManager.GetBaseCampIds ABI mismatch";
+        return;
+    }
+    const auto base_limit = std::min<size_t>(ids.size(), 32);
+    for (size_t index = 0; index < base_limit; ++index) {
+        BaseCampSnapshot base;
+        base.base_id = guid_string(ids[index]);
+        RC::Unreal::UObject* model = nullptr;
+        if (try_get_base_camp_model(manager, ids[index], model)) {
+            base.model = describe_object(model);
+        }
+        job.base_camps.emplace_back(std::move(base));
+    }
+
+    std::vector<RC::Unreal::UObject*> directors;
+    std::unordered_set<RC::Unreal::UObject*> seen_directors;
+    append_instances("PalBaseCampWorkerDirector", directors, seen_directors);
+    std::unordered_set<std::string> seen_workers;
+    for (auto* director : directors) {
+        if (!director || !RC::Unreal::UObject::IsReal(director)) continue;
+        const auto director_snapshot = describe_object(director);
+        if (director_snapshot.class_name == "Class" ||
+            director_snapshot.name.rfind("Default__", 0) == 0 ||
+            director_snapshot.full_name.find("/Game/") == std::string::npos) {
+            continue;
+        }
+        auto* container = read_object_property(director, {STR("CharacterContainer")});
+        if (!container || !RC::Unreal::UObject::IsReal(container)) continue;
+        if (job.base_worker_character_container.name.empty()) {
+            job.base_worker_character_container = describe_object(container);
+        }
+        std::vector<PropertyCandidateSnapshot> ignored_slot_metadata;
+        std::vector<PropertyCandidateSnapshot> ignored_handle_metadata;
+        std::vector<PropertyCandidateSnapshot> ignored_parameter_metadata;
+        std::vector<PropertyCandidateSnapshot> ignored_id_metadata;
+        auto slots = read_pal_slot_array(
+            container, {STR("SlotArray")}, ignored_slot_metadata,
+            ignored_handle_metadata, ignored_parameter_metadata, ignored_id_metadata, false);
+        if (slots.found) job.base_worker_slots.found = true;
+        for (auto& slot : slots.slots) {
+            const auto key = !slot.individual_id.empty()
+                                 ? slot.individual_id
+                                 : slot.slot_object.full_name;
+            if (key.empty() || !seen_workers.insert(key).second ||
+                job.base_worker_slots.slots.size() >= 64) {
+                continue;
+            }
+            job.base_worker_slots.slots.emplace_back(std::move(slot));
+        }
+        auto* tasks_property = RC::Unreal::CastField<RC::Unreal::FArrayProperty>(
+            find_property(director, {STR("WorkerTasks")}));
+        auto* tasks_inner = tasks_property
+                                ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(
+                                      tasks_property->GetInner())
+                                : nullptr;
+        if (!tasks_property || !tasks_inner) continue;
+        RC::Unreal::FScriptArrayHelper_InContainer tasks(tasks_property, director);
+        const auto task_count = tasks.Num();
+        const auto task_limit = std::min<std::int32_t>(task_count, 16);
+        for (std::int32_t index = 0; index < task_limit; ++index) {
+            auto* task = tasks_inner->GetObjectPropertyValue(tasks.GetRawPtr(index));
+            if (!task || !RC::Unreal::UObject::IsReal(task)) continue;
+            if (job.base_worker_tasks.size() >= 16) break;
+            job.base_worker_tasks.emplace_back(BaseModuleSnapshot{
+                .object = describe_object(task),
+            });
+        }
+    }
+    job.base_worker_slots.slot_count =
+        static_cast<std::int32_t>(job.base_worker_slots.slots.size());
+
+    std::vector<RC::Unreal::UObject*> work_objects;
+    std::unordered_set<RC::Unreal::UObject*> seen_work_objects;
+    append_instances("PalWorkBase", work_objects, seen_work_objects);
+    for (auto* work : work_objects) {
+        if (!work || !RC::Unreal::UObject::IsReal(work)) continue;
+        BaseModuleSnapshot work_snapshot{.object = describe_object(work)};
+        if (!read_work_id(work, work_snapshot.work_id) ||
+            !read_assigned_characters(work, work_snapshot) ||
+            work_snapshot.assigned_characters.empty()) {
+            continue;
+        }
+        for (const auto& assigned : work_snapshot.assigned_characters) {
+            for (auto& worker : job.base_worker_slots.slots) {
+                if (!assigned.full_name.empty() &&
+                    assigned.full_name == worker.slot_object.full_name) {
+                    const auto duplicate = std::any_of(
+                        worker.current_works.begin(), worker.current_works.end(),
+                        [&](const CurrentWorkSnapshot& current) {
+                            return current.work_id == work_snapshot.work_id;
+                        });
+                    if (!duplicate && worker.current_works.size() < 16) {
+                        worker.current_works.emplace_back(CurrentWorkSnapshot{
+                            .work_id = work_snapshot.work_id,
+                            .class_name = work_snapshot.object.class_name,
+                        });
+                    }
                 }
             }
         }
@@ -3197,7 +3415,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.49");
+        ModVersion = STR("0.1.50");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -3255,6 +3473,13 @@ class PalPanelBridge final : public RC::CppUserModBase
                 collect_base_modules(job);
             } catch (...) {
                 job.base_modules_error = "base module probe exception";
+                job.status = "failed";
+            }
+        } else if (job.kind == JobKind::BaseWorkers) {
+            try {
+                collect_base_workers(job);
+            } catch (...) {
+                job.base_modules_error = "base worker probe exception";
                 job.status = "failed";
             }
         } else if (job.kind == JobKind::Mutation) {
@@ -3427,7 +3652,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.49\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.50\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -3440,7 +3665,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.49\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.50\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -3460,7 +3685,11 @@ class PalPanelBridge final : public RC::CppUserModBase
                                       ? "players_"
                                       : kind == JobKind::Mutation
                                             ? "mutation_"
-                                            : kind == JobKind::BaseModules ? "bases_" : "probe_";
+                                            : kind == JobKind::BaseModules
+                                                  ? "bases_"
+                                                  : kind == JobKind::BaseWorkers
+                                                        ? "workers_"
+                                                        : "probe_";
         const auto id = std::string(prefix) + std::to_string(now) + "_" + std::to_string(++sequence_);
         std::scoped_lock lock(jobs_mutex_);
         if (jobs_.size() >= 64) {
@@ -3698,6 +3927,26 @@ class PalPanelBridge final : public RC::CppUserModBase
                     }
                 }
                 body << '}';
+            }
+            body << ']';
+        } else if (job.kind == JobKind::BaseWorkers) {
+            body << ",\"error\":\"" << json_escape(job.base_modules_error)
+                 << "\",\"base_count\":" << job.base_camps.size()
+                 << ",\"base_ids\":[";
+            for (size_t base_index = 0; base_index < job.base_camps.size(); ++base_index) {
+                if (base_index) body << ',';
+                body << '\"' << json_escape(job.base_camps[base_index].base_id) << '\"';
+            }
+            body << "],\"worker_count\":" << job.base_worker_slots.slots.size()
+                 << ",\"workers\":";
+            append_pal_slot_array_json(body, job.base_worker_slots);
+            body << ",\"worker_task_count\":" << job.base_worker_tasks.size()
+                 << ",\"worker_tasks\":[";
+            for (size_t task_index = 0; task_index < job.base_worker_tasks.size(); ++task_index) {
+                if (task_index) body << ',';
+                const auto& task = job.base_worker_tasks[task_index].object;
+                body << "{\"name\":\"" << json_escape(task.name)
+                     << "\",\"class_name\":\"" << json_escape(task.class_name) << "\"}";
             }
             body << ']';
         } else if (job.kind == JobKind::BaseModules) {
@@ -3982,6 +4231,12 @@ class PalPanelBridge final : public RC::CppUserModBase
                        : "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
         } else if (first == "POST /v1/bases/modules HTTP/1.1") {
             const auto id = enqueue(JobKind::BaseModules);
+            status = id.empty() ? 503 : 202;
+            body = id.empty()
+                       ? "{\"ok\":false,\"error\":{\"code\":\"job_queue_full\",\"message\":\"all job slots are queued or running\"}}"
+                       : "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
+        } else if (first == "POST /v1/bases/workers HTTP/1.1") {
+            const auto id = enqueue(JobKind::BaseWorkers);
             status = id.empty() ? 503 : 202;
             body = id.empty()
                        ? "{\"ok\":false,\"error\":{\"code\":\"job_queue_full\",\"message\":\"all job slots are queued or running\"}}"
