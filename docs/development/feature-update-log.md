@@ -9,7 +9,19 @@
   `GameState`；Generated 子世界硬过滤且不回退任意 World。据点模块、据点工人、世界
   和在线玩家任务统一使用，不缓存对象指针。
 - 版本、README 和接口文档一次性同步为 `0.1.52`；不在本地编译，仅由 GitHub Actions
-  构建。构建、部署和实机响应待 CI 后补充。
+  构建。
+
+构建与部署结果（2026-08-20 22:36，中国时区）：GitHub Actions run
+`32380912814` 成功；DLL SHA256 为
+`54b55bba9663e5eae231a304a5f67b44be7488cb13fea63fb2912b72e5b03831`。`deploy.py`
+完成快照保存、旧 DLL 备份、原子替换、面板重启及 0.1.52 健康检查，`config.ini`
+保持不变。
+
+实机结果：在服务器刚重启且无人上线的原复现条件下，`/v1/world` 正确返回
+`World /Game/Pal/Maps/MainWorld_5/PL_MainWorld5.PL_MainWorld5`，不再命中 Generated
+子世界；`/v1/bases/workers` 无错误返回据点
+`4D89F67843C3C9655D4C02B314977A92`、1 个 Worker，以及 50 级 `Anubis`
+`5C47471E455508BF80A131A6643551B9`。
 
 ## 2026-08-19：PalPanelBridge 0.1.51 工作适应性枚举 ABI 修复
 
