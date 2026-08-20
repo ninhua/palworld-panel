@@ -15,7 +15,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.51`
+- PalPanelBridge：`0.1.52`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -63,7 +63,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.51",
+  "bridge_version": "0.1.52",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -424,6 +424,12 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 `Handcraft=10`、`Mining=10`、`Transport=10`，其余类型未由游戏运行时 getter 返回。
 这证明 `ExtraWorkSuitabilities` 能强化原生工作类型，但不能给该帕鲁新增原本不存在的
 工作类型；接口按游戏权威运行时结果返回，不伪造其余 10 类。
+
+`0.1.52` 修复服务器启动后 `FindFirstOf("World")` 可能命中 `/_Generated_/MainGrid...`
+子世界的问题。插件改为定向枚举 `World` 类，优先选择 Pal 主世界、非 Generated 路径且
+具有有效 `GameState` 的实例；Generated 路径被硬过滤，失败时不回退任意第一个 World。
+据点、世界和在线玩家任务统一使用该选择器，每次任务重新解析，不跨 tick 缓存
+UObject 指针。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、

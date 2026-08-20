@@ -1,5 +1,16 @@
 # 功能移植更新记录
 
+## 2026-08-20：PalPanelBridge 0.1.52 主世界选择修复
+
+- 复现服务器启动后 `/v1/bases/workers` 返回
+  `PalUtility.GetBaseCampManager ABI mismatch`；同一时刻 `/v1/world` 显示误选
+  `/_Generated_/MainGrid_L6_X-1_Y0_DL0.PL_MainWorld5` 子 World。
+- 新增有界 `World` 类定向选择器，优先 Pal 主世界、非 Generated 路径和有效
+  `GameState`；Generated 子世界硬过滤且不回退任意 World。据点模块、据点工人、世界
+  和在线玩家任务统一使用，不缓存对象指针。
+- 版本、README 和接口文档一次性同步为 `0.1.52`；不在本地编译，仅由 GitHub Actions
+  构建。构建、部署和实机响应待 CI 后补充。
+
 ## 2026-08-19：PalPanelBridge 0.1.51 工作适应性枚举 ABI 修复
 
 - 0.1.50 实机精简接口成功返回 1 个据点和 1 只 `Anubis`，响应无截断/错误，但
