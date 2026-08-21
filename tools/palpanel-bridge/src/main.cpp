@@ -3410,6 +3410,7 @@ MutationResult execute_base_assign_worker(const MutationRequest& request)
 {
     MutationResult result;
     result.operation = request.operation;
+    const bool offline_authority = request.player_uid.empty();
     RC::Unreal::UObject* base_camp = nullptr;
     if (!request.player_uid.empty()) {
         std::vector<RC::Unreal::UObject*> controllers;
@@ -3636,8 +3637,85 @@ MutationResult execute_base_assign_worker(const MutationRequest& request)
         return result;
     }
     result.after_json = std::to_string(after_snapshot.assigned_character_count);
+    if (!assigned_character_present(after_snapshot, matched_slot_snapshot) &&
+        offline_authority) {
+        auto* matched_handle = read_object_property(matched_slot, {STR("Handle")});
+        std::vector<RC::Unreal::UObject*> actions;
+        std::unordered_set<RC::Unreal::UObject*> seen_actions;
+        append_instances("PalAIActionCompositeWorker", actions, seen_actions);
+        RC::Unreal::UObject* matched_action = nullptr;
+        for (auto* action : actions) {
+            const auto action_snapshot = describe_object(action);
+            if (action_snapshot.name.find("Default__") == 0 ||
+                action_snapshot.full_name.find("Default__") != std::string::npos) {
+                continue;
+            }
+            auto* getter = action->GetFunctionByNameInChain(STR("GetCharacterParameter"));
+            auto* return_property = getter
+                                        ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(
+                                              getter->GetReturnProperty())
+                                        : nullptr;
+            if (!getter || !return_property || !exact_parameter_count(getter, 1) ||
+                !return_parameter(return_property) || getter->GetParmsSize() <= 0 ||
+                getter->GetParmsSize() > 4096) {
+                continue;
+            }
+            FunctionBuffer getter_params(getter);
+            action->ProcessEvent(getter, getter_params.data());
+            auto* parameter = return_property->GetObjectPropertyValue(
+                return_property->ContainerPtrToValuePtr<void>(getter_params.data()));
+            auto* handle = read_object_property(parameter, {STR("IndividualHandle")});
+            if (!matched_handle || handle != matched_handle) continue;
+            if (matched_action && matched_action != action) {
+                result.error = "multiple worker AI actions matched the base worker handle";
+                return result;
+            }
+            matched_action = action;
+        }
+        auto* register_function = matched_action
+                                      ? matched_action->GetFunctionByNameInChain(
+                                            STR("RegisterFixedAssignWork"))
+                                      : nullptr;
+        auto* register_work_id = register_function
+                                     ? RC::Unreal::CastField<RC::Unreal::FStructProperty>(
+                                           register_function->FindProperty(RC::Unreal::FName(
+                                               STR("WorkId"), RC::Unreal::FNAME_Find)))
+                                     : nullptr;
+        if (!matched_action || !register_function || register_function->GetReturnProperty() ||
+            !exact_parameter_count(register_function, 1) ||
+            !input_parameter(register_work_id) || !guid_type(register_work_id) ||
+            register_function->GetParmsSize() <= 0 ||
+            register_function->GetParmsSize() > 4096) {
+            result.error = "offline worker AI fixed-assignment path unavailable";
+            return result;
+        }
+        FunctionBuffer register_params(register_function);
+        register_work_id->CopyCompleteValue(
+            register_work_id->ContainerPtrToValuePtr<void>(register_params.data()),
+            &work_guid);
+        matched_action->ProcessEvent(register_function, register_params.data());
+        auto* find_function = matched_action->GetFunctionByNameInChain(STR("TryFindNextWork"));
+        auto* find_return = find_function
+                                ? RC::Unreal::CastField<RC::Unreal::FBoolProperty>(
+                                      find_function->GetReturnProperty())
+                                : nullptr;
+        if (find_function && exact_parameter_count(find_function, 1) &&
+            find_return && return_parameter(find_return) &&
+            find_function->GetParmsSize() > 0 &&
+            find_function->GetParmsSize() <= 4096) {
+            FunctionBuffer find_params(find_function);
+            matched_action->ProcessEvent(find_function, find_params.data());
+        }
+        if (!read_assigned_characters(matched_work, after_snapshot, 256)) {
+            result.error = "post-AI assigned character getter ABI mismatch";
+            return result;
+        }
+        result.after_json = std::to_string(after_snapshot.assigned_character_count);
+    }
     if (!assigned_character_present(after_snapshot, matched_slot_snapshot)) {
-        result.error = "RPC did not verify worker assignment";
+        result.error = offline_authority
+                           ? "offline server paths did not verify worker assignment"
+                           : "RPC did not verify worker assignment";
         return result;
     }
     result.status = "succeeded";
@@ -3780,7 +3858,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.54");
+        ModVersion = STR("0.1.55");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -4024,7 +4102,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.54\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.55\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -4037,7 +4115,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.54\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.55\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','

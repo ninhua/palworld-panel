@@ -1,5 +1,20 @@
 # 功能移植更新记录
 
+## 2026-08-21：PalPanelBridge 0.1.55 离线工人 AI 固定指派
+
+- 0.1.54 实机离线验证：Action `32453642469`、SHA256
+  `83b55a884aeb090a81010beb10d49557cd53c4618026723dbe763a9a52b0bb3e` 已由
+  `deploy.py` 校验、部署、重启；`/v1/health` 于 `2026-08-21T14:21:16.527+08:00`
+  返回 `bridge_version=0.1.54`。
+- 无玩家在线时读取到 1 个据点、1 只阿努比斯及 42 个工作对象；两次原生网络 RPC 分别
+  指向 `PalWorkProgress` 与 `PalWorkCollectResource`，均安全返回“未回读到分配”，且延迟
+  回读仍为 0，证明无客户端所有权时仅调用网络组件不足。
+- 新增服务端 AI 兜底：通过据点槽 `Handle` 与动作返回的 `IndividualHandle` 指针严格唯一
+  匹配 `PalAIActionCompositeWorker`，校验后调用原生 `RegisterFixedAssignWork(WorkId)` 并
+  触发 `TryFindNextWork`；仍以目标工作 `GetAssignedCharacters` 回读作为唯一成功标准。
+- 不构造无反射字段的 `PalWorkAssignRequirementParameter`，不直接写工作数组；版本和三份
+  文档一次更新，仅交给 GitHub Actions 构建和 `deploy.py` 部署验证。
+
 ## 2026-08-21：PalPanelBridge 0.1.54 离线据点工作指派
 
 - `base_assign_worker` 不再强制要求在线玩家；`player_uid` 改为可选兼容字段。

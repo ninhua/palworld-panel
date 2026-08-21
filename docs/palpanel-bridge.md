@@ -16,7 +16,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.54`
+- PalPanelBridge：`0.1.55`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -64,7 +64,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.54",
+  "bridge_version": "0.1.55",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -432,7 +432,7 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 据点、世界和在线玩家任务统一使用该选择器，每次任务重新解析，不跨 tick 缓存
 UObject 指针。
 
-## 据点工作与固定指派（0.1.54）
+## 据点工作与固定指派（0.1.55）
 
 先读取当前可分配工作对象：
 
@@ -466,6 +466,11 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 不匹配均关闭该路径；组件不存在或不唯一同样拒绝执行。不会猜测结构，也不会自动执行
 反向取消指派。提供 `player_uid` 时仍优先使用对应在线控制器的网络组件，兼容原请求。
 显式提供的 UID 若无法唯一解析为在线控制器会直接拒绝，不会降级到离线路径。
+
+完全离线时，如果网络 RPC 未产生分配，插件会以据点槽中的精确 `IndividualHandle`
+唯一绑定存活的 `PalAIActionCompositeWorker`，严格验证并调用原生
+`RegisterFixedAssignWork(WorkId)`，随后触发一次找工作。只有目标工作的分配角色列表回读到
+同一据点槽才返回成功；动作缺失、不唯一、ABI 不符或回读失败均拒绝。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、
