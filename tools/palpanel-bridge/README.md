@@ -25,7 +25,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.56-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.57-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -51,7 +51,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.56-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.57-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -343,6 +343,13 @@ results now include `fixed_assignable_worker_instance_ids`, computed with the ga
 read-only `IsExistAssignableSlot(handle, true)` for exact workers in the same base. The
 mutation rejects an incompatible station before any RPC, so callers can select a proven
 work/worker pair instead of guessing from runtime work class names.
+
+Version `0.1.57` accepts a validated offline assignment even while the base worker's Pawn
+and AI are dormant. The mutation reports `pending_activation` and keeps the exact guarded
+request in the current server process. Every 30 seconds it retries one pending assignment;
+as soon as base simulation creates the worker AI, the original job changes to `succeeded`
+only after authoritative work readback. Runtime work IDs change on server restart, so a
+still-pending request must be re-read and submitted again after a restart.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with

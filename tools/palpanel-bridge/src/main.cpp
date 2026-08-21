@@ -3675,15 +3675,20 @@ MutationResult execute_base_assign_worker(const MutationRequest& request)
     }
     if (!matched_work) { result.error = "work_id was not found for base_id"; return result; }
     BaseModuleSnapshot before_snapshot;
-    if (!read_assigned_characters(matched_work, before_snapshot, 256) ||
-        before_snapshot.assigned_character_count != request.expected_current_work_count) {
-        result.error = "expected_current_work_count mismatch or getter ABI mismatch";
+    if (!read_assigned_characters(matched_work, before_snapshot, 256)) {
+        result.error = "assigned character getter ABI mismatch";
         return result;
     }
     result.before_json = std::to_string(before_snapshot.assigned_character_count);
     const auto matched_slot_snapshot = describe_object(matched_slot);
     if (assigned_character_present(before_snapshot, matched_slot_snapshot)) {
-        result.error = "worker is already assigned to work_id";
+        result.after_json = result.before_json;
+        result.status = "succeeded";
+        result.rollback_status = "not_needed";
+        return result;
+    }
+    if (before_snapshot.assigned_character_count != request.expected_current_work_count) {
+        result.error = "expected_current_work_count mismatch";
         return result;
     }
     bool fixed_assignable{};
@@ -3792,7 +3797,8 @@ MutationResult execute_base_assign_worker(const MutationRequest& request)
             !input_parameter(register_work_id) || !guid_type(register_work_id) ||
             register_function->GetParmsSize() <= 0 ||
             register_function->GetParmsSize() > 4096) {
-            result.error = "offline worker AI fixed-assignment path unavailable";
+            result.status = "pending_activation";
+            result.error = "base worker simulation is inactive; queued for automatic retry";
             return result;
         }
         FunctionBuffer register_params(register_function);
@@ -3964,7 +3970,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.56");
+        ModVersion = STR("0.1.57");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -3997,7 +4003,13 @@ class PalPanelBridge final : public RC::CppUserModBase
     {
         game_thread_tick_seen_.store(true);
         game_thread_tick_count_.fetch_add(1, std::memory_order_relaxed);
-        last_game_thread_tick_unix_ms_.store(unix_time_ms(), std::memory_order_relaxed);
+        const auto now = unix_time_ms();
+        last_game_thread_tick_unix_ms_.store(now, std::memory_order_relaxed);
+        if (!pending_assignments_.empty() &&
+            now >= last_pending_retry_unix_ms_ + 30000) {
+            last_pending_retry_unix_ms_ = now;
+            retry_pending_assignment();
+        }
         std::string job_id;
         Job job;
         {
@@ -4042,6 +4054,9 @@ class PalPanelBridge final : public RC::CppUserModBase
             try {
                 job.mutation_result = execute_mutation(job.mutation_request);
                 job.status = "completed";
+                if (job.mutation_result.status == "pending_activation") {
+                    pending_assignments_[job_id] = job.mutation_request;
+                }
                 append_log(
                     "mutation operation=" + job.mutation_request.operation +
                     " player_uid=" + job.mutation_request.player_uid +
@@ -4185,6 +4200,30 @@ class PalPanelBridge final : public RC::CppUserModBase
     }
 
   private:
+    void retry_pending_assignment()
+    {
+        if (pending_assignments_.empty()) return;
+        auto pending = pending_assignments_.begin();
+        MutationResult result;
+        try {
+            result = execute_base_assign_worker(pending->second);
+        } catch (...) {
+            result.operation = pending->second.operation;
+            result.status = "failed";
+            result.error = "pending offline assignment retry exception";
+        }
+        if (result.status == "pending_activation") return;
+        {
+            std::scoped_lock lock(jobs_mutex_);
+            const auto job = jobs_.find(pending->first);
+            if (job != jobs_.end()) job->second.mutation_result = result;
+        }
+        append_log(
+            "pending base assignment job=" + pending->first +
+            " status=" + result.status + " error=" + result.error);
+        pending_assignments_.erase(pending);
+    }
+
     const unsigned long long started_at_unix_ms_{unix_time_ms()};
     Config config_{};
     std::atomic<bool> stopping_{false};
@@ -4195,9 +4234,11 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::atomic<unsigned long long> last_game_thread_tick_unix_ms_{0};
     std::atomic<SOCKET> listener_{INVALID_SOCKET};
     std::atomic<unsigned long long> sequence_{0};
+    unsigned long long last_pending_retry_unix_ms_{};
     std::thread worker_{};
     std::mutex jobs_mutex_{};
     std::map<std::string, Job> jobs_{};
+    std::map<std::string, MutationRequest> pending_assignments_{};
 
     bool authorized(const std::string& request) const
     {
@@ -4208,7 +4249,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.56\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.57\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -4221,7 +4262,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.56\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.57\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','

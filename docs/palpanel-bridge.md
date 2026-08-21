@@ -16,7 +16,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.56`
+- PalPanelBridge：`0.1.57`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -64,7 +64,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.56",
+  "bridge_version": "0.1.57",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -432,7 +432,7 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 据点、世界和在线玩家任务统一使用该选择器，每次任务重新解析，不跨 tick 缓存
 UObject 指针。
 
-## 据点工作与固定指派（0.1.56）
+## 据点工作与固定指派（0.1.57）
 
 先读取当前可分配工作对象：
 
@@ -475,6 +475,12 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 `RegisterFixedAssignWork(WorkId)`，随后触发一次找工作。只有目标工作的分配角色列表回读到
 同一据点槽才返回成功；动作缺失、不唯一、ABI 不符或回读失败均拒绝。
 不支持固定指派的工作/帕鲁组合会在调用任何写函数前直接拒绝。
+
+玩家和据点帕鲁 Pawn 均未加载时，接口不要求玩家上线，而是返回
+`mutation_status=pending_activation`。插件在当前服务器进程内保留已完成全部身份与原值
+校验的请求，每 30 秒只重试一个；据点模拟生成目标工人 AI 后自动完成，原 `job_id` 的
+结果会更新为 `succeeded`，仍须以分配角色回读确认。运行时 `work_id` 会随服务器重启
+变化，因此重启时尚未完成的请求不会跨进程猜测恢复，调用方应重新读取 works 后提交。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、
