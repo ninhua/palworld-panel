@@ -59,6 +59,7 @@ enum class JobKind
     Mutation,
     BaseModules,
     BaseWorkers,
+    BaseWorks,
 };
 
 struct MutationRequest
@@ -66,6 +67,10 @@ struct MutationRequest
     std::string operation{};
     bool confirm{};
     std::string player_uid{};
+    std::string base_id{};
+    std::string work_id{};
+    std::string worker_player_uid{};
+    std::int32_t expected_current_work_count{-1};
     std::string instance_id{};
     std::string pal_scope{};
     std::int32_t container_index{-1};
@@ -178,6 +183,7 @@ struct BaseModuleSnapshot
     std::vector<FunctionCandidateSnapshot> functions{};
     std::vector<WorkEntry> work_entries{};
     std::string work_id{};
+    std::string base_id{};
     std::vector<std::string> map_object_ids{};
     std::string work_probe_error{};
     std::int32_t work_assign_info_count{-1};
@@ -1947,6 +1953,19 @@ bool parse_mutation_request(std::string_view input, MutationRequest& request, st
             (request.value_field == "Level" ? request.expected_value < 1 || request.expected_value > 80 || request.value < 1 || request.value > 80 : request.expected_value > 100 || request.value > 100)) {
             error = "invalid pal_set_stats fields"; return false;
         }
+    } else if (request.operation == "base_assign_worker") {
+        if (!json_string(values, "base_id", request.base_id) ||
+            !json_string(values, "work_id", request.work_id) ||
+            !json_string(values, "instance_id", request.instance_id) ||
+            !json_string(values, "worker_player_uid", request.worker_player_uid) ||
+            !json_int(values, "expected_current_work_count", request.expected_current_work_count) ||
+            !normalize_guid(request.base_id) || !normalize_guid(request.work_id) ||
+            !normalize_guid(request.instance_id) ||
+            !normalize_guid(request.worker_player_uid) ||
+            request.expected_current_work_count < 0 ||
+            request.expected_current_work_count > 64) {
+            error = "invalid base_assign_worker fields"; return false;
+        }
     } else { error = "unsupported mutation operation"; return false; }
     return true;
 }
@@ -2150,6 +2169,7 @@ const char* job_kind_name(JobKind kind)
     if (kind == JobKind::Mutation) return "mutation";
     if (kind == JobKind::BaseModules) return "base_modules";
     if (kind == JobKind::BaseWorkers) return "base_workers";
+    if (kind == JobKind::BaseWorks) return "base_works";
     return "game_thread";
 }
 
@@ -2506,7 +2526,9 @@ bool read_work_id(RC::Unreal::UObject* work, std::string& output)
     return output != "00000000000000000000000000000000";
 }
 
-bool read_assigned_characters(RC::Unreal::UObject* work, BaseModuleSnapshot& snapshot)
+bool read_assigned_characters(
+    RC::Unreal::UObject* work, BaseModuleSnapshot& snapshot,
+    std::int32_t max_output = 16)
 {
     auto* character_function = work
                                    ? work->GetFunctionByNameInChain(STR("GetAssignedCharacters"))
@@ -2534,7 +2556,8 @@ bool read_assigned_characters(RC::Unreal::UObject* work, BaseModuleSnapshot& sna
     const auto count = values.Num();
     if (count < 0 || count > 256) return false;
     snapshot.assigned_character_count = count;
-    const auto output_limit = std::min<std::int32_t>(count, 16);
+    const auto output_limit = std::min<std::int32_t>(
+        count, std::clamp<std::int32_t>(max_output, 0, 256));
     for (std::int32_t index = 0; index < output_limit; ++index) {
         auto* slot = character_inner->GetObjectPropertyValue(values.GetRawPtr(index));
         if (!slot || !RC::Unreal::UObject::IsReal(slot)) continue;
@@ -2685,6 +2708,9 @@ void collect_base_modules(Job& job)
         if (!read_work_id(work, work_snapshot.work_id)) {
             work_snapshot.work_probe_error = "GetWorkId ABI mismatch";
         } else {
+            read_guid_property(work,
+                               {STR("BaseCampIdBelongTo"), STR("BaseCampId"), STR("BaseCampID")},
+                               work_snapshot.base_id);
             for (const auto& base : job.base_camps) {
                 for (const auto& module : base.modules) {
                     for (const auto& entry : module.work_entries) {
@@ -2808,6 +2834,47 @@ void collect_base_modules(Job& job)
                 }
             }
         }
+    }
+}
+
+void collect_base_works(Job& job)
+{
+    collect_base_modules(job);
+    if (!job.base_modules_error.empty()) return;
+    std::unordered_set<std::string> base_ids;
+    for (const auto& base : job.base_camps) base_ids.insert(base.base_id);
+    std::vector<BaseModuleSnapshot> filtered;
+    filtered.reserve(job.loaded_work_objects.size());
+    for (auto& work : job.loaded_work_objects) {
+        if (work.work_id.empty() || base_ids.find(work.base_id) == base_ids.end()) continue;
+        work.properties.clear();
+        work.functions.clear();
+        work.work_assign_info_metadata.clear();
+        work.assigned_character_metadata.clear();
+        filtered.emplace_back(std::move(work));
+    }
+    job.loaded_work_objects = std::move(filtered);
+    std::unordered_set<std::string> seen_work_ids;
+    for (const auto& work : job.loaded_work_objects) seen_work_ids.insert(work.work_id);
+    std::vector<RC::Unreal::UObject*> works;
+    std::unordered_set<RC::Unreal::UObject*> seen_objects;
+    append_instances("PalWorkBase", works, seen_objects);
+    for (auto* work : works) {
+        if (!work || job.loaded_work_objects.size() >= 128) continue;
+        BaseModuleSnapshot snapshot{.object = describe_object(work)};
+        if (!read_work_id(work, snapshot.work_id) ||
+            seen_work_ids.find(snapshot.work_id) != seen_work_ids.end() ||
+            !read_guid_property(
+                work, {STR("BaseCampIdBelongTo"), STR("BaseCampId"), STR("BaseCampID")},
+                snapshot.base_id) ||
+            base_ids.find(snapshot.base_id) == base_ids.end()) {
+            continue;
+        }
+        seen_work_ids.insert(snapshot.work_id);
+        if (!read_assigned_characters(work, snapshot)) {
+            snapshot.assigned_character_count = -1;
+        }
+        job.loaded_work_objects.emplace_back(std::move(snapshot));
     }
 }
 
@@ -3325,9 +3392,194 @@ bool passive_call(RC::Unreal::UObject* parameter, const char* name, const std::s
     parameter->ProcessEvent(function, params.data()); return true;
 }
 
+bool assigned_character_present(
+    const BaseModuleSnapshot& snapshot, const ObjectSnapshot& target)
+{
+    return !target.full_name.empty() && std::any_of(
+        snapshot.assigned_characters.begin(), snapshot.assigned_characters.end(),
+        [&](const ObjectSnapshot& assigned) { return assigned.full_name == target.full_name; });
+}
+
+MutationResult execute_base_assign_worker(const MutationRequest& request)
+{
+    MutationResult result;
+    result.operation = request.operation;
+    std::vector<RC::Unreal::UObject*> controllers;
+    std::unordered_set<RC::Unreal::UObject*> seen_controllers;
+    append_instances("PalPlayerController", controllers, seen_controllers);
+    append_instances("BP_PalPlayerController_C", controllers, seen_controllers);
+    RC::Unreal::UObject* caller_controller = nullptr;
+    for (auto* controller : controllers) {
+        auto* state = read_object_property(controller, {STR("PlayerState")});
+        std::string uid;
+        if (!state || !read_player_guid(state, uid) || uid != request.player_uid) continue;
+        if (caller_controller && caller_controller != controller) {
+            result.error = "multiple caller controllers matched player_uid";
+            return result;
+        }
+        caller_controller = controller;
+    }
+    if (!caller_controller) { result.error = "caller controller was not found for player_uid"; return result; }
+
+    auto* transmitter = read_object_property(
+        caller_controller, {STR("Transmitter"), STR("PalTransmitter")});
+    auto* base_camp = read_object_property(
+        transmitter, {STR("BaseCamp"), STR("BaseCampComponent"), STR("NetworkBaseCamp")});
+    auto* rpc = base_camp
+                    ? base_camp->GetFunctionByNameInChain(
+                          STR("RequestFixedAssignWorkInBaseCamp_ToServer"))
+                    : nullptr;
+    if (!base_camp || !rpc || describe_object(base_camp).class_name.find("PalNetworkBaseCampComponent") == std::string::npos) {
+        result.error = "Controller->Transmitter->BaseCamp network component unavailable"; return result;
+    }
+
+    std::vector<RC::Unreal::UObject*> directors;
+    std::unordered_set<RC::Unreal::UObject*> seen_directors;
+    append_instances("PalBaseCampWorkerDirector", directors, seen_directors);
+    RC::Unreal::UObject* matched_director = nullptr;
+    RC::Unreal::UObject* matched_slot = nullptr;
+    for (auto* director : directors) {
+        std::string director_base_id;
+        if (!read_guid_property(director,
+                                {STR("BaseCampIdBelongTo"), STR("BaseCampId"), STR("BaseCampID")},
+                                director_base_id) || director_base_id != request.base_id) continue;
+        auto* container = read_object_property(director, {STR("CharacterContainer")});
+        auto* slots_property = RC::Unreal::CastField<RC::Unreal::FArrayProperty>(
+            find_property(container, {STR("SlotArray")}));
+        auto* slots_inner = slots_property
+                                ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(
+                                      slots_property->GetInner())
+                                : nullptr;
+        if (!container || !slots_property || !slots_inner) continue;
+        RC::Unreal::FScriptArrayHelper_InContainer slots(slots_property, container);
+        const auto slot_count = slots.Num();
+        if (slot_count < 0 || slot_count > 64) continue;
+        for (std::int32_t index = 0; index < slot_count; ++index) {
+            auto* slot = slots_inner->GetObjectPropertyValue(slots.GetRawPtr(index));
+            std::string worker_player_uid;
+            std::string worker_instance_id;
+            if (!slot || !RC::Unreal::UObject::IsReal(slot) ||
+                !read_nested_guid_property(
+                    slot, {STR("ReplicateHandleID")},
+                    {STR("PlayerUId"), STR("PlayerUID")}, worker_player_uid) ||
+                !read_nested_guid_property(
+                    slot, {STR("ReplicateHandleID")},
+                    {STR("InstanceId"), STR("InstanceID")}, worker_instance_id) ||
+                worker_player_uid != request.worker_player_uid ||
+                worker_instance_id != request.instance_id) {
+                continue;
+            }
+            if (matched_director && matched_director != director) {
+                result.error = "multiple worker directors matched base_id and worker slot";
+                return result;
+            }
+            if (matched_slot && matched_slot != slot) {
+                result.error = "multiple worker slots matched worker_player_uid and instance_id";
+                return result;
+            }
+            matched_director = director;
+            matched_slot = slot;
+        }
+    }
+    if (!matched_director || !matched_slot) {
+        result.error = "worker slot was not found for base_id";
+        return result;
+    }
+
+    std::vector<RC::Unreal::UObject*> works;
+    std::unordered_set<RC::Unreal::UObject*> seen_works;
+    append_instances("PalWorkBase", works, seen_works);
+    RC::Unreal::UObject* matched_work = nullptr;
+    for (auto* work : works) {
+        std::string actual_work_id;
+        if (!read_work_id(work, actual_work_id) || actual_work_id != request.work_id) continue;
+        std::string work_base_id;
+        if (!read_guid_property(
+                work, {STR("BaseCampIdBelongTo"), STR("BaseCampId"), STR("BaseCampID")},
+                work_base_id) ||
+            work_base_id != request.base_id) {
+            continue;
+        }
+        if (matched_work && matched_work != work) { result.error = "multiple work objects matched work_id"; return result; }
+        matched_work = work;
+    }
+    if (!matched_work) { result.error = "work_id was not found for base_id"; return result; }
+    BaseModuleSnapshot before_snapshot;
+    if (!read_assigned_characters(matched_work, before_snapshot, 256) ||
+        before_snapshot.assigned_character_count != request.expected_current_work_count) {
+        result.error = "expected_current_work_count mismatch or getter ABI mismatch";
+        return result;
+    }
+    result.before_json = std::to_string(before_snapshot.assigned_character_count);
+    const auto matched_slot_snapshot = describe_object(matched_slot);
+    if (assigned_character_present(before_snapshot, matched_slot_snapshot)) {
+        result.error = "worker is already assigned to work_id";
+        return result;
+    }
+
+    auto* base_id_property = RC::Unreal::CastField<RC::Unreal::FStructProperty>(
+        rpc->FindProperty(RC::Unreal::FName(STR("BaseCampId"), RC::Unreal::FNAME_Find)));
+    auto* work_id_property = RC::Unreal::CastField<RC::Unreal::FStructProperty>(
+        rpc->FindProperty(RC::Unreal::FName(STR("WorkId"), RC::Unreal::FNAME_Find)));
+    auto* individual_property = RC::Unreal::CastField<RC::Unreal::FStructProperty>(
+        rpc->FindProperty(RC::Unreal::FName(STR("IndividualId"), RC::Unreal::FNAME_Find)));
+    auto* individual_struct = individual_property ? individual_property->GetStruct().Get() : nullptr;
+    auto* source_individual_property = RC::Unreal::CastField<RC::Unreal::FStructProperty>(
+        find_property(matched_slot, {STR("ReplicateHandleID")}));
+    auto* source_individual_struct = source_individual_property
+                                         ? source_individual_property->GetStruct().Get()
+                                         : nullptr;
+    const auto guid_type = [](RC::Unreal::FStructProperty* property) {
+        return property && property->GetStruct().Get() &&
+               RC::to_utf8_string(property->GetStruct()->GetFullName()) ==
+                   "ScriptStruct /Script/CoreUObject.Guid" &&
+               property->GetSize() == static_cast<std::int32_t>(sizeof(PlayerGuid));
+    };
+    if (rpc->GetReturnProperty() || !exact_parameter_count(rpc, 3) ||
+        !input_parameter(base_id_property) || !input_parameter(work_id_property) ||
+        !input_parameter(individual_property) || !guid_type(base_id_property) ||
+        !guid_type(work_id_property) || !individual_struct ||
+        !source_individual_property || !source_individual_struct ||
+        RC::to_utf8_string(individual_struct->GetFullName()) !=
+            "ScriptStruct /Script/Pal.PalInstanceID" ||
+        RC::to_utf8_string(source_individual_struct->GetFullName()) !=
+            "ScriptStruct /Script/Pal.PalInstanceID" ||
+        individual_property->GetSize() != 48 || source_individual_property->GetSize() != 48 ||
+        rpc->GetParmsSize() <= 0 || rpc->GetParmsSize() > 4096) {
+        result.error = "RequestFixedAssignWorkInBaseCamp_ToServer ABI mismatch";
+        return result;
+    }
+    PlayerGuid base_guid{}, work_guid{};
+    if (std::sscanf(request.base_id.c_str(), "%8X%8X%8X%8X", &base_guid.a, &base_guid.b, &base_guid.c, &base_guid.d) != 4 ||
+        std::sscanf(request.work_id.c_str(), "%8X%8X%8X%8X", &work_guid.a, &work_guid.b, &work_guid.c, &work_guid.d) != 4) {
+        result.error = "GUID conversion failed"; return result;
+    }
+    FunctionBuffer params(rpc);
+    base_id_property->CopyCompleteValue(base_id_property->ContainerPtrToValuePtr<void>(params.data()), &base_guid);
+    work_id_property->CopyCompleteValue(work_id_property->ContainerPtrToValuePtr<void>(params.data()), &work_guid);
+    auto* individual_value = individual_property->ContainerPtrToValuePtr<void>(params.data());
+    source_individual_property->CopyCompleteValue(
+        individual_value, source_individual_property->ContainerPtrToValuePtr<void>(matched_slot));
+    base_camp->ProcessEvent(rpc, params.data());
+    BaseModuleSnapshot after_snapshot;
+    if (!read_assigned_characters(matched_work, after_snapshot, 256)) {
+        result.error = "post-RPC assigned character getter ABI mismatch";
+        return result;
+    }
+    result.after_json = std::to_string(after_snapshot.assigned_character_count);
+    if (!assigned_character_present(after_snapshot, matched_slot_snapshot)) {
+        result.error = "RPC did not verify worker assignment";
+        return result;
+    }
+    result.status = "succeeded";
+    result.rollback_status = "not_needed";
+    return result;
+}
+
 MutationResult execute_mutation(const MutationRequest& request)
 {
     MutationResult result; result.operation = request.operation;
+    if (request.operation == "base_assign_worker") return execute_base_assign_worker(request);
     auto* player_state = find_player_state_by_uid(request.player_uid);
     if (!player_state) { result.error = "online player_uid was not found"; return result; }
     if (request.operation == "item_set_count") {
@@ -3459,7 +3711,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.52");
+        ModVersion = STR("0.1.53");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -3524,6 +3776,13 @@ class PalPanelBridge final : public RC::CppUserModBase
                 collect_base_workers(job);
             } catch (...) {
                 job.base_modules_error = "base worker probe exception";
+                job.status = "failed";
+            }
+        } else if (job.kind == JobKind::BaseWorks) {
+            try {
+                collect_base_works(job);
+            } catch (...) {
+                job.base_modules_error = "base work probe exception";
                 job.status = "failed";
             }
         } else if (job.kind == JobKind::Mutation) {
@@ -3696,7 +3955,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.52\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.53\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -3709,7 +3968,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.52\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.53\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -3732,8 +3991,10 @@ class PalPanelBridge final : public RC::CppUserModBase
                                             : kind == JobKind::BaseModules
                                                   ? "bases_"
                                                   : kind == JobKind::BaseWorkers
-                                                        ? "workers_"
-                                                        : "probe_";
+                                                  ? "workers_"
+                                                  : kind == JobKind::BaseWorks
+                                                        ? "works_"
+                                                  : "probe_";
         const auto id = std::string(prefix) + std::to_string(now) + "_" + std::to_string(++sequence_);
         std::scoped_lock lock(jobs_mutex_);
         if (jobs_.size() >= 64) {
@@ -3991,6 +4252,31 @@ class PalPanelBridge final : public RC::CppUserModBase
                 const auto& task = job.base_worker_tasks[task_index].object;
                 body << "{\"name\":\"" << json_escape(task.name)
                      << "\",\"class_name\":\"" << json_escape(task.class_name) << "\"}";
+            }
+            body << ']';
+        } else if (job.kind == JobKind::BaseWorks) {
+            body << ",\"error\":\"" << json_escape(job.base_modules_error)
+                 << "\",\"base_ids\":[";
+            for (size_t base_index = 0; base_index < job.base_camps.size(); ++base_index) {
+                if (base_index) body << ',';
+                body << '\"' << json_escape(job.base_camps[base_index].base_id) << '\"';
+            }
+            body << "],\"work_count\":" << job.loaded_work_objects.size()
+                 << ",\"works\":[";
+            for (size_t work_index = 0; work_index < job.loaded_work_objects.size(); ++work_index) {
+                if (work_index) body << ',';
+                const auto& work = job.loaded_work_objects[work_index];
+                body << "{\"work_id\":\"" << json_escape(work.work_id)
+                     << "\",\"class\":\"" << json_escape(work.object.class_name)
+                     << "\",\"name\":\"" << json_escape(work.object.name)
+                     << "\",\"base_id\":\"" << json_escape(work.base_id)
+                     << "\",\"map_object_ids\":[";
+                for (size_t map_index = 0; map_index < work.map_object_ids.size(); ++map_index) {
+                    if (map_index) body << ',';
+                    body << '\"' << json_escape(work.map_object_ids[map_index]) << '\"';
+                }
+                body << "],\"assigned_character_count\":"
+                     << work.assigned_character_count << '}';
             }
             body << ']';
         } else if (job.kind == JobKind::BaseModules) {
@@ -4281,6 +4567,12 @@ class PalPanelBridge final : public RC::CppUserModBase
                        : "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
         } else if (first == "POST /v1/bases/workers HTTP/1.1") {
             const auto id = enqueue(JobKind::BaseWorkers);
+            status = id.empty() ? 503 : 202;
+            body = id.empty()
+                       ? "{\"ok\":false,\"error\":{\"code\":\"job_queue_full\",\"message\":\"all job slots are queued or running\"}}"
+                       : "{\"ok\":true,\"job_id\":\"" + id + "\",\"status\":\"queued\"}";
+        } else if (first == "POST /v1/bases/works HTTP/1.1") {
+            const auto id = enqueue(JobKind::BaseWorks);
             status = id.empty() ? 503 : 202;
             body = id.empty()
                        ? "{\"ok\":false,\"error\":{\"code\":\"job_queue_full\",\"message\":\"all job slots are queued or running\"}}"

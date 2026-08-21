@@ -8,14 +8,15 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 ```
 
 插件不开放任意 UObject 调用。修改必须带确认标记、目标身份和预期原值，写后立即
-回读；不一致时尝试恢复原值。正式修改前仍必须先备份世界存档。
+回读；仅在存在已确认安全逆操作时尝试恢复原值，否则关闭路径且不猜测反向调用。
+正式修改前仍必须先备份世界存档。
 
 后续功能优先级、完成标准和 GitHub Actions 构建部署门禁统一记录在
 [`development/palpanel-bridge-roadmap.md`](development/palpanel-bridge-roadmap.md)。
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.52`
+- PalPanelBridge：`0.1.53`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -63,7 +64,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.52",
+  "bridge_version": "0.1.53",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -430,6 +431,38 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 具有有效 `GameState` 的实例；Generated 路径被硬过滤，失败时不回退任意第一个 World。
 据点、世界和在线玩家任务统一使用该选择器，每次任务重新解析，不跨 tick 缓存
 UObject 指针。
+
+## 据点工作与固定指派（0.1.53）
+
+先读取当前可分配工作对象：
+
+```text
+POST http://127.0.0.1:18083/v1/bases/works
+GET  http://127.0.0.1:18083/v1/jobs/<job_id>
+```
+
+结果包含 `base_ids`，以及每个有界工作对象的 `work_id`、运行时类名、`base_id`、
+`map_object_ids` 和 `assigned_character_count`。固定指派请求示例：
+
+```json
+{
+  "operation": "base_assign_worker",
+  "confirm": true,
+  "player_uid": "当前在线调用者的32位玩家UID",
+  "base_id": "32位据点GUID",
+  "work_id": "32位工作GUID",
+  "worker_player_uid": "据点帕鲁槽返回的32位owner UID，可为全零",
+  "instance_id": "32位据点帕鲁实例ID",
+  "expected_current_work_count": 0
+}
+```
+
+该操作只调用游戏原生
+`RequestFixedAssignWorkInBaseCamp_ToServer(BaseCampId, WorkId, IndividualId)`。调用前会唯一
+核对在线玩家控制器、据点 WorkerDirector、帕鲁槽、工作对象及当前分配数量，并严格
+验证三个反射参数的名称、类型与尺寸；调用后只有
+`GetAssignedCharacters` 立即返回目标槽才报告 `succeeded`。ABI、身份、原值或回读任一
+不匹配均关闭该路径，不会猜测结构，也不会自动执行反向取消指派。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、

@@ -1,5 +1,20 @@
 # 功能移植更新记录
 
+## 2026-08-21：PalPanelBridge 0.1.53 据点工作固定指派
+
+- 新增精简只读 `POST /v1/bases/works`，返回当前据点 ID，以及有界工作对象的
+  `work_id`、运行时类、`base_id`、设施对象 ID 和已分配角色数量；详细反射信息仍留在
+  `/v1/bases/modules`。
+- 新增受限 `base_assign_worker` 游戏线程 mutation。请求必须提供在线调用者 UID、据点/
+  工作/帕鲁 GUID、帕鲁槽 owner UID、预期当前分配数量及 `confirm=true`。
+- 使用游戏原生 `RequestFixedAssignWorkInBaseCamp_ToServer`，调用前唯一核对在线控制器、
+  `PalNetworkBaseCampComponent`、WorkerDirector、帕鲁槽和工作对象，并严格校验反射 ABI；
+  调用后仅在 `GetAssignedCharacters` 立即回读到目标槽时报告成功。
+- 不猜测 `PalWorkAssignRequirementParameter`，不直接写任务数组；回读未确认时不自动调用
+  unassign，避免异步成功后被错误撤销。
+- 版本、README、接口文档和中文更新日志一次性同步为 `0.1.53`；不在本地编译或测试，
+  仅由 GitHub Actions 构建。构建、部署和实机响应待 CI 后补充。
+
 ## 2026-08-20：PalPanelBridge 0.1.52 主世界选择修复
 
 - 复现服务器启动后 `/v1/bases/workers` 返回

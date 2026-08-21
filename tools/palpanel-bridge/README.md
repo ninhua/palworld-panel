@@ -7,7 +7,8 @@ localhost HTTP -> bounded job queue -> UE4SS on_update game-thread callback
 ```
 
 It does not expose arbitrary UObject calls. Mutation requests require explicit confirmation,
-target identity, expected current values, post-write verification, and rollback on mismatch.
+target identity, expected current values, and post-write verification. A mismatch is rolled back
+only when the operation has a confirmed safe inverse; otherwise it fails closed without guessing.
 
 For the Chinese installation, diagnostic-console examples, and troubleshooting
 matrix, see [`docs/palpanel-bridge.md`](../../docs/palpanel-bridge.md).
@@ -24,7 +25,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.52-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.53-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -50,7 +51,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.52-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.53-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -80,6 +81,7 @@ curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/player
 curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/probe/game-thread
 curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/bases/modules
 curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/bases/workers
+curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/bases/works
 curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
   --data @mutation.json http://127.0.0.1:18083/v1/mutations
 curl -H "Authorization: Bearer <token>" http://127.0.0.1:18083/v1/jobs/<job_id>
@@ -313,6 +315,13 @@ selection that requires a Pal main-world path, rejects generated grid sub-worlds
 prefers a valid GameState. It never falls back to the first arbitrary World. Base,
 world, and online-player probes share the selector; no World pointer is cached across
 game-thread ticks.
+
+Version `0.1.53` adds compact `POST /v1/bases/works` results and the guarded
+`base_assign_worker` mutation. The mutation requires an online caller, exact base/work/
+worker GUIDs, the expected assigned-character count, and `confirm=true`. It resolves the
+caller's `PalNetworkBaseCampComponent`, strictly validates the native fixed-assignment RPC
+ABI, invokes it on the game thread, and reports success only when
+`GetAssignedCharacters` immediately confirms the requested worker slot.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with
