@@ -191,6 +191,7 @@ struct BaseModuleSnapshot
     std::int32_t assigned_character_count{-1};
     std::vector<ObjectSnapshot> assigned_characters{};
     std::vector<PropertyCandidateSnapshot> assigned_character_metadata{};
+    std::vector<std::string> fixed_assignable_worker_instance_ids{};
 };
 
 struct BaseCampSnapshot
@@ -2575,6 +2576,47 @@ bool read_assigned_characters(
     return true;
 }
 
+bool is_fixed_assignable_for_handle(
+    RC::Unreal::UObject* work, RC::Unreal::UObject* handle, bool& assignable)
+{
+    assignable = false;
+    auto* function = work
+                         ? work->GetFunctionByNameInChain(STR("IsExistAssignableSlot"))
+                         : nullptr;
+    auto* handle_property = function
+                                ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(
+                                      function->FindProperty(RC::Unreal::FName(
+                                          STR("AssignIndividualHandle"),
+                                          RC::Unreal::FNAME_Find)))
+                                : nullptr;
+    auto* fixed_property = function
+                               ? RC::Unreal::CastField<RC::Unreal::FBoolProperty>(
+                                     function->FindProperty(RC::Unreal::FName(
+                                         STR("bByFixedAssign"), RC::Unreal::FNAME_Find)))
+                               : nullptr;
+    auto* return_property = function
+                                ? RC::Unreal::CastField<RC::Unreal::FBoolProperty>(
+                                      function->GetReturnProperty())
+                                : nullptr;
+    auto* handle_class = handle_property ? handle_property->GetPropertyClass().Get() : nullptr;
+    if (!handle || !RC::Unreal::UObject::IsReal(handle) || !function ||
+        !handle_property || !fixed_property || !return_property || !handle_class ||
+        RC::to_utf8_string(handle_class->GetFullName()) !=
+            "Class /Script/Pal.PalIndividualCharacterHandle" ||
+        !input_parameter(handle_property) || !input_parameter(fixed_property) ||
+        !return_parameter(return_property) || !exact_parameter_count(function, 3) ||
+        function->GetParmsSize() <= 0 || function->GetParmsSize() > 4096) {
+        return false;
+    }
+    FunctionBuffer params(function);
+    handle_property->SetObjectPropertyValue(
+        handle_property->ContainerPtrToValuePtr<void>(params.data()), handle);
+    fixed_property->SetPropertyValueInContainer(params.data(), true);
+    work->ProcessEvent(function, params.data());
+    assignable = return_property->GetPropertyValueInContainer(params.data());
+    return true;
+}
+
 bool read_work_assignment_probe(RC::Unreal::UObject* work, BaseModuleSnapshot& snapshot)
 {
     auto* info_function = work
@@ -2881,6 +2923,64 @@ void collect_base_works(Job& job)
             snapshot.assigned_character_count = -1;
         }
         job.loaded_work_objects.emplace_back(std::move(snapshot));
+    }
+    struct WorkerHandle
+    {
+        std::string base_id{};
+        std::string instance_id{};
+        RC::Unreal::UObject* handle{};
+    };
+    std::vector<WorkerHandle> worker_handles;
+    std::vector<RC::Unreal::UObject*> directors;
+    std::unordered_set<RC::Unreal::UObject*> seen_directors;
+    append_instances("PalBaseCampWorkerDirector", directors, seen_directors);
+    for (auto* director : directors) {
+        std::string base_id;
+        if (!read_guid_property(
+                director, {STR("BaseCampIdBelongTo"), STR("BaseCampId"), STR("BaseCampID")},
+                base_id)) {
+            continue;
+        }
+        auto* container = read_object_property(director, {STR("CharacterContainer")});
+        auto* slots_property = RC::Unreal::CastField<RC::Unreal::FArrayProperty>(
+            find_property(container, {STR("SlotArray")}));
+        auto* slots_inner = slots_property
+                                ? RC::Unreal::CastField<RC::Unreal::FObjectPropertyBase>(
+                                      slots_property->GetInner())
+                                : nullptr;
+        if (!container || !slots_property || !slots_inner) continue;
+        RC::Unreal::FScriptArrayHelper_InContainer slots(slots_property, container);
+        const auto count = slots.Num();
+        if (count < 0 || count > 64) continue;
+        for (std::int32_t index = 0; index < count; ++index) {
+            auto* slot = slots_inner->GetObjectPropertyValue(slots.GetRawPtr(index));
+            std::string instance_id;
+            auto* handle = read_object_property(slot, {STR("Handle")});
+            if (!handle || !read_nested_guid_property(
+                               slot, {STR("ReplicateHandleID")},
+                               {STR("InstanceId"), STR("InstanceID")}, instance_id)) {
+                continue;
+            }
+            worker_handles.push_back(WorkerHandle{base_id, instance_id, handle});
+        }
+    }
+    for (auto* work : works) {
+        std::string work_id;
+        if (!read_work_id(work, work_id)) continue;
+        auto snapshot = std::find_if(
+            job.loaded_work_objects.begin(), job.loaded_work_objects.end(),
+            [&](const BaseModuleSnapshot& candidate) { return candidate.work_id == work_id; });
+        if (snapshot == job.loaded_work_objects.end()) continue;
+        for (const auto& worker : worker_handles) {
+            if (worker.base_id != snapshot->base_id ||
+                snapshot->fixed_assignable_worker_instance_ids.size() >= 64) {
+                continue;
+            }
+            bool assignable{};
+            if (is_fixed_assignable_for_handle(work, worker.handle, assignable) && assignable) {
+                snapshot->fixed_assignable_worker_instance_ids.emplace_back(worker.instance_id);
+            }
+        }
     }
 }
 
@@ -3586,6 +3686,13 @@ MutationResult execute_base_assign_worker(const MutationRequest& request)
         result.error = "worker is already assigned to work_id";
         return result;
     }
+    bool fixed_assignable{};
+    auto* matched_handle = read_object_property(matched_slot, {STR("Handle")});
+    if (!is_fixed_assignable_for_handle(matched_work, matched_handle, fixed_assignable) ||
+        !fixed_assignable) {
+        result.error = "work is not fixed-assignable for the selected base worker";
+        return result;
+    }
 
     auto* base_id_property = RC::Unreal::CastField<RC::Unreal::FStructProperty>(
         rpc->FindProperty(RC::Unreal::FName(STR("BaseCampId"), RC::Unreal::FNAME_Find)));
@@ -3639,7 +3746,6 @@ MutationResult execute_base_assign_worker(const MutationRequest& request)
     result.after_json = std::to_string(after_snapshot.assigned_character_count);
     if (!assigned_character_present(after_snapshot, matched_slot_snapshot) &&
         offline_authority) {
-        auto* matched_handle = read_object_property(matched_slot, {STR("Handle")});
         std::vector<RC::Unreal::UObject*> actions;
         std::unordered_set<RC::Unreal::UObject*> seen_actions;
         append_instances("PalAIActionCompositeWorker", actions, seen_actions);
@@ -3858,7 +3964,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.55");
+        ModVersion = STR("0.1.56");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -4102,7 +4208,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.55\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.56\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -4115,7 +4221,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.55\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.56\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
@@ -4423,7 +4529,17 @@ class PalPanelBridge final : public RC::CppUserModBase
                     body << '\"' << json_escape(work.map_object_ids[map_index]) << '\"';
                 }
                 body << "],\"assigned_character_count\":"
-                     << work.assigned_character_count << '}';
+                     << work.assigned_character_count
+                     << ",\"fixed_assignable_worker_instance_ids\":[";
+                for (size_t worker_index = 0;
+                     worker_index < work.fixed_assignable_worker_instance_ids.size();
+                     ++worker_index) {
+                    if (worker_index) body << ',';
+                    body << '\"'
+                         << json_escape(work.fixed_assignable_worker_instance_ids[worker_index])
+                         << '\"';
+                }
+                body << "]}";
             }
             body << ']';
         } else if (job.kind == JobKind::BaseModules) {

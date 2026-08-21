@@ -16,7 +16,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.55`
+- PalPanelBridge：`0.1.56`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -64,7 +64,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.55",
+  "bridge_version": "0.1.56",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -432,7 +432,7 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 据点、世界和在线玩家任务统一使用该选择器，每次任务重新解析，不跨 tick 缓存
 UObject 指针。
 
-## 据点工作与固定指派（0.1.55）
+## 据点工作与固定指派（0.1.56）
 
 先读取当前可分配工作对象：
 
@@ -442,7 +442,10 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 ```
 
 结果包含 `base_ids`，以及每个有界工作对象的 `work_id`、运行时类名、`base_id`、
-`map_object_ids` 和 `assigned_character_count`。固定指派请求示例：
+`map_object_ids`、`assigned_character_count` 和
+`fixed_assignable_worker_instance_ids`。最后一个字段由游戏原生只读
+`IsExistAssignableSlot(handle, true)` 按同据点工人逐一计算；固定指派前必须先确认目标
+帕鲁实例 ID 出现在该数组中。固定指派请求示例：
 
 ```json
 {
@@ -471,6 +474,7 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 唯一绑定存活的 `PalAIActionCompositeWorker`，严格验证并调用原生
 `RegisterFixedAssignWork(WorkId)`，随后触发一次找工作。只有目标工作的分配角色列表回读到
 同一据点槽才返回成功；动作缺失、不唯一、ABI 不符或回读失败均拒绝。
+不支持固定指派的工作/帕鲁组合会在调用任何写函数前直接拒绝。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、

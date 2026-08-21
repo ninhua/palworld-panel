@@ -1,5 +1,18 @@
 # 功能移植更新记录
 
+## 2026-08-21：PalPanelBridge 0.1.56 固定指派原生预检
+
+- 0.1.55 由 `deploy.py` 完成 Action `32454711486` 构建、SHA256
+  `61a546d7d45e271c2fe06dcf3587494c336293fa445c0515b66c14bd1e0ac5db` 校验、部署、
+  重启；`2026-08-21T14:33:41.942+08:00` 健康检查返回 `bridge_version=0.1.55`。
+- 离线读取仍为 1 个据点、1 只阿努比斯；随机选择的 `PalWorkCollectResource` 返回
+  `offline worker AI fixed-assignment path unavailable`。仅按工作类名不能证明该目标支持
+  固定指派，因此停止继续猜目标。
+- `/v1/bases/works` 新增 `fixed_assignable_worker_instance_ids`，对同据点每个工人 Handle
+  调用原生只读 `IsExistAssignableSlot(handle, true)`；面板可直接选择已验证兼容组合。
+- mutation 在任何写调用前重复同一预检，不兼容时安全拒绝；其余身份、ABI、线程和回读
+  门禁保持不变。不在本地编译测试，仅交由对应 GitHub Actions 和 `deploy.py` 验证。
+
 ## 2026-08-21：PalPanelBridge 0.1.55 离线工人 AI 固定指派
 
 - 0.1.54 实机离线验证：Action `32453642469`、SHA256
