@@ -16,7 +16,7 @@ PalPanel 后端 HTTP → PalPanelBridge → UE4SS on_update 游戏线程
 
 ## 兼容版本
 
-- PalPanelBridge：`0.1.53`
+- PalPanelBridge：`0.1.54`
 - UE4SS Git SHA：`c838a8acaade1a0f860bdf249f039e58f4e10088`
 - UE4SS 构建配置：`Game__Shipping__Win64`
 - 默认监听：`127.0.0.1:18083`
@@ -64,7 +64,7 @@ http://127.0.0.1:18083/v1/health
 ```json
 {
   "ok": true,
-  "bridge_version": "0.1.53",
+  "bridge_version": "0.1.54",
   "ue4ss_loaded": true,
   "configured": true,
   "unreal_initialized": true,
@@ -432,7 +432,7 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 据点、世界和在线玩家任务统一使用该选择器，每次任务重新解析，不跨 tick 缓存
 UObject 指针。
 
-## 据点工作与固定指派（0.1.53）
+## 据点工作与固定指派（0.1.54）
 
 先读取当前可分配工作对象：
 
@@ -448,7 +448,6 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 {
   "operation": "base_assign_worker",
   "confirm": true,
-  "player_uid": "当前在线调用者的32位玩家UID",
   "base_id": "32位据点GUID",
   "work_id": "32位工作GUID",
   "worker_player_uid": "据点帕鲁槽返回的32位owner UID，可为全零",
@@ -457,12 +456,16 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 }
 ```
 
-该操作只调用游戏原生
+`player_uid` 为可选兼容字段；不提供时不要求任何玩家在线。插件先通过
+`PalUtility.GetNetworkTransmitter` 解析服务端 World 的网络发射器，失败时才从已加载对象
+中查找唯一存活且非默认的据点网络组件。该操作只调用游戏原生
 `RequestFixedAssignWorkInBaseCamp_ToServer(BaseCampId, WorkId, IndividualId)`。调用前会唯一
-核对在线玩家控制器、据点 WorkerDirector、帕鲁槽、工作对象及当前分配数量，并严格
-验证三个反射参数的名称、类型与尺寸；调用后只有
+核对服务端 `PalNetworkBaseCampComponent`、据点 WorkerDirector、
+帕鲁槽、工作对象及当前分配数量，并严格验证三个反射参数的名称、类型与尺寸；调用后只有
 `GetAssignedCharacters` 立即返回目标槽才报告 `succeeded`。ABI、身份、原值或回读任一
-不匹配均关闭该路径，不会猜测结构，也不会自动执行反向取消指派。
+不匹配均关闭该路径；组件不存在或不唯一同样拒绝执行。不会猜测结构，也不会自动执行
+反向取消指派。提供 `player_uid` 时仍优先使用对应在线控制器的网络组件，兼容原请求。
+显式提供的 UID 若无法唯一解析为在线控制器会直接拒绝，不会降级到离线路径。
 
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、

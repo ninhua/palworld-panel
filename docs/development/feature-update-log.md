@@ -1,5 +1,18 @@
 # 功能移植更新记录
 
+## 2026-08-21：PalPanelBridge 0.1.54 离线据点工作指派
+
+- `base_assign_worker` 不再强制要求在线玩家；`player_uid` 改为可选兼容字段。
+- 无在线控制器时，先调用 `PalUtility.GetNetworkTransmitter` 获取服务端 World 发射器；
+  若不可用，再从已加载对象中只接受唯一、存活、非默认对象且暴露原生固定指派 RPC 的
+  `PalNetworkBaseCampComponent`；候选为零或多个时安全拒绝，不猜测目标。
+- 保留据点、工作、帕鲁槽、owner/实例 GUID、预期分配数量、反射 ABI、游戏线程及
+  `GetAssignedCharacters` 回读验证，未确认成功时不报告成功。
+- 显式提供 `player_uid` 时仍要求唯一在线控制器；身份解析失败直接拒绝，不会静默降级
+  为全局离线权限。
+- README、接口文档、版本号和中文日志一次性同步；不在本地编译或测试，仅由对应
+  GitHub Actions 构建，再由 `deploy.py` 等待结果、校验、部署、重启并验证。
+
 ## 2026-08-21：PalPanelBridge 0.1.53 据点工作固定指派
 
 - 新增精简只读 `POST /v1/bases/works`，返回当前据点 ID，以及有界工作对象的

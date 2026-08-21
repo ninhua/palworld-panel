@@ -25,7 +25,7 @@ organization invitation, and add a read-capable personal access token as the
 repository Actions secret `UEPSEUDO_TOKEN`.
 
 Run the `PalPanelBridge build` workflow. It produces
-`PalPanelBridge-v0.1.53-ue4ss-c838a8ac.zip`, containing the complete
+`PalPanelBridge-v0.1.54-ue4ss-c838a8ac.zip`, containing the complete
 `PalPanelBridge` mod directory, configuration, documentation, license, and
 SHA-256 checksum. The token used to fetch the SDK is not included in the
 package.
@@ -51,7 +51,7 @@ build/artifact/PalPanelBridge/dlls/main.dll
 
 ## Install the server package
 
-1. Extract `PalPanelBridge-v0.1.53-ue4ss-c838a8ac.zip`.
+1. Extract `PalPanelBridge-v0.1.54-ue4ss-c838a8ac.zip`.
 2. Copy the extracted `PalPanelBridge` directory into
    `Pal/Binaries/Win64/ue4ss/Mods/`.
 3. Edit `PalPanelBridge/config.ini` and replace the placeholder token.
@@ -322,6 +322,15 @@ worker GUIDs, the expected assigned-character count, and `confirm=true`. It reso
 caller's `PalNetworkBaseCampComponent`, strictly validates the native fixed-assignment RPC
 ABI, invokes it on the game thread, and reports success only when
 `GetAssignedCharacters` immediately confirms the requested worker slot.
+
+Version `0.1.54` makes the caller `player_uid` optional for `base_assign_worker`. When no
+online controller is available, it first asks `PalUtility.GetNetworkTransmitter` for the
+server World transmitter, then falls back to the single live non-default
+`PalNetworkBaseCampComponent`. It invokes the same guarded native RPC. Zero or multiple
+fallback components fail closed; all base/work/worker identity, expected-count, ABI,
+game-thread, and post-readback checks remain mandatory.
+If `player_uid` is explicitly supplied, it must still resolve to exactly one online caller;
+the request never silently falls back to offline authority after caller validation fails.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with

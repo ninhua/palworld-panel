@@ -1903,7 +1903,13 @@ bool parse_mutation_request(std::string_view input, MutationRequest& request, st
     if (!json_string(values, "operation", request.operation) || !json_bool(values, "confirm", request.confirm) || !request.confirm) {
         error = "operation and confirm=true are required"; return false;
     }
-    if (!json_string(values, "player_uid", request.player_uid) || !normalize_guid(request.player_uid)) {
+    const auto player_uid = values.find("player_uid");
+    if (player_uid != values.end() &&
+        (!json_string(values, "player_uid", request.player_uid) ||
+         !normalize_guid(request.player_uid))) {
+        error = "player_uid must be a 32-digit hex GUID when provided"; return false;
+    }
+    if (request.operation != "base_assign_worker" && request.player_uid.empty()) {
         error = "player_uid must be a 32-digit hex GUID"; return false;
     }
     if (request.operation == "item_set_count") {
@@ -3404,33 +3410,96 @@ MutationResult execute_base_assign_worker(const MutationRequest& request)
 {
     MutationResult result;
     result.operation = request.operation;
-    std::vector<RC::Unreal::UObject*> controllers;
-    std::unordered_set<RC::Unreal::UObject*> seen_controllers;
-    append_instances("PalPlayerController", controllers, seen_controllers);
-    append_instances("BP_PalPlayerController_C", controllers, seen_controllers);
-    RC::Unreal::UObject* caller_controller = nullptr;
-    for (auto* controller : controllers) {
-        auto* state = read_object_property(controller, {STR("PlayerState")});
-        std::string uid;
-        if (!state || !read_player_guid(state, uid) || uid != request.player_uid) continue;
-        if (caller_controller && caller_controller != controller) {
-            result.error = "multiple caller controllers matched player_uid";
+    RC::Unreal::UObject* base_camp = nullptr;
+    if (!request.player_uid.empty()) {
+        std::vector<RC::Unreal::UObject*> controllers;
+        std::unordered_set<RC::Unreal::UObject*> seen_controllers;
+        append_instances("PalPlayerController", controllers, seen_controllers);
+        append_instances("BP_PalPlayerController_C", controllers, seen_controllers);
+        RC::Unreal::UObject* caller_controller = nullptr;
+        for (auto* controller : controllers) {
+            auto* state = read_object_property(controller, {STR("PlayerState")});
+            std::string uid;
+            if (!state || !read_player_guid(state, uid) || uid != request.player_uid) continue;
+            if (caller_controller && caller_controller != controller) {
+                result.error = "multiple caller controllers matched player_uid";
+                return result;
+            }
+            caller_controller = controller;
+        }
+        if (!caller_controller) {
+            result.error = "caller controller was not found for provided player_uid";
             return result;
         }
-        caller_controller = controller;
+        auto* transmitter = read_object_property(
+            caller_controller, {STR("Transmitter"), STR("PalTransmitter")});
+        base_camp = read_object_property(
+            transmitter, {STR("BaseCamp"), STR("BaseCampComponent"), STR("NetworkBaseCamp")});
+        if (!base_camp) {
+            result.error = "provided caller has no BaseCamp network component";
+            return result;
+        }
     }
-    if (!caller_controller) { result.error = "caller controller was not found for player_uid"; return result; }
-
-    auto* transmitter = read_object_property(
-        caller_controller, {STR("Transmitter"), STR("PalTransmitter")});
-    auto* base_camp = read_object_property(
-        transmitter, {STR("BaseCamp"), STR("BaseCampComponent"), STR("NetworkBaseCamp")});
+    if (!base_camp) {
+        try {
+            using namespace RC::Unreal;
+            auto* world = find_pal_main_world();
+            auto* utility = UObjectGlobals::StaticFindObject<UObject*>(
+                nullptr, nullptr, STR("/Script/Pal.Default__PalUtility"));
+            auto* function = UObjectGlobals::StaticFindObject<UFunction*>(
+                nullptr, nullptr, STR("/Script/Pal.PalUtility:GetNetworkTransmitter"));
+            auto* context_property = function
+                                         ? CastField<FObjectPropertyBase>(function->FindProperty(
+                                               FName(STR("WorldContextObject"), FNAME_Find)))
+                                         : nullptr;
+            auto* return_property = function
+                                        ? CastField<FObjectPropertyBase>(function->GetReturnProperty())
+                                        : nullptr;
+            if (world && utility && UObject::IsReal(utility) && function &&
+                exact_parameter_count(function, 2) && input_parameter(context_property) &&
+                return_parameter(return_property) && function->GetParmsSize() > 0 &&
+                function->GetParmsSize() <= 4096) {
+                FunctionBuffer params(function);
+                context_property->SetObjectPropertyValue(
+                    context_property->ContainerPtrToValuePtr<void>(params.data()), world);
+                utility->ProcessEvent(function, params.data());
+                auto* transmitter = return_property->GetObjectPropertyValue(
+                    return_property->ContainerPtrToValuePtr<void>(params.data()));
+                base_camp = read_object_property(
+                    transmitter,
+                    {STR("BaseCamp"), STR("BaseCampComponent"), STR("NetworkBaseCamp")});
+            }
+        } catch (...) {
+        }
+    }
+    if (!base_camp) {
+        std::vector<RC::Unreal::UObject*> components;
+        std::unordered_set<RC::Unreal::UObject*> seen_components;
+        append_instances("PalNetworkBaseCampComponent", components, seen_components);
+        for (auto* component : components) {
+            const auto snapshot = describe_object(component);
+            if (snapshot.class_name.find("PalNetworkBaseCampComponent") == std::string::npos ||
+                snapshot.name.find("Default__") == 0 ||
+                snapshot.full_name.find("Default__") != std::string::npos ||
+                !component->GetFunctionByNameInChain(
+                    STR("RequestFixedAssignWorkInBaseCamp_ToServer"))) {
+                continue;
+            }
+            if (base_camp && base_camp != component) {
+                result.error = "multiple live PalNetworkBaseCampComponent instances; refusing offline assignment";
+                return result;
+            }
+            base_camp = component;
+        }
+    }
     auto* rpc = base_camp
                     ? base_camp->GetFunctionByNameInChain(
                           STR("RequestFixedAssignWorkInBaseCamp_ToServer"))
                     : nullptr;
-    if (!base_camp || !rpc || describe_object(base_camp).class_name.find("PalNetworkBaseCampComponent") == std::string::npos) {
-        result.error = "Controller->Transmitter->BaseCamp network component unavailable"; return result;
+    if (!base_camp || !rpc ||
+        describe_object(base_camp).class_name.find("PalNetworkBaseCampComponent") ==
+            std::string::npos) {
+        result.error = "unique live PalNetworkBaseCampComponent unavailable"; return result;
     }
 
     std::vector<RC::Unreal::UObject*> directors;
@@ -3711,7 +3780,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     PalPanelBridge()
     {
         ModName = STR("PalPanelBridge");
-        ModVersion = STR("0.1.53");
+        ModVersion = STR("0.1.54");
         ModDescription = STR("Authenticated localhost HTTP diagnostics and game-thread mutations");
         ModAuthors = STR("PalPanel");
         ModIntendedSDKVersion = STR("3.0.1");
@@ -3955,7 +4024,7 @@ class PalPanelBridge final : public RC::CppUserModBase
     std::string health() const
     {
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.53\",\"ue4ss_loaded\":true,"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.54\",\"ue4ss_loaded\":true,"
              << "\"configured\":" << (config_.token.empty() ? "false" : "true") << ','
              << "\"unreal_initialized\":" << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_seen\":" << (game_thread_tick_seen_.load() ? "true" : "false") << '}';
@@ -3968,7 +4037,7 @@ class PalPanelBridge final : public RC::CppUserModBase
         const auto last_tick = last_game_thread_tick_unix_ms_.load(std::memory_order_relaxed);
         const auto started = started_at_unix_ms_;
         std::ostringstream body;
-        body << "{\"ok\":true,\"bridge_version\":\"0.1.53\"," << "\"unreal_initialized\":"
+        body << "{\"ok\":true,\"bridge_version\":\"0.1.54\"," << "\"unreal_initialized\":"
              << (unreal_initialized_.load() ? "true" : "false") << ','
              << "\"game_thread_tick_count\":" << game_thread_tick_count_.load(std::memory_order_relaxed) << ','
              << "\"last_game_thread_tick_unix_ms\":" << last_tick << ','
