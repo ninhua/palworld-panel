@@ -59,6 +59,12 @@ enum Command {
         #[arg(long, value_name = "REQUEST_JSON")]
         request: PathBuf,
     },
+    WorkList {
+        #[arg(long, value_name = "WORLD_DIR")]
+        input: PathBuf,
+        #[arg(long, value_name = "GUID")]
+        base_camp_id: String,
+    },
     DeriveHostUid {
         #[arg(long)]
         steam_id: String,
@@ -87,6 +93,9 @@ fn run(args: Args) -> Result<(), String> {
             }
             Command::WorkPlan { input, request } => run_work_plan(input, request),
             Command::WorkFixExisting { input, output, request } => run_work_fix(input, output, request),
+            Command::WorkList { input, base_camp_id } => {
+                write_json(&palworld_uid_remap::analyze_work_list(input, &base_camp_id).map_err(|error| error.to_string())?)
+            }
             Command::DeriveHostUid { steam_id } => {
                 let target_uid = steam_id_to_player_uid(&steam_id).map_err(|error| error.to_string())?;
                 write_json(&serde_json::json!({

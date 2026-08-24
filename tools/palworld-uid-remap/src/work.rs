@@ -44,6 +44,27 @@ pub struct WorkFixResult {
     pub output_manifest_sha256: String,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct WorkList {
+    pub level_sha256: String,
+    pub base_camp_id: String,
+    pub assignments: Vec<WorkListAssignment>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct WorkListAssignment {
+    pub worker_instance_id: String,
+    pub work_base_id: String,
+    pub owner_map_object_concrete_model_id: String,
+    pub assign_define_data_id: String,
+    pub location_index: i32,
+    pub assignment_id: String,
+    pub worker_guid: String,
+    pub fixed: u32,
+    pub assign_type: u8,
+    pub state: u8,
+}
+
 #[derive(Debug, Error)]
 pub enum WorkError {
     #[error("work request is invalid: {0}")]
@@ -213,6 +234,107 @@ fn all_assignments(save: &mut Save<Palworld>, request: &WorkRequest, worker: &FG
     let mut records = Vec::new();
     visit_properties(&mut save.root.properties, request, worker, &mut records, mutate);
     records
+}
+
+fn collect_all_property(property: &mut PalProperty, records: &mut Vec<AssignmentSnapshot>) {
+    match property {
+        Property::Struct(StructValue::Struct(properties)) => collect_all_properties(properties, records),
+        Property::Map(entries) => {
+            for MapEntry { key, value } in entries {
+                collect_all_property(key, records);
+                collect_all_property(value, records);
+            }
+        }
+        Property::Array(ValueVec::Struct(values)) | Property::Set(ValueVec::Struct(values)) => {
+            for value in values {
+                if let StructValue::Struct(properties) = value {
+                    collect_all_properties(properties, records);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_all_properties(properties: &mut PalProperties, records: &mut Vec<AssignmentSnapshot>) {
+    let raw_data_key = PropertyKey::from("RawData");
+    let work_assign_map_key = PropertyKey::from("WorkAssignMap");
+    let context = properties.0.get(&raw_data_key).and_then(|property| match property {
+        Property::Struct(StructValue::Game(PalStruct::Work(work))) => context_from_work(work),
+        _ => None,
+    });
+    if let Some(context) = context {
+        if let Some(Property::Map(entries)) = properties.0.get_mut(&work_assign_map_key) {
+            for entry in entries {
+                let Property::Struct(StructValue::Struct(assign_properties)) = &mut entry.value else { continue };
+                let Some(Property::Struct(StructValue::Game(PalStruct::WorkAssign(assignment)))) =
+                    assign_properties.0.get_mut(&raw_data_key)
+                else {
+                    continue;
+                };
+                records.push(snapshot(&context, assignment));
+            }
+        }
+    }
+    for property in properties.0.values_mut() {
+        collect_all_property(property, records);
+    }
+}
+
+fn all_assignment_snapshots(save: &mut Save<Palworld>) -> Vec<AssignmentSnapshot> {
+    let mut records = Vec::new();
+    collect_all_properties(&mut save.root.properties, &mut records);
+    records
+}
+
+fn list_assignment(record: &AssignmentSnapshot) -> WorkListAssignment {
+    WorkListAssignment {
+        worker_instance_id: record.worker_instance_id.to_string(),
+        work_base_id: record.context.work_base_id.to_string(),
+        owner_map_object_concrete_model_id: record.context.owner_map_object_concrete_model_id.to_string(),
+        assign_define_data_id: record.context.assign_define_data_id.clone(),
+        location_index: record.location_index,
+        assignment_id: record.assignment_id.to_string(),
+        worker_guid: record.worker_guid.to_string(),
+        fixed: record.fixed,
+        assign_type: record.assign_type,
+        state: record.state,
+    }
+}
+
+fn sort_work_list_assignments(assignments: &mut [WorkListAssignment]) {
+    assignments.sort_by(|left, right| {
+        (
+            &left.work_base_id,
+            left.location_index,
+            &left.assignment_id,
+            &left.worker_instance_id,
+        )
+            .cmp(&(
+                &right.work_base_id,
+                right.location_index,
+                &right.assignment_id,
+                &right.worker_instance_id,
+            ))
+    });
+}
+
+pub fn analyze_work_list(input_dir: impl AsRef<Path>, base_camp_id: &str) -> Result<WorkList, WorkError> {
+    let base_camp = parse_guid("base_camp_id", base_camp_id)?;
+    let level = level_path(input_dir.as_ref());
+    let level_sha256 = hash_file(&level)?;
+    let mut save = parse_save(&level)?;
+    let mut assignments: Vec<_> = all_assignment_snapshots(&mut save)
+        .into_iter()
+        .filter(|record| record.context.base_camp_id == base_camp)
+        .map(|record| list_assignment(&record))
+        .collect();
+    sort_work_list_assignments(&mut assignments);
+    Ok(WorkList {
+        level_sha256,
+        base_camp_id: base_camp.to_string(),
+        assignments,
+    })
 }
 
 fn select(request: &WorkRequest, records: &[AssignmentSnapshot], worker: &FGuid) -> Result<AssignmentSnapshot, WorkError> {
@@ -385,5 +507,34 @@ mod tests {
         let mut request = request();
         request.expected_level_sha256 = "f".repeat(64);
         assert!(matches!(verify_level_hash(&request.expected_level_sha256, "0".repeat(64)), Err(WorkError::LevelHashMismatch { .. })));
+    }
+
+    #[test]
+    fn work_list_sort_is_deterministic_and_base_filter_can_be_empty() {
+        let first = list_assignment(&record(0, WORKER, 2));
+        assert_eq!(first.worker_instance_id, WORKER);
+        assert_eq!(first.worker_guid, WORKER_GUID);
+        assert_eq!(first.work_base_id, WORK);
+        assert_eq!(first.owner_map_object_concrete_model_id, OWNER);
+        assert_eq!(first.fixed, 0);
+        assert_eq!(first.assign_type, 7);
+        assert_eq!(first.state, 3);
+        let mut second = first.clone();
+        second.location_index = 1;
+        let mut assignments = vec![first.clone(), second.clone()];
+        sort_work_list_assignments(&mut assignments);
+        assert_eq!(assignments[0].location_index, 1);
+        assert_eq!(assignments[1].location_index, 2);
+        let empty = WorkList {
+            level_sha256: "0".repeat(64),
+            base_camp_id: CAMP.into(),
+            assignments: Vec::new(),
+        };
+        assert!(empty.assignments.is_empty());
+    }
+
+    #[test]
+    fn work_list_requires_canonical_lowercase_base_camp_id() {
+        assert!(matches!(parse_guid("base_camp_id", &CAMP.to_uppercase()), Err(WorkError::InvalidRequest(_))));
     }
 }

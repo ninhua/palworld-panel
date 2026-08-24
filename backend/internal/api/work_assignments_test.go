@@ -48,6 +48,10 @@ func TestDecodeWorkAssignmentHelperResponses(t *testing.T) {
 	if err != nil || result.Plan.Fixed != 1 || !result.Changed {
 		t.Fatalf("decode fix result: %#v, %v", result, err)
 	}
+	list, err := decodeWorkAssignmentList([]byte(`{"level_sha256":"abc","base_camp_id":"00112233-4455-6677-8899-aabbccddeeff","assignments":[]}`))
+	if err != nil || list.LevelSHA256 != "abc" || list.BaseCampID == "" || list.Assignments == nil {
+		t.Fatalf("decode list result: %#v, %v", list, err)
+	}
 }
 
 func TestPublishAndRollbackLevelFile(t *testing.T) {

@@ -17,8 +17,8 @@ pub use host::{
     HostMigrationError, HostMigrationPlan, HostMigrationResult, SOURCE_HOST_UID,
 };
 pub use work::{
-    execute_work_fix_existing, analyze_work_plan, WorkFixResult, WorkPlan, WorkRequest,
-    WorkError,
+    analyze_work_list, analyze_work_plan, execute_work_fix_existing, WorkError, WorkFixResult,
+    WorkList, WorkListAssignment, WorkPlan, WorkRequest,
 };
 pub use visitor::{
     rewrite_typed_tree, CandidateKind, FieldCategory, OpaqueCandidate, RewriteReport,

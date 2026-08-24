@@ -56,6 +56,25 @@ type workAssignmentPlan struct {
 	Fixed int `json:"fixed"`
 }
 
+type workAssignmentListItem struct {
+	WorkerInstanceID              string `json:"worker_instance_id"`
+	WorkBaseID                    string `json:"work_base_id"`
+	OwnerMapObjectConcreteModelID string `json:"owner_map_object_concrete_model_id"`
+	AssignDefineDataID            string `json:"assign_define_data_id"`
+	LocationIndex                 int    `json:"location_index"`
+	AssignmentID                  string `json:"assignment_id"`
+	WorkerGUID                    string `json:"worker_guid"`
+	AssignType                    int    `json:"assign_type"`
+	State                         int    `json:"state"`
+	Fixed                         int    `json:"fixed"`
+}
+
+type workAssignmentList struct {
+	LevelSHA256 string                   `json:"level_sha256"`
+	BaseCampID  string                   `json:"base_camp_id"`
+	Assignments []workAssignmentListItem `json:"assignments"`
+}
+
 type workAssignmentFixResult struct {
 	Plan    workAssignmentPlan `json:"plan"`
 	Changed bool               `json:"changed"`
@@ -158,6 +177,36 @@ func (s Server) prepareWorkAssignment(c *gin.Context) {
 		Plan:      append(json.RawMessage(nil), raw...),
 	})
 	ok(c, gin.H{"token": token, "expires_at": expiresAt.UTC().Format(time.RFC3339), "world_id": worldID, "expected_level_sha256": levelHash, "plan": json.RawMessage(raw)})
+}
+
+func (s Server) listWorkAssignments(c *gin.Context) {
+	baseID := strings.ToLower(strings.TrimSpace(c.Param("id")))
+	if !workAssignmentGUID.MatchString(baseID) {
+		fail(c, http.StatusBadRequest, "work_assignment_base_invalid", "base id must be a canonical lowercase GUID")
+		return
+	}
+	worldID, worldDir, levelHash, err := s.currentWorkAssignmentWorld()
+	if err != nil {
+		fail(c, http.StatusConflict, "work_assignment_world_unavailable", err.Error())
+		return
+	}
+	raw, err := runWorkAssignmentListHelper(c.Request.Context(), worldDir, baseID)
+	if err != nil {
+		fail(c, http.StatusBadGateway, "work_assignment_list_failed", err.Error())
+		return
+	}
+	result, err := decodeWorkAssignmentList(raw)
+	if err != nil || result.BaseCampID != baseID || result.LevelSHA256 != levelHash {
+		if err == nil {
+			err = errors.New("helper result does not match the current base or Level.sav SHA256")
+		}
+		fail(c, http.StatusConflict, "work_assignment_list_invalid", err.Error())
+		return
+	}
+	if result.Assignments == nil {
+		result.Assignments = []workAssignmentListItem{}
+	}
+	ok(c, gin.H{"world_id": worldID, "level_sha256": result.LevelSHA256, "base_camp_id": result.BaseCampID, "assignments": result.Assignments})
 }
 
 func (s Server) commitWorkAssignment(c *gin.Context) {
@@ -325,6 +374,10 @@ func runWorkAssignmentHelper(ctx context.Context, command, inputDir, outputDir s
 	return runHostMigrationHelper(ctx, args...)
 }
 
+func runWorkAssignmentListHelper(ctx context.Context, inputDir, baseID string) ([]byte, error) {
+	return runHostMigrationHelper(ctx, "work-list", "--input", inputDir, "--base-camp-id", baseID)
+}
+
 func buildWorkAssignmentHelperRequest(baseID string, input workAssignmentRequest, levelHash string) workAssignmentHelperRequest {
 	return workAssignmentHelperRequest{BaseCampID: baseID, WorkerInstanceID: input.WorkerInstanceID, WorkBaseID: input.WorkBaseID, OwnerMapObjectConcreteModelID: input.OwnerMapObjectConcreteModelID, AssignDefineDataID: input.AssignDefineDataID, LocationIndex: input.LocationIndex, ExpectedLevelSHA256: levelHash}
 }
@@ -359,6 +412,12 @@ func decodeWorkAssignmentPlan(raw []byte) (workAssignmentPlan, error) {
 
 func decodeWorkAssignmentFixResult(raw []byte) (workAssignmentFixResult, error) {
 	var result workAssignmentFixResult
+	err := json.Unmarshal(raw, &result)
+	return result, err
+}
+
+func decodeWorkAssignmentList(raw []byte) (workAssignmentList, error) {
+	var result workAssignmentList
 	err := json.Unmarshal(raw, &result)
 	return result, err
 }

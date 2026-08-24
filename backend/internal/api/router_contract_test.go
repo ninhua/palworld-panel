@@ -190,6 +190,7 @@ func TestNewContractRoutes(t *testing.T) {
 		"GET /api/bases/:id",
 		"GET /api/bases/:id/storage",
 		"GET /api/bases/:id/workers",
+		"GET /api/bases/:id/work-assignments",
 		"POST /api/bases/:id/work-assignments/prepare",
 		"POST /api/bases/:id/work-assignments/commit",
 		"GET /api/bases/:id/feed-boxes",

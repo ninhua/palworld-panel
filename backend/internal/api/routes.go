@@ -286,6 +286,7 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
 	api.DELETE("/bases/:id/name", Require(PermServerControl), s.deleteBaseCustomName)
 	api.GET("/bases/:id/storage", s.getSaveBaseStorage)
 	api.GET("/bases/:id/workers", s.getSaveBaseWorkers)
+	api.GET("/bases/:id/work-assignments", Require(PermWorldReset), s.listWorkAssignments)
 	api.POST("/bases/:id/work-assignments/prepare", Require(PermWorldReset), s.prepareWorkAssignment)
 	api.POST("/bases/:id/work-assignments/commit", Require(PermWorldReset), s.commitWorkAssignment)
 	api.GET("/bases/:id/feed-boxes", s.getSaveBaseFeedBoxes)
