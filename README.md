@@ -276,7 +276,7 @@ docker logs --tail 100 palworld-wine-server
 
 ## 从源码运行
 
-需要 Go `1.25.12`、Node.js 22、npm、.NET 9 SDK，以及 Rust/Cargo。Windows 构建 `sav-cli` 还需要 MinGW-w64。
+需要 Go `1.25.13`、Node.js 22、npm、.NET 9 SDK，以及 Rust/Cargo。Windows 构建 `sav-cli` 还需要 MinGW-w64。
 
 ```bash
 git clone --recurse-submodules --branch custom-stable https://github.com/ninhua/palworld-panel.git

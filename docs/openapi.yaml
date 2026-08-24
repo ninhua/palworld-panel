@@ -1870,6 +1870,12 @@ paths:
   /bases/{id}/workers:
     parameters: [*idParameter]
     get: {operationId: getBaseWorkers, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+  /bases/{id}/work-assignments/prepare:
+    parameters: [*idParameter]
+    post: {operationId: prepareBaseWorkAssignment, tags: [world], x-palpanel-permission: 'world:reset', requestBody: *jsonRequest, responses: *writeResponses}
+  /bases/{id}/work-assignments/commit:
+    parameters: [*idParameter]
+    post: {operationId: commitBaseWorkAssignment, tags: [world], x-palpanel-permission: 'world:reset', requestBody: *jsonRequest, responses: *writeResponses}
   /bases/{id}/feed-boxes:
     parameters: [*idParameter]
     get: {operationId: getBaseFeedBoxes, tags: [world], x-palpanel-permission: read, responses: *readResponses}
