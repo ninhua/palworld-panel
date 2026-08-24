@@ -40,6 +40,11 @@
   `d476d49a-4cb5-a4b8-2707-5ab7b0af0589`，1 个槽位，`assignable_fixed_type=0`，仍为
   0 个 Map 指派；此前运行时 43 个工作并非 43 个持久 `PalWorkBase`。继续只读列出独立
   `EPalWorkableType::Assign` 为 `unscoped_assignments`，在归属关系未证实前禁止写入。
+- 提交 `1887f2e` 的 CI `32699395948` 全部成功，Windows 包 SHA256 为
+  `eb5957f03012d70067b25cb4c47c88855801d68062f1d6f3a6a803705f92bf6e` 并已安装。最终实机
+  响应为 `work_bases=1`、`map_assignments=0`、`unscoped_assignments=0`，Level.sav SHA256
+  仍为 `9d0e42116e95b2056be032143af7497e19bf4882e1067cd58f2b82564cd34c4c`；确认本轮全程只读，
+  当前存档没有可供安全修改的持久指派模板，因此未执行 prepare/commit。
 
 ## 2026-08-21：PalPanelBridge 0.1.57 离线固定指派排队
 
