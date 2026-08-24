@@ -18,7 +18,7 @@ pub use host::{
 };
 pub use work::{
     analyze_work_list, analyze_work_plan, execute_work_fix_existing, WorkError, WorkFixResult,
-    WorkList, WorkListAssignment, WorkListBase, WorkPlan, WorkRequest,
+    WorkList, WorkListAssignment, WorkListBase, WorkListUnscopedAssignment, WorkPlan, WorkRequest,
 };
 pub use visitor::{
     rewrite_typed_tree, CandidateKind, FieldCategory, OpaqueCandidate, RewriteReport,

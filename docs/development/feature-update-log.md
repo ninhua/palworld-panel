@@ -36,6 +36,10 @@
   响应新增 `work_bases`，返回工作类型、设施/模型稳定 ID、指派槽数量、fixed 能力和现有
   指派数。新建 `PalWorkAssign` 仍缺少可验证的 ID 生成、默认状态及多工作类型字段证据，
   本次继续保持只读，不扩展写入范围。
+- CI `32698014264` 成功后实机读取到 1 个持久设施：`Workbench_0`，work base
+  `d476d49a-4cb5-a4b8-2707-5ab7b0af0589`，1 个槽位，`assignable_fixed_type=0`，仍为
+  0 个 Map 指派；此前运行时 43 个工作并非 43 个持久 `PalWorkBase`。继续只读列出独立
+  `EPalWorkableType::Assign` 为 `unscoped_assignments`，在归属关系未证实前禁止写入。
 
 ## 2026-08-21：PalPanelBridge 0.1.57 离线固定指派排队
 

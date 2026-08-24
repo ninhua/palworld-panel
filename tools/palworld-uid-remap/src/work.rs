@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use uesave::games::palworld::{PalStruct, PalWorkAssign, PalWorkBase, Palworld};
+use uesave::games::palworld::{PalStruct, PalWorkAssign, PalWorkBase, PalWorkTypeSpecificData, Palworld};
 use uesave::{
     FGuid, MapEntry, Properties, Property, PropertyKey, Save, SaveGameArchiveType, StructValue,
     ValueVec,
@@ -50,6 +50,7 @@ pub struct WorkList {
     pub base_camp_id: String,
     pub work_bases: Vec<WorkListBase>,
     pub assignments: Vec<WorkListAssignment>,
+    pub unscoped_assignments: Vec<WorkListUnscopedAssignment>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -84,6 +85,18 @@ pub struct WorkListAssignment {
     pub fixed: u32,
     pub assign_type: u8,
     pub state: u8,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct WorkListUnscopedAssignment {
+    pub handle_id: String,
+    pub location_index: i32,
+    pub assign_type: u8,
+    pub worker_guid: String,
+    pub worker_instance_id: String,
+    pub state: u8,
+    pub fixed: u32,
+    pub map_object_instance_id: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -257,19 +270,26 @@ fn all_assignments(save: &mut Save<Palworld>, request: &WorkRequest, worker: &FG
     records
 }
 
-fn collect_all_property(property: &mut PalProperty, records: &mut Vec<AssignmentSnapshot>, work_bases: &mut Vec<WorkListBase>) {
+fn collect_all_property(
+    property: &mut PalProperty,
+    records: &mut Vec<AssignmentSnapshot>,
+    work_bases: &mut Vec<WorkListBase>,
+    unscoped_assignments: &mut Vec<WorkListUnscopedAssignment>,
+) {
     match property {
-        Property::Struct(StructValue::Struct(properties)) => collect_all_properties(properties, records, work_bases),
+        Property::Struct(StructValue::Struct(properties)) => {
+            collect_all_properties(properties, records, work_bases, unscoped_assignments)
+        }
         Property::Map(entries) => {
             for MapEntry { key, value } in entries {
-                collect_all_property(key, records, work_bases);
-                collect_all_property(value, records, work_bases);
+                collect_all_property(key, records, work_bases, unscoped_assignments);
+                collect_all_property(value, records, work_bases, unscoped_assignments);
             }
         }
         Property::Array(ValueVec::Struct(values)) | Property::Set(ValueVec::Struct(values)) => {
             for value in values {
                 if let StructValue::Struct(properties) = value {
-                    collect_all_properties(properties, records, work_bases);
+                    collect_all_properties(properties, records, work_bases, unscoped_assignments);
                 }
             }
         }
@@ -277,14 +297,19 @@ fn collect_all_property(property: &mut PalProperty, records: &mut Vec<Assignment
     }
 }
 
-fn collect_all_properties(properties: &mut PalProperties, records: &mut Vec<AssignmentSnapshot>, work_bases: &mut Vec<WorkListBase>) {
+fn collect_all_properties(
+    properties: &mut PalProperties,
+    records: &mut Vec<AssignmentSnapshot>,
+    work_bases: &mut Vec<WorkListBase>,
+    unscoped_assignments: &mut Vec<WorkListUnscopedAssignment>,
+) {
     let raw_data_key = PropertyKey::from("RawData");
     let work_assign_map_key = PropertyKey::from("WorkAssignMap");
     let assignment_count = match properties.0.get(&work_assign_map_key) {
         Some(Property::Map(entries)) => entries.len(),
         _ => 0,
     };
-    let (context, work_base) = properties.0.get(&raw_data_key).map_or((None, None), |property| match property {
+    let (context, work_base, unscoped) = properties.0.get(&raw_data_key).map_or((None, None, None), |property| match property {
         Property::Struct(StructValue::Game(PalStruct::Work(work))) => {
             let context = context_from_work(work);
             let listed = work.base_data.as_ref().map(|base| WorkListBase {
@@ -305,12 +330,35 @@ fn collect_all_properties(properties: &mut PalProperties, records: &mut Vec<Assi
                 can_steal_assign: base.can_steal_assign,
                 assignment_count,
             });
-            (context, listed)
+            let unscoped = match &work.work_specific_data {
+                PalWorkTypeSpecificData::Assign {
+                    handle_id,
+                    location_index,
+                    assign_type,
+                    assigned_individual_id,
+                    state,
+                    fixed,
+                } => Some(WorkListUnscopedAssignment {
+                    handle_id: handle_id.to_string(),
+                    location_index: *location_index,
+                    assign_type: *assign_type,
+                    worker_guid: assigned_individual_id.guid.to_string(),
+                    worker_instance_id: assigned_individual_id.instance_id.to_string(),
+                    state: *state,
+                    fixed: *fixed,
+                    map_object_instance_id: work.transform.as_ref().and_then(|value| value.map_object_instance_id.as_ref()).map(|value| value.to_string()),
+                }),
+                _ => None,
+            };
+            (context, listed, unscoped)
         }
-        _ => (None, None),
+        _ => (None, None, None),
     });
     if let Some(work_base) = work_base {
         work_bases.push(work_base);
+    }
+    if let Some(unscoped) = unscoped {
+        unscoped_assignments.push(unscoped);
     }
     if let Some(context) = context {
         if let Some(Property::Map(entries)) = properties.0.get_mut(&work_assign_map_key) {
@@ -326,15 +374,23 @@ fn collect_all_properties(properties: &mut PalProperties, records: &mut Vec<Assi
         }
     }
     for property in properties.0.values_mut() {
-        collect_all_property(property, records, work_bases);
+        collect_all_property(property, records, work_bases, unscoped_assignments);
     }
 }
 
-fn all_work_snapshots(save: &mut Save<Palworld>) -> (Vec<AssignmentSnapshot>, Vec<WorkListBase>) {
+fn all_work_snapshots(
+    save: &mut Save<Palworld>,
+) -> (Vec<AssignmentSnapshot>, Vec<WorkListBase>, Vec<WorkListUnscopedAssignment>) {
     let mut records = Vec::new();
     let mut work_bases = Vec::new();
-    collect_all_properties(&mut save.root.properties, &mut records, &mut work_bases);
-    (records, work_bases)
+    let mut unscoped_assignments = Vec::new();
+    collect_all_properties(
+        &mut save.root.properties,
+        &mut records,
+        &mut work_bases,
+        &mut unscoped_assignments,
+    );
+    (records, work_bases, unscoped_assignments)
 }
 
 fn list_assignment(record: &AssignmentSnapshot) -> WorkListAssignment {
@@ -374,7 +430,7 @@ pub fn analyze_work_list(input_dir: impl AsRef<Path>, base_camp_id: &str) -> Res
     let level = level_path(input_dir.as_ref());
     let level_sha256 = hash_file(&level)?;
     let mut save = parse_save(&level)?;
-    let (records, mut work_bases) = all_work_snapshots(&mut save);
+    let (records, mut work_bases, mut unscoped_assignments) = all_work_snapshots(&mut save);
     let mut assignments: Vec<_> = records
         .into_iter()
         .filter(|record| record.context.base_camp_id == base_camp)
@@ -383,11 +439,16 @@ pub fn analyze_work_list(input_dir: impl AsRef<Path>, base_camp_id: &str) -> Res
     sort_work_list_assignments(&mut assignments);
     work_bases.retain(|work| work.base_camp_id == base_camp_id);
     work_bases.sort_by(|left, right| left.work_base_id.cmp(&right.work_base_id));
+    unscoped_assignments.sort_by(|left, right| {
+        (&left.handle_id, left.location_index, &left.worker_instance_id)
+            .cmp(&(&right.handle_id, right.location_index, &right.worker_instance_id))
+    });
     Ok(WorkList {
         level_sha256,
         base_camp_id: base_camp.to_string(),
         work_bases,
         assignments,
+        unscoped_assignments,
     })
 }
 
@@ -584,6 +645,7 @@ mod tests {
             base_camp_id: CAMP.into(),
             work_bases: Vec::new(),
             assignments: Vec::new(),
+            unscoped_assignments: Vec::new(),
         };
         assert!(empty.assignments.is_empty());
     }

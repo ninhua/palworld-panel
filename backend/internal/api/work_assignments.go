@@ -88,11 +88,23 @@ type workAssignmentListBase struct {
 	AssignmentCount               int     `json:"assignment_count"`
 }
 
+type workAssignmentListUnscoped struct {
+	HandleID            string  `json:"handle_id"`
+	LocationIndex       int     `json:"location_index"`
+	AssignType          int     `json:"assign_type"`
+	WorkerGUID          string  `json:"worker_guid"`
+	WorkerInstanceID    string  `json:"worker_instance_id"`
+	State               int     `json:"state"`
+	Fixed               int     `json:"fixed"`
+	MapObjectInstanceID *string `json:"map_object_instance_id"`
+}
+
 type workAssignmentList struct {
-	LevelSHA256 string                   `json:"level_sha256"`
-	BaseCampID  string                   `json:"base_camp_id"`
-	WorkBases   []workAssignmentListBase `json:"work_bases"`
-	Assignments []workAssignmentListItem `json:"assignments"`
+	LevelSHA256         string                       `json:"level_sha256"`
+	BaseCampID          string                       `json:"base_camp_id"`
+	WorkBases           []workAssignmentListBase     `json:"work_bases"`
+	Assignments         []workAssignmentListItem     `json:"assignments"`
+	UnscopedAssignments []workAssignmentListUnscoped `json:"unscoped_assignments"`
 }
 
 type workAssignmentFixResult struct {
@@ -229,7 +241,10 @@ func (s Server) listWorkAssignments(c *gin.Context) {
 	if result.WorkBases == nil {
 		result.WorkBases = []workAssignmentListBase{}
 	}
-	ok(c, gin.H{"world_id": worldID, "level_sha256": result.LevelSHA256, "base_camp_id": result.BaseCampID, "work_bases": result.WorkBases, "assignments": result.Assignments})
+	if result.UnscopedAssignments == nil {
+		result.UnscopedAssignments = []workAssignmentListUnscoped{}
+	}
+	ok(c, gin.H{"world_id": worldID, "level_sha256": result.LevelSHA256, "base_camp_id": result.BaseCampID, "work_bases": result.WorkBases, "assignments": result.Assignments, "unscoped_assignments": result.UnscopedAssignments})
 }
 
 func (s Server) commitWorkAssignment(c *gin.Context) {
