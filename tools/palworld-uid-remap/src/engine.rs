@@ -92,13 +92,13 @@ enum EntryKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ManifestEntry {
+pub(crate) struct ManifestEntry {
     kind: EntryKind,
     size: u64,
     sha256: Option<String>,
 }
 
-type Manifest = BTreeMap<String, ManifestEntry>;
+pub(crate) type Manifest = BTreeMap<String, ManifestEntry>;
 
 pub fn remap_world(
     input_dir: impl AsRef<Path>,
@@ -689,7 +689,7 @@ fn parse_save_reader<R: Read>(reader: R, relative: &str) -> Result<Save<Palworld
         })
 }
 
-fn write_save_new(save: &Save<Palworld>, destination: &Path) -> Result<(), RemapError> {
+pub(crate) fn write_save_new(save: &Save<Palworld>, destination: &Path) -> Result<(), RemapError> {
     let temporary = destination.with_extension("sav.palpanel-new");
     write_save_create_new(save, &temporary)?;
     fs::remove_file(destination).map_err(|source| RemapError::Io {
@@ -724,7 +724,7 @@ fn write_save_create_new(save: &Save<Palworld>, path: &Path) -> Result<(), Remap
     })
 }
 
-fn copy_tree(source: &Path, destination: &Path) -> Result<(), RemapError> {
+pub(crate) fn copy_tree(source: &Path, destination: &Path) -> Result<(), RemapError> {
     for entry in fs::read_dir(source).map_err(|source_error| RemapError::Io {
         path: source.to_path_buf(),
         source: source_error,
@@ -815,7 +815,7 @@ fn sav_files(manifest: &Manifest) -> Vec<String> {
         .collect()
 }
 
-fn hash_manifest(manifest: &Manifest) -> String {
+pub(crate) fn hash_manifest(manifest: &Manifest) -> String {
     let mut hasher = Sha256::new();
     for (path, entry) in manifest {
         hasher.update(path.as_bytes());
@@ -833,7 +833,7 @@ fn hash_manifest(manifest: &Manifest) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-struct StageGuard {
+pub(crate) struct StageGuard {
     path: PathBuf,
     parent: PathBuf,
     prefix: String,
@@ -841,7 +841,7 @@ struct StageGuard {
 }
 
 impl StageGuard {
-    fn create(output: &Path) -> Result<Self, RemapError> {
+    pub(crate) fn create(output: &Path) -> Result<Self, RemapError> {
         let parent = output
             .parent()
             .ok_or_else(|| RemapError::InvalidInput("output has no parent".to_owned()))?
@@ -877,11 +877,11 @@ impl StageGuard {
         ))
     }
 
-    fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.path
     }
 
-    fn disarm(&mut self) {
+    pub(crate) fn disarm(&mut self) {
         self.active = false;
     }
 }
@@ -902,7 +902,7 @@ impl Drop for StageGuard {
     }
 }
 
-fn parse_save(path: &Path) -> Result<Save<Palworld>, RemapError> {
+pub(crate) fn parse_save(path: &Path) -> Result<Save<Palworld>, RemapError> {
     let file = File::open(path).map_err(|source| RemapError::Io {
         path: path.to_path_buf(),
         source,
@@ -991,7 +991,7 @@ fn dps_file_name(uid: &uesave::FGuid) -> String {
     )
 }
 
-fn build_manifest(root: &Path) -> Result<Manifest, RemapError> {
+pub(crate) fn build_manifest(root: &Path) -> Result<Manifest, RemapError> {
     let root_metadata = fs::symlink_metadata(root).map_err(|source| RemapError::Io {
         path: root.to_path_buf(),
         source,
@@ -1101,7 +1101,7 @@ fn record_case_path(
     Ok(())
 }
 
-fn hash_file(path: &Path) -> Result<String, RemapError> {
+pub(crate) fn hash_file(path: &Path) -> Result<String, RemapError> {
     let mut file = File::open(path).map_err(|source| RemapError::Io {
         path: path.to_path_buf(),
         source,

@@ -4,7 +4,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use palworld_uid_remap::{
     analyze_host_migration, execute_host_migration, remap_world, steam_id_to_player_uid,
-    MappingSet, RemapOptions,
+    analyze_work_plan, execute_work_fix_existing, MappingSet, RemapOptions, WorkRequest,
 };
 
 #[derive(Debug, Parser)]
@@ -45,6 +45,20 @@ enum Command {
         #[arg(long)]
         steam_id: String,
     },
+    WorkPlan {
+        #[arg(long, value_name = "WORLD_DIR")]
+        input: PathBuf,
+        #[arg(long, value_name = "REQUEST_JSON")]
+        request: PathBuf,
+    },
+    WorkFixExisting {
+        #[arg(long, value_name = "WORLD_DIR")]
+        input: PathBuf,
+        #[arg(long, value_name = "OUTPUT_DIR")]
+        output: PathBuf,
+        #[arg(long, value_name = "REQUEST_JSON")]
+        request: PathBuf,
+    },
     DeriveHostUid {
         #[arg(long)]
         steam_id: String,
@@ -71,6 +85,8 @@ fn run(args: Args) -> Result<(), String> {
             Command::HostExecute { input, output, steam_id } => {
                 write_json(&execute_host_migration(input, output, &steam_id).map_err(|error| error.to_string())?)
             }
+            Command::WorkPlan { input, request } => run_work_plan(input, request),
+            Command::WorkFixExisting { input, output, request } => run_work_fix(input, output, request),
             Command::DeriveHostUid { steam_id } => {
                 let target_uid = steam_id_to_player_uid(&steam_id).map_err(|error| error.to_string())?;
                 write_json(&serde_json::json!({
@@ -84,6 +100,21 @@ fn run(args: Args) -> Result<(), String> {
     let output = args.output.ok_or_else(|| "--output is required".to_owned())?;
     let mapping = args.mapping.ok_or_else(|| "--mapping is required".to_owned())?;
     run_remap(input, output, mapping)
+}
+
+fn read_work_request(path: PathBuf) -> Result<WorkRequest, String> {
+    let bytes = std::fs::read(&path).map_err(|error| format!("could not read work request: {error}"))?;
+    serde_json::from_slice(&bytes).map_err(|error| format!("invalid work request JSON: {error}"))
+}
+
+fn run_work_plan(input: PathBuf, request: PathBuf) -> Result<(), String> {
+    let request = read_work_request(request)?;
+    write_json(&analyze_work_plan(input, &request).map_err(|error| error.to_string())?)
+}
+
+fn run_work_fix(input: PathBuf, output: PathBuf, request: PathBuf) -> Result<(), String> {
+    let request = read_work_request(request)?;
+    write_json(&execute_work_fix_existing(input, output, &request).map_err(|error| error.to_string())?)
 }
 
 fn run_remap(input: PathBuf, output: PathBuf, mapping: PathBuf) -> Result<(), String> {

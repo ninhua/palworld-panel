@@ -65,6 +65,7 @@ type Server struct {
 	gmIdempotency   *gmIdempotencyStore
 	incidents       *incidents.Service
 	saveImports     *saveImportInspectionStore
+	workAssignments *workAssignmentTokenStore
 	webUI           fs.FS
 }
 
@@ -103,7 +104,7 @@ func NewRouter(cfg appconfig.Config, store *db.Store, serverManager server.Manag
 			communityAPI = NewCommunityServersHandler(service)
 		}
 	}
-	s := Server{cfg: cfg, store: store, server: serverManager, mods: modsManager, defender: defenderManager, palrest: restClient, monitor: monitorManager, scheduler: schedulerManager, saveIndex: saveManager, serverSaveIndex: serverSaveManager, breeding: breeding.New(cfg, store, saveManager), community: communityService, communityAPI: communityAPI, astrbot: astrbotclient.New(cfg), ai: aitranslation.New(cfg, store), networkProxy: networkProxyService, auth: panelauth.New(store), authLimiter: newAuthRateLimiter(), cache: newTTLCache(), gmIdempotency: newGMIdempotencyStore(), incidents: incidentService, saveImports: newSaveImportInspectionStore(defaultSaveImportInspectionTTL), webUI: webFiles}
+	s := Server{cfg: cfg, store: store, server: serverManager, mods: modsManager, defender: defenderManager, palrest: restClient, monitor: monitorManager, scheduler: schedulerManager, saveIndex: saveManager, serverSaveIndex: serverSaveManager, breeding: breeding.New(cfg, store, saveManager), community: communityService, communityAPI: communityAPI, astrbot: astrbotclient.New(cfg), ai: aitranslation.New(cfg, store), networkProxy: networkProxyService, auth: panelauth.New(store), authLimiter: newAuthRateLimiter(), cache: newTTLCache(), gmIdempotency: newGMIdempotencyStore(), incidents: incidentService, saveImports: newSaveImportInspectionStore(defaultSaveImportInspectionTTL), workAssignments: newWorkAssignmentTokenStore(), webUI: webFiles}
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(PerformanceMiddleware(cfg))

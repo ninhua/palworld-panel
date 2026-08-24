@@ -56,6 +56,12 @@ var apiCatalogExact = map[string]apiCatalogDescriptor{
 	"GET /api/bases/:id/workers": {
 		Category: "世界存档", Summary: "查询基地工作帕鲁", Description: "按实例 ID 合并基地工作位和帕鲁索引详情。", Permission: "authenticated", Response: "工作帕鲁列表及等级、性别、状态和被动词条。", Patched: true,
 	},
+	"POST /api/bases/:id/work-assignments/prepare": {
+		Category: "世界存档", Summary: "预检既有固定工作指派", Description: "只读解析当前 DedicatedServerName 对应的 Level.sav，使用持久键唯一确认既有工作指派并绑定存档 SHA256。", Permission: "world:reset", Request: `JSON: {"worker_instance_id":"guid","work_base_id":"guid","owner_map_object_concrete_model_id":"guid","assign_define_data_id":"...","location_index":0}`, Response: "五分钟一次性 token、当前世界、Level.sav SHA256 和固定指派计划。", Patched: true,
+	},
+	"POST /api/bases/:id/work-assignments/commit": {
+		Category: "世界存档", Summary: "提交既有固定工作指派", Description: "仅在服务器已停止、世界与 SHA256 未变化且完整备份成功后，将既有唯一指派 fixed 从 0 改为 1；只原子替换 Level.sav，失败自动回滚且不启动服务器。", Permission: "world:reset", Request: `JSON: {"token":"...","confirm":true,"idempotency_key":"..."}`, Response: "前后 SHA256、备份 ID、变更结果及服务器保持停止状态。", Patched: true,
+	},
 	"GET /api/bases/:id/feed-boxes": {
 		Category: "世界存档", Summary: "查询基地饲料箱摘要", Description: "聚合普通和低温饲料箱中的物品分布。", Permission: "authenticated", Response: "饲料箱、占用格和物品汇总。", Patched: true,
 	},

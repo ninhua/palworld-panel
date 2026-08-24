@@ -482,6 +482,22 @@ GET  http://127.0.0.1:18083/v1/jobs/<job_id>
 结果会更新为 `succeeded`，仍须以分配角色回读确认。运行时 `work_id` 会随服务器重启
 变化，因此重启时尚未完成的请求不会跨进程猜测恢复，调用方应重新读取 works 后提交。
 
+无人上线且据点始终休眠时，插件无法安全构造不存在的 Pawn/AI。面板因此提供独立的
+两阶段存档兜底，仅处理存档中已经存在且唯一的 `PalWorkAssign`：
+
+```text
+POST /api/bases/:id/work-assignments/prepare
+POST /api/bases/:id/work-assignments/commit
+```
+
+`prepare` 使用据点 ID、帕鲁实例 ID、持久 work base ID、设施 concrete model ID、
+`assign_define_data_id` 和槽位索引唯一定位记录，并绑定当前 `DedicatedServerName` 与
+`Level.sav` SHA256。`commit` 需要管理员 `world:reset` 权限、五分钟一次性 token、
+`confirm=true` 和幂等键；服务器必须已经停止。提交前完整备份当前世界，只允许把既有
+记录的 `fixed` 从 `0` 改为 `1`，仅原子替换 `Level.sav`，回读失败时按 SHA256 门禁恢复
+备份，且成功或失败均不自动启动服务器。当前不支持新建、删除、移动或跨工作类型修改
+assignment；缺少既有唯一记录时明确拒绝。
+
 本地 Windows 服务端可使用 `deploy.py --local-dll <main.dll路径>`。脚本会等待
 对应 CI、校验构建包、通过面板停服、只原子替换 `dlls/main.dll`、失败恢复旧 DLL、
 重新启动并等待健康检查返回目标版本；不会修改 `config.ini`。面板与 Bridge 密钥

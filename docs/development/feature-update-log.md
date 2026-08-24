@@ -1,5 +1,23 @@
 # 功能移植更新记录
 
+## 2026-08-24：无人在线的既有固定指派存档兜底
+
+- 确认活动世界严格来自 `GameUserSettings.ini` 的 `DedicatedServerName`，当前为
+  `D755E4CC4E9B23F85AE4E2B865E19DBD`；写操作禁止使用“最新 Level.sav”回退，避免再次
+  误选世界或生成新档。
+- 确认 `WorkSaveData.WorkAssignMap` 的持久结构包含 `PalWorkAssign.id`、
+  `assigned_individual_id`、`location_index`、`state`、`fixed` 和多工作类型尾部数据；
+  运行时 `work_id` 仍不可跨重启持久化。
+- `palworld-uid-remap` 新增只读 `work-plan` 与输出到新目录的
+  `work-fix-existing`。当前安全范围仅为既有唯一记录的 `fixed=0 -> 1`，`fixed=1` 幂等；
+  不新增、删除、移动或猜测 assignment。
+- 面板新增 `/api/bases/:id/work-assignments/prepare` 与 `commit` 两阶段接口。提交要求
+  管理员权限、服务器已停止、世界 ID 与 SHA256 未变化，并先创建完整世界备份；只原子
+  替换 `Level.sav`，回读失败按发布后 SHA256 门禁恢复，始终不自动启动服务器。
+- Go 定向测试通过：工作请求校验、helper 响应、token 过期/防重放、单文件原子发布与
+  回滚；`internal/server` 编译检查通过。Rust 本机未安装工具链，按约定不本地编译，待
+  GitHub Actions 执行 `cargo test --locked` 和完整 CI 后才允许用于活动存档。
+
 ## 2026-08-21：PalPanelBridge 0.1.57 离线固定指派排队
 
 - 0.1.56 由 `deploy.py` 完成 Action `32455516387`、SHA256

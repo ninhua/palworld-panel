@@ -351,6 +351,14 @@ as soon as base simulation creates the worker AI, the original job changes to `s
 only after authoritative work readback. Runtime work IDs change on server restart, so a
 still-pending request must be re-read and submitted again after a restart.
 
+For a truly no-player workflow, PalPanel now owns a separate save-level fallback instead of
+making the UE4SS plugin fabricate dormant Pawn/AI state. The first safe scope is deliberately
+narrow: it can inspect an existing persistent `PalWorkAssign` and change only its `fixed`
+field from `0` to `1`. The two-phase panel API binds the exact current world and `Level.sav`
+SHA-256, requires the server to already be stopped, creates a full world backup, publishes
+only `Level.sav` atomically, verifies the result, and leaves the server stopped. It never
+creates, moves, deletes, or guesses an assignment record.
+
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with
 UE4SS's `TSuperStructRange` and `TFieldRange<FProperty>` using
