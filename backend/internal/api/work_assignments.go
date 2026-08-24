@@ -69,9 +69,29 @@ type workAssignmentListItem struct {
 	Fixed                         int    `json:"fixed"`
 }
 
+type workAssignmentListBase struct {
+	WorkType                      string  `json:"work_type"`
+	BaseCampID                    string  `json:"base_camp_id"`
+	WorkBaseID                    string  `json:"work_base_id"`
+	OwnerMapObjectModelID         string  `json:"owner_map_object_model_id"`
+	OwnerMapObjectConcreteModelID string  `json:"owner_map_object_concrete_model_id"`
+	MapObjectInstanceID           *string `json:"map_object_instance_id"`
+	CurrentState                  int     `json:"current_state"`
+	AssignLocationCount           int     `json:"assign_location_count"`
+	BehaviourType                 int     `json:"behaviour_type"`
+	AssignDefineDataID            string  `json:"assign_define_data_id"`
+	OverrideWorkType              int     `json:"override_work_type"`
+	AssignableFixedType           int     `json:"assignable_fixed_type"`
+	AssignableOtomo               int     `json:"assignable_otomo"`
+	CanTriggerWorkerEvent         int     `json:"can_trigger_worker_event"`
+	CanStealAssign                int     `json:"can_steal_assign"`
+	AssignmentCount               int     `json:"assignment_count"`
+}
+
 type workAssignmentList struct {
 	LevelSHA256 string                   `json:"level_sha256"`
 	BaseCampID  string                   `json:"base_camp_id"`
+	WorkBases   []workAssignmentListBase `json:"work_bases"`
 	Assignments []workAssignmentListItem `json:"assignments"`
 }
 
@@ -206,7 +226,10 @@ func (s Server) listWorkAssignments(c *gin.Context) {
 	if result.Assignments == nil {
 		result.Assignments = []workAssignmentListItem{}
 	}
-	ok(c, gin.H{"world_id": worldID, "level_sha256": result.LevelSHA256, "base_camp_id": result.BaseCampID, "assignments": result.Assignments})
+	if result.WorkBases == nil {
+		result.WorkBases = []workAssignmentListBase{}
+	}
+	ok(c, gin.H{"world_id": worldID, "level_sha256": result.LevelSHA256, "base_camp_id": result.BaseCampID, "work_bases": result.WorkBases, "assignments": result.Assignments})
 }
 
 func (s Server) commitWorkAssignment(c *gin.Context) {

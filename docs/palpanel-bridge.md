@@ -491,7 +491,8 @@ POST /api/bases/:id/work-assignments/prepare
 POST /api/bases/:id/work-assignments/commit
 ```
 
-先用 `GET` 只读枚举已有指派及其稳定键；空数组表示当前安全版本不会凭空创建指派。
+先用 `GET` 只读枚举 `work_bases` 中的持久设施键和 `assignments` 中的已有指派；即使
+`WorkAssignMap` 为空仍可列出设施。空指派数组表示当前安全版本不会凭空创建指派。
 `prepare` 使用据点 ID、帕鲁实例 ID、持久 work base ID、设施 concrete model ID、
 `assign_define_data_id` 和槽位索引唯一定位记录，并绑定当前 `DedicatedServerName` 与
 `Level.sav` SHA256。`commit` 需要管理员 `world:reset` 权限、五分钟一次性 token、

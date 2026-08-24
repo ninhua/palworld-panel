@@ -27,6 +27,15 @@
   `sav-cli` 与 `palworld-uid-remap` 校验通过并已安装到本地开发面板，游戏服务器保持停止。
 - 新增 `GET /api/bases/:id/work-assignments` 只读枚举当前据点已有持久工作指派及稳定键，
   供两阶段 `prepare/commit` 直接选取；无记录返回空数组，仍不创建或猜测指派。
+- 提交 `c6df3a1` 的 CI `32696139846` 全部成功并已安装本地面板。实机读取活动世界
+  `D755E4CC4E9B23F85AE4E2B865E19DBD`、据点 `4d89f678-43c3-c965-5d4c-02b314977a92`
+  返回 `assignments: []`，Level.sav SHA256 为
+  `9d0e42116e95b2056be032143af7497e19bf4882e1067cd58f2b82564cd34c4c`；因此未调用提交接口、
+  未修改存档。下一步先只读枚举空 `WorkAssignMap` 对应的持久工作设施，再单独论证新建记录。
+- 静态核对确认 `WorkSaveData.RawData` 的 `PalWorkBase` 独立于 `WorkAssignMap`，因此同一 GET
+  响应新增 `work_bases`，返回工作类型、设施/模型稳定 ID、指派槽数量、fixed 能力和现有
+  指派数。新建 `PalWorkAssign` 仍缺少可验证的 ID 生成、默认状态及多工作类型字段证据，
+  本次继续保持只读，不扩展写入范围。
 
 ## 2026-08-21：PalPanelBridge 0.1.57 离线固定指派排队
 

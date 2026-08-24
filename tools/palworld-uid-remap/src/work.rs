@@ -48,7 +48,28 @@ pub struct WorkFixResult {
 pub struct WorkList {
     pub level_sha256: String,
     pub base_camp_id: String,
+    pub work_bases: Vec<WorkListBase>,
     pub assignments: Vec<WorkListAssignment>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct WorkListBase {
+    pub work_type: String,
+    pub base_camp_id: String,
+    pub work_base_id: String,
+    pub owner_map_object_model_id: String,
+    pub owner_map_object_concrete_model_id: String,
+    pub map_object_instance_id: Option<String>,
+    pub current_state: u8,
+    pub assign_location_count: usize,
+    pub behaviour_type: u8,
+    pub assign_define_data_id: String,
+    pub override_work_type: u8,
+    pub assignable_fixed_type: u8,
+    pub assignable_otomo: u32,
+    pub can_trigger_worker_event: u32,
+    pub can_steal_assign: u32,
+    pub assignment_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -236,19 +257,19 @@ fn all_assignments(save: &mut Save<Palworld>, request: &WorkRequest, worker: &FG
     records
 }
 
-fn collect_all_property(property: &mut PalProperty, records: &mut Vec<AssignmentSnapshot>) {
+fn collect_all_property(property: &mut PalProperty, records: &mut Vec<AssignmentSnapshot>, work_bases: &mut Vec<WorkListBase>) {
     match property {
-        Property::Struct(StructValue::Struct(properties)) => collect_all_properties(properties, records),
+        Property::Struct(StructValue::Struct(properties)) => collect_all_properties(properties, records, work_bases),
         Property::Map(entries) => {
             for MapEntry { key, value } in entries {
-                collect_all_property(key, records);
-                collect_all_property(value, records);
+                collect_all_property(key, records, work_bases);
+                collect_all_property(value, records, work_bases);
             }
         }
         Property::Array(ValueVec::Struct(values)) | Property::Set(ValueVec::Struct(values)) => {
             for value in values {
                 if let StructValue::Struct(properties) = value {
-                    collect_all_properties(properties, records);
+                    collect_all_properties(properties, records, work_bases);
                 }
             }
         }
@@ -256,13 +277,41 @@ fn collect_all_property(property: &mut PalProperty, records: &mut Vec<Assignment
     }
 }
 
-fn collect_all_properties(properties: &mut PalProperties, records: &mut Vec<AssignmentSnapshot>) {
+fn collect_all_properties(properties: &mut PalProperties, records: &mut Vec<AssignmentSnapshot>, work_bases: &mut Vec<WorkListBase>) {
     let raw_data_key = PropertyKey::from("RawData");
     let work_assign_map_key = PropertyKey::from("WorkAssignMap");
-    let context = properties.0.get(&raw_data_key).and_then(|property| match property {
-        Property::Struct(StructValue::Game(PalStruct::Work(work))) => context_from_work(work),
-        _ => None,
+    let assignment_count = match properties.0.get(&work_assign_map_key) {
+        Some(Property::Map(entries)) => entries.len(),
+        _ => 0,
+    };
+    let (context, work_base) = properties.0.get(&raw_data_key).map_or((None, None), |property| match property {
+        Property::Struct(StructValue::Game(PalStruct::Work(work))) => {
+            let context = context_from_work(work);
+            let listed = work.base_data.as_ref().map(|base| WorkListBase {
+                work_type: work.work_type.clone(),
+                base_camp_id: base.base_camp_id_belong_to.to_string(),
+                work_base_id: base.id.to_string(),
+                owner_map_object_model_id: base.owner_map_object_model_id.to_string(),
+                owner_map_object_concrete_model_id: base.owner_map_object_concrete_model_id.to_string(),
+                map_object_instance_id: work.transform.as_ref().and_then(|value| value.map_object_instance_id.as_ref()).map(|value| value.to_string()),
+                current_state: base.current_state,
+                assign_location_count: base.assign_locations.len(),
+                behaviour_type: base.behaviour_type,
+                assign_define_data_id: base.assign_define_data_id.clone(),
+                override_work_type: base.override_work_type,
+                assignable_fixed_type: base.assignable_fixed_type,
+                assignable_otomo: base.assignable_otomo,
+                can_trigger_worker_event: base.can_trigger_worker_event,
+                can_steal_assign: base.can_steal_assign,
+                assignment_count,
+            });
+            (context, listed)
+        }
+        _ => (None, None),
     });
+    if let Some(work_base) = work_base {
+        work_bases.push(work_base);
+    }
     if let Some(context) = context {
         if let Some(Property::Map(entries)) = properties.0.get_mut(&work_assign_map_key) {
             for entry in entries {
@@ -277,14 +326,15 @@ fn collect_all_properties(properties: &mut PalProperties, records: &mut Vec<Assi
         }
     }
     for property in properties.0.values_mut() {
-        collect_all_property(property, records);
+        collect_all_property(property, records, work_bases);
     }
 }
 
-fn all_assignment_snapshots(save: &mut Save<Palworld>) -> Vec<AssignmentSnapshot> {
+fn all_work_snapshots(save: &mut Save<Palworld>) -> (Vec<AssignmentSnapshot>, Vec<WorkListBase>) {
     let mut records = Vec::new();
-    collect_all_properties(&mut save.root.properties, &mut records);
-    records
+    let mut work_bases = Vec::new();
+    collect_all_properties(&mut save.root.properties, &mut records, &mut work_bases);
+    (records, work_bases)
 }
 
 fn list_assignment(record: &AssignmentSnapshot) -> WorkListAssignment {
@@ -324,15 +374,19 @@ pub fn analyze_work_list(input_dir: impl AsRef<Path>, base_camp_id: &str) -> Res
     let level = level_path(input_dir.as_ref());
     let level_sha256 = hash_file(&level)?;
     let mut save = parse_save(&level)?;
-    let mut assignments: Vec<_> = all_assignment_snapshots(&mut save)
+    let (records, mut work_bases) = all_work_snapshots(&mut save);
+    let mut assignments: Vec<_> = records
         .into_iter()
         .filter(|record| record.context.base_camp_id == base_camp)
         .map(|record| list_assignment(&record))
         .collect();
     sort_work_list_assignments(&mut assignments);
+    work_bases.retain(|work| work.base_camp_id == base_camp_id);
+    work_bases.sort_by(|left, right| left.work_base_id.cmp(&right.work_base_id));
     Ok(WorkList {
         level_sha256,
         base_camp_id: base_camp.to_string(),
+        work_bases,
         assignments,
     })
 }
@@ -528,6 +582,7 @@ mod tests {
         let empty = WorkList {
             level_sha256: "0".repeat(64),
             base_camp_id: CAMP.into(),
+            work_bases: Vec::new(),
             assignments: Vec::new(),
         };
         assert!(empty.assignments.is_empty());

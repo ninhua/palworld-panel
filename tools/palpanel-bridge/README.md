@@ -358,8 +358,9 @@ field from `0` to `1`. The two-phase panel API binds the exact current world and
 SHA-256, requires the server to already be stopped, creates a full world backup, publishes
 only `Level.sav` atomically, verifies the result, and leaves the server stopped. It never
 creates, moves, deletes, or guesses an assignment record.
-Call `GET /api/bases/:id/work-assignments` first to enumerate the existing persistent keys;
-an empty list means this deliberately limited fallback cannot create a new assignment.
+Call `GET /api/bases/:id/work-assignments` first. Its `work_bases` array enumerates persistent
+facility/work keys even when `assignments` is empty; an empty assignment list means this
+deliberately limited fallback cannot create a new assignment.
 
 Version `0.1.23` fixes the metadata probe to include inherited PlayerState and
 Pawn properties. It enumerates the current class and then each parent class with

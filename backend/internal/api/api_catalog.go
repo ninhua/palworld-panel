@@ -57,7 +57,7 @@ var apiCatalogExact = map[string]apiCatalogDescriptor{
 		Category: "世界存档", Summary: "查询基地工作帕鲁", Description: "按实例 ID 合并基地工作位和帕鲁索引详情。", Permission: "authenticated", Response: "工作帕鲁列表及等级、性别、状态和被动词条。", Patched: true,
 	},
 	"GET /api/bases/:id/work-assignments": {
-		Category: "世界存档", Summary: "枚举持久工作指派", Description: "只读解析当前 DedicatedServerName 对应的 Level.sav，返回指定据点已有工作位的稳定键和 fixed 状态。", Permission: "world:reset", Response: "当前世界、Level.sav SHA256 和持久工作指派列表；无记录时返回空数组。", Patched: true,
+		Category: "世界存档", Summary: "枚举持久工作设施与指派", Description: "只读解析当前 DedicatedServerName 对应的 Level.sav，即使 WorkAssignMap 为空也返回指定据点的持久工作设施键。", Permission: "world:reset", Response: "当前世界、Level.sav SHA256、工作设施和已有指派；无记录时数组为空。", Patched: true,
 	},
 	"POST /api/bases/:id/work-assignments/prepare": {
 		Category: "世界存档", Summary: "预检既有固定工作指派", Description: "只读解析当前 DedicatedServerName 对应的 Level.sav，使用持久键唯一确认既有工作指派并绑定存档 SHA256。", Permission: "world:reset", Request: `JSON: {"worker_instance_id":"guid","work_base_id":"guid","owner_map_object_concrete_model_id":"guid","assign_define_data_id":"...","location_index":0}`, Response: "五分钟一次性 token、当前世界、Level.sav SHA256 和固定指派计划。", Patched: true,
